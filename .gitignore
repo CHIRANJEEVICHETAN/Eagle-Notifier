@@ -10,7 +10,15 @@ npm-debug.*
 *.orig.*
 web-build/
 
+backend/node_modules/
 
+backend/prisma/dev.db
+
+backend/.env
+
+.env
+
+cursorUpdates/
 
 
 ios

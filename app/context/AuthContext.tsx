@@ -143,7 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
       // Navigate to login
-      router.replace('/(auth)/login');
+      router.replace('/(auth)/login' as any);
     } catch (error) {
       setAuthState(prev => ({
         ...prev,

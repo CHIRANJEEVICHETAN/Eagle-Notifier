@@ -1,4 +1,4 @@
-export type UserRole = 'operator' | 'maintenance' | 'admin' | 'compliance' | 'iot-manager';
+export type UserRole = 'operator' | 'admin';
 
 export interface User {
   id: string;

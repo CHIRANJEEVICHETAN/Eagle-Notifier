@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, ActivityIndicator, FlatList } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, ActivityIndicator, FlatList, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AlarmCard } from './components/AlarmCard';
@@ -10,7 +10,6 @@ import { useUpdateAlarmStatus } from './hooks/useAlarms';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from './context/ThemeContext';
 import { useAuth } from './context/AuthContext';
-import { TouchableOpacity } from 'react-native-gesture-handler';
 import { Alarm } from './types/alarm';
 
 export default function Dashboard() {

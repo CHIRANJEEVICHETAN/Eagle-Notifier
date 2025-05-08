@@ -12,10 +12,7 @@ datasource db {
 
 enum UserRole {
   OPERATOR
-  MAINTENANCE
   ADMIN
-  COMPLIANCE
-  IOT_MANAGER
 }
 
 model User {
