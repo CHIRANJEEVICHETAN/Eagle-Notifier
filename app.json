@@ -1,38 +1,54 @@
 {
   "expo": {
-    "name": "my-expo-app",
-    "slug": "my-expo-app",
+    "name": "Eagle Notifier",
+    "slug": "eagle-notifier",
     "version": "1.0.0",
-
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-
-    "experiments": {
-      "tsconfigPaths": true
-    },
-
-    "plugins": [],
-
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-
-    "userInterfaceStyle": "light",
-
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "assetBundlePatterns": ["**/*"],
+    "icon": "./assets/images/icon.png",
+    "scheme": "eagle-notifier",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "tsconfigPaths": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "72e44855-a2b8-4fb2-bacb-2a39760c6ccd"
       }
-    }
+    },
+    "owner": "loginwaresofttec"
   }
 }

@@ -1,0 +1,96 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OPERATOR
+  MAINTENANCE
+  ADMIN
+  COMPLIANCE
+  IOT_MANAGER
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  password        String
+  name            String
+  role            UserRole  @default(OPERATOR)
+  avatar          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  acknowledgedAlarms Alarm[] @relation("AcknowledgedBy")
+}
+
+enum AlarmType {
+  TEMPERATURE
+  LEVEL
+  PRESSURE
+  MOTOR
+  CONVEYOR
+  FAN
+  HEATER
+  CARBON
+  OIL
+}
+
+enum Zone {
+  ZONE1
+  ZONE2
+}
+
+enum AlarmSeverity {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum AlarmStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model Alarm {
+  id              String        @id @default(uuid())
+  description     String
+  type            AlarmType
+  zone            Zone?
+  severity        AlarmSeverity
+  status          AlarmStatus   @default(ACTIVE)
+  value           String
+  setPoint        String
+  unit            String?
+  lowLimit        Float?
+  highLimit       Float?
+  timestamp       DateTime      @default(now())
+  acknowledgedById String?
+  acknowledgedBy  User?         @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+  history         AlarmHistory[]
+}
+
+model AlarmHistory {
+  id              String        @id @default(uuid())
+  alarmId         String
+  alarm           Alarm         @relation(fields: [alarmId], references: [id])
+  description     String
+  type            AlarmType
+  severity        AlarmSeverity
+  status          AlarmStatus
+  value           String
+  setPoint        String
+  timestamp       DateTime      @default(now())
+  acknowledgedById String?
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+} 

@@ -1,0 +1,43 @@
+{
+  "name": "eagle-notifier-backend",
+  "version": "1.0.0",
+  "description": "Eagle Notifier Backend",
+  "main": "server.ts",
+  "scripts": {
+    "start": "node dist/server.js",
+    "dev": "nodemon --exec ts-node server.ts",
+    "build": "tsc",
+    "serve": "node dist/server.js",
+    "test": "jest",
+    "lint": "eslint . --ext .ts",
+    "migrate": "node-pg-migrate"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@prisma/client": "^6.7.0",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "cron": "^4.3.0",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-schedule": "^2.1.1",
+    "pg": "^8.15.6",
+    "prisma": "^6.7.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.18",
+    "@types/express": "^5.0.1",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^22.15.17",
+    "@types/node-schedule": "^2.1.7",
+    "@types/pg": "^8.15.0",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
