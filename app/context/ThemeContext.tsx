@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useColorScheme } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 type ThemeType = 'light' | 'dark' | 'system';
 
@@ -12,9 +13,39 @@ interface ThemeContextProps {
 
 const ThemeContext = createContext<ThemeContextProps | undefined>(undefined);
 
+const THEME_KEY = 'eagle_theme';
+
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const colorScheme = useColorScheme();
-  const [theme, setTheme] = useState<ThemeType>('system');
+  const [theme, setThemeState] = useState<ThemeType>('system');
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Load theme from storage on mount
+  useEffect(() => {
+    const loadTheme = async () => {
+      try {
+        const savedTheme = await SecureStore.getItemAsync(THEME_KEY);
+        if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system')) {
+          setThemeState(savedTheme as ThemeType);
+        }
+      } catch (error) {
+        console.error('Failed to load theme preference', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadTheme();
+  }, []);
+  
+  const setTheme = useCallback(async (newTheme: ThemeType) => {
+    setThemeState(newTheme);
+    try {
+      await SecureStore.setItemAsync(THEME_KEY, newTheme);
+    } catch (error) {
+      console.error('Failed to save theme preference', error);
+    }
+  }, []);
   
   const isDarkMode = useCallback(() => {
     if (theme === 'system') {
@@ -24,12 +55,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [theme, colorScheme]);
 
   const toggleTheme = useCallback(() => {
-    setTheme(prev => {
-      if (prev === 'light') return 'dark';
-      if (prev === 'dark') return 'system';
-      return 'light';
-    });
-  }, []);
+    const nextTheme: ThemeType = theme === 'light' ? 'dark' : 
+                                theme === 'dark' ? 'system' : 'light';
+    setTheme(nextTheme);
+  }, [theme, setTheme]);
 
   const value = {
     theme,
@@ -37,6 +66,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTheme,
     toggleTheme,
   };
+
+  // If still loading theme preference, render nothing or a loading indicator
+  if (isLoading) {
+    return null; // Or return a loading spinner
+  }
 
   return (
     <ThemeContext.Provider value={value}>

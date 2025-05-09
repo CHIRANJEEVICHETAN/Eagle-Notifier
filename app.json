@@ -12,13 +12,17 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "googleServicesFile": "./constants/GoogleService-Info.plist",
+      "bundleIdentifier": "com.tecosoft.eaglenotifier"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "package": "com.tecosoft.eaglenotifier",
+      "googleServicesFile": "./constants/google-services.json",
       "edgeToEdgeEnabled": true
     },
     "web": {
@@ -35,6 +39,14 @@
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#2563EB",
+          "sounds": ["./assets/sounds/notification.wav"]
         }
       ],
       "expo-secure-store"

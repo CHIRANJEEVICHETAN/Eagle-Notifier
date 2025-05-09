@@ -13,6 +13,7 @@ import authRoutes from './src/routes/authRoutes';
 import alarmRoutes from './src/routes/alarmRoutes';
 import adminRoutes from './src/routes/adminRoutes';
 import operatorRoutes from './src/routes/operatorRoutes';
+import notificationRoutes from './src/routes/notifications';
 
 // Initialize Express app
 const app = express();
@@ -51,6 +52,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/alarms', alarmRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/operator', operatorRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Error handling middleware (must be after all other middleware and routes)
 app.use(errorHandler);

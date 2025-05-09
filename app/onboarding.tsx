@@ -1,11 +1,13 @@
 import React, { useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, Image, StyleSheet, Animated, Dimensions, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Link, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useTheme } from './context/ThemeContext';
+import { updatePushToken } from './api/notificationsApi';
+import * as SecureStore from 'expo-secure-store';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -68,8 +70,28 @@ export default function OnboardingScreen() {
         finalStatus = status;
       }
       
-      if (finalStatus !== 'granted') {
+      if (finalStatus === 'granted') {
+        // Get push token
+        try {
+          const tokenData = await Notifications.getExpoPushTokenAsync({
+            projectId: "72e44855-a2b8-4fb2-bacb-2a39760c6ccd" // EAS project ID from app.json
+          });
+          
+          console.log("Expo push token:", tokenData.data);
+          
+          // Save token for when user logs in
+          // We'll store it temporarily and send it to backend after authentication
+          await SecureStore.setItemAsync('tempPushToken', tokenData.data);
+        } catch (tokenError) {
+          console.error('Error getting push token:', tokenError);
+        }
+      } else {
         // Permission not granted, but continue anyway
+        Alert.alert(
+          "Notification Permission",
+          "You won't receive push notifications. You can enable them later in app settings.",
+          [{ text: "OK" }]
+        );
         console.log('Notification permission not granted');
       }
       

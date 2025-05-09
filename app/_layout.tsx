@@ -7,6 +7,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
+import { NotificationProvider } from './NotificationProvider';
 
 const queryClient = new QueryClient();
 
@@ -31,7 +32,9 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
-            <RootLayoutNav />
+            <NotificationProvider>
+              <RootLayoutNav />
+            </NotificationProvider>
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>

@@ -67,14 +67,12 @@ export default function AdminDashboard() {
   
   // Navigate to user management
   const navigateToUserManagement = () => {
-    // This would navigate to a user management screen
-    console.log('Navigate to user management');
+    router.push("/admin/users" as any);
   };
   
   // Navigate to system settings
   const navigateToSettings = () => {
-    // This would navigate to a settings screen
-    console.log('Navigate to settings');
+    router.push("/admin/setpoints" as any);
   };
   
   // Handle acknowledge for the selected alarm
