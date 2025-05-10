@@ -68,17 +68,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
-    const inOnboarding = segments[0] === 'onboarding';
     const inDashboardGroup = segments[0] === '(dashboard)';
 
     // If not authenticated, redirect to onboarding
-    if (!isAuthenticated && !inOnboarding && !inAuthGroup) {
-      navigateTo('/onboarding');
+    if (!isAuthenticated && !inAuthGroup) {
+      navigateTo('/');
       return;
     }
 
     // If authenticated but in auth/onboarding, redirect to dashboard
-    if (isAuthenticated && (inAuthGroup || inOnboarding)) {
+    if (isAuthenticated && (inAuthGroup)) {
       routeUserByRole(authState.user?.role || 'operator');
       return;
     }
