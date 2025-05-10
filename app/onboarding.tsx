@@ -138,8 +138,8 @@ export default function OnboardingScreen() {
             },
           ]}
         >
-          <View style={[styles.iconWrapper, { backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB' }]}>
-            <Ionicons name="notifications" size={64} color="#FFFFFF" />
+          <View style={[styles.iconWrapper, { backgroundColor: isDarkMode ? '#3B82F6' : '#FFFFFF' }]}>
+            <Image className='mt-3' source={require('../assets/images/Eagle-Logo.png')} style={{ width: 110, height: 110 }} />
           </View>
           
           <Animated.Text
@@ -251,9 +251,9 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   iconWrapper: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 130,
+    height: 130,
+    borderRadius: 100,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
