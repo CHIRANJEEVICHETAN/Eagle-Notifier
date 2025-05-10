@@ -220,6 +220,29 @@ const screenWidth = Dimensions.get('window').width;
 // TimeRange type for date filtering
 type TimeRange = '1d' | '3d' | '7d' | '24h' | '12h' | '1h' | 'custom';
 
+// Define types for our chart data
+type AnalogDataPoint = {
+  value: number;
+  label: string;
+  dataPointText: string;
+};
+
+type AnalogDataset = {
+  data: AnalogDataPoint[];
+  color: string;
+  dataPointsColor: string;
+  textColor: string;
+  textFontSize: number;
+};
+
+type BinaryDataPoint = {
+  value: number;
+  label: string;
+  frontColor: string;
+  topLabelComponent?: () => React.ReactNode;
+  side?: number;
+};
+
 export default function AnalyticsScreen() {
   const { isDarkMode } = useTheme();
   
@@ -302,48 +325,105 @@ export default function AnalyticsScreen() {
     setShowDatePicker(true);
   };
   
-  // Prepare analog chart data
-  const analogChartData = useMemo(() => {
-    return sampleAnalogAlarms.map((alarm) => ({
-      value: parseFloat(alarm.value),
-      label: alarm.zone 
-        ? `${alarm.type.toUpperCase()} ${alarm.zone.toUpperCase()}`
-        : alarm.type.toUpperCase(),
-      dataPointText: `${alarm.value}${alarm.unit}`,
-      customDataPoint: () => (
-        <View style={[
-          styles.dataPoint,
-          { backgroundColor: alarmColors[alarm.type as keyof typeof alarmColors] }
-        ]} />
-      ),
-      color: alarmColors[alarm.type as keyof typeof alarmColors],
-      showValue: true,
-    }));
+  // Format data for LineChart component with multiple lines (one for each alarm)
+  const prepareLineChartData = useMemo(() => {
+    // Create a dataset with data points for all alarms with different time points
+    const now = new Date();
+    const colors = [
+      '#FF6384', // Red
+      '#36A2EB', // Blue
+      '#FFCE56', // Yellow
+      '#4BC0C0', // Teal
+      '#9966FF', // Purple
+      '#FF9F40', // Orange
+    ];
+
+    // Create separate datasets for each alarm type
+    const datasets: AnalogDataset[] = [];
+    
+    // Loop through each analog alarm to create its dataset
+    sampleAnalogAlarms.forEach((alarm, alarmIndex) => {
+      const baseValue = parseFloat(alarm.value);
+      const alarmData: AnalogDataPoint[] = [];
+      
+      // Create 12 data points for each alarm (over 24 hours)
+      for (let i = 0; i < 12; i++) {
+        const time = new Date(now);
+        time.setHours(now.getHours() - (11 - i) * 2);
+        
+        // Create variation for demo purposes
+        const variation = Math.sin(i / 2) * baseValue * 0.15 + 
+                          (Math.random() - 0.5) * baseValue * 0.05;
+        
+        alarmData.push({
+          value: baseValue + variation,
+          label: formatDate(time, 'HH:mm'),
+          dataPointText: `${(baseValue + variation).toFixed(1)}${alarm.unit}`,
+        });
+      }
+      
+      // Add this alarm's dataset to the collection
+      datasets.push({
+        data: alarmData,
+        color: colors[alarmIndex % colors.length],
+        dataPointsColor: colors[alarmIndex % colors.length],
+        textColor: colors[alarmIndex % colors.length],
+        textFontSize: 8,
+      });
+    });
+    
+    return datasets;
   }, []);
 
-  // Prepare binary chart data
-  const binaryChartData = useMemo(() => {
-    return sampleBinaryAlarms.map((alarm) => ({
-      value: alarm.value === 'Normal' || alarm.value === 'Running' || alarm.value === 'Rotating' ? 1 : 0,
-      label: alarm.zone 
-        ? `${alarm.type.toUpperCase()} ${alarm.zone.toUpperCase()}`
-        : alarm.type.toUpperCase(),
-      frontColor: alarmColors[alarm.type as keyof typeof alarmColors],
-      topLabelComponent: () => (
-        <Text 
-          style={[
-            styles.dataPointLabel, 
-            { 
-              color: isDarkMode ? '#E5E7EB' : '#4B5563',
-              transform: [{ rotate: '-45deg' }]
-            }
-          ]}
-        >
-          {alarm.value}
-        </Text>
-      ),
-    }));
+  // Prepare binary alarms data
+  const prepareBinaryChartData = useMemo(() => {
+    const binaryData: BinaryDataPoint[] = [];
+    const now = new Date();
+    
+    // Create data for 6 time points
+    for (let i = 0; i < 6; i++) {
+      const time = new Date(now);
+      time.setHours(now.getHours() - (5 - i) * 4);
+      
+      // For each binary alarm type, create a value
+      sampleBinaryAlarms.forEach((alarm, index) => {
+        if (index < 4) { // Limit to 4 types for cleaner display
+          const isActive = Math.random() > 0.5; // Randomly active or inactive
+          binaryData.push({
+            value: isActive ? 1 : 0,
+            label: formatDate(time, 'HH:mm'),
+            frontColor: alarmColors[alarm.type as keyof typeof alarmColors],
+            topLabelComponent: () => (
+              <Text style={{
+                color: isDarkMode ? '#E5E7EB' : '#4B5563',
+                fontSize: 8,
+                transform: [{ rotate: '-45deg' }]
+              }}>
+                {alarm.type}
+              </Text>
+            ),
+          });
+        }
+      });
+    }
+    
+    return binaryData;
   }, [isDarkMode]);
+  
+  // Format data for a single-line chart (fallback for multiple lines)
+  const analogLineData = useMemo(() => {
+    if (prepareLineChartData.length === 0) return [];
+    
+    // Use first alarm's data to define data points
+    const firstDataset = prepareLineChartData[0];
+    return firstDataset.data.map((point, index) => {
+      return {
+        ...point,
+        color: firstDataset.color,
+        dataPointColor: firstDataset.color,
+      };
+    });
+  }, [prepareLineChartData]);
   
   // Handle generating report
   const handleGenerateReport = () => {
@@ -481,80 +561,92 @@ export default function AnalyticsScreen() {
     },
   };
 
-  // Render analog alarms chart
+  // Render analog alarms chart with multiple lines
   const renderAnalogChart = () => (
     <View style={[styles.chartContainer, { backgroundColor: chartConfig.backgroundColor }]}>
       <Text style={[styles.chartTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
         Analog Alarms
       </Text>
-      <LineChart
-        data={analogChartData}
-        height={300}
-        width={screenWidth - 40}
-        spacing={40}
-        initialSpacing={20}
-        color={isDarkMode ? '#FFFFFF' : '#111827'}
-        thickness={2}
-        startFillColor="rgba(20,105,81,0.3)"
-        endFillColor="rgba(20,85,81,0.01)"
-        startOpacity={0.6}
-        endOpacity={0.1}
-        noOfSections={5}
-        yAxisThickness={1}
-        xAxisThickness={1}
-        yAxisTextStyle={chartConfig.yAxisTextStyle}
-        xAxisLabelTextStyle={chartConfig.xAxisLabelTextStyle}
-        yAxisColor={chartConfig.axisColor}
-        xAxisColor={chartConfig.axisColor}
-        rulesType="solid"
-        rulesColor={chartConfig.axisColor}
-        dataPointsColor={isDarkMode ? '#FFFFFF' : '#111827'}
-        dataPointsRadius={4}
-        hideDataPoints
-        showValuesAsDataPointsText
-        textFontSize={10}
-        textShiftY={-8}
-        textShiftX={8}
-        textColor={isDarkMode ? '#E5E7EB' : '#4B5563'}
-        curved
-      />
+      
+      {/* Use multiple LineChart components for multiple lines */}
+      <View style={{ position: 'relative' }}>
+        {prepareLineChartData.map((dataset, index) => (
+          <View key={index} style={{ position: index === 0 ? 'relative' : 'absolute', top: 0, left: 0, right: 0 }}>
+            <LineChart
+              data={dataset.data}
+              height={300}
+              width={screenWidth - 40}
+              spacing={30}
+              initialSpacing={20}
+              color={dataset.color}
+              thickness={2}
+              noOfSections={5}
+              yAxisThickness={index === 0 ? 1 : 0}
+              xAxisThickness={index === 0 ? 1 : 0}
+              yAxisTextStyle={chartConfig.yAxisTextStyle}
+              xAxisLabelTextStyle={chartConfig.xAxisLabelTextStyle}
+              yAxisColor={chartConfig.axisColor}
+              xAxisColor={chartConfig.axisColor}
+              rulesColor={index === 0 ? chartConfig.axisColor : 'transparent'}
+              dataPointsRadius={3}
+              hideDataPoints={false}
+              hideRules={index !== 0}
+              hideYAxisText={index !== 0}
+              showDataPointOnFocus
+              disableScroll
+              isAnimated
+              animationDuration={1000}
+              curved
+            />
+          </View>
+        ))}
+        
+        {/* Legend for the analog alarms */}
+        <View style={styles.inlineChartLegend}>
+          {sampleAnalogAlarms.map((alarm, index) => (
+            <View key={alarm.id} style={styles.inlineLegendItem}>
+              <View style={[
+                styles.legendColorBox, 
+                { backgroundColor: prepareLineChartData[index]?.color || '#ccc' }
+              ]} />
+              <Text style={[styles.inlineLegendText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+                {alarm.description.split(' ')[0]}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
     </View>
   );
 
-  // Render binary alarms chart
+  // Render binary alarms as bar chart
   const renderBinaryChart = () => (
     <View style={[styles.chartContainer, { backgroundColor: chartConfig.backgroundColor }]}>
       <Text style={[styles.chartTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
         Binary Alarms
       </Text>
       <BarChart
-        data={binaryChartData}
+        data={prepareBinaryChartData}
         height={300}
         width={screenWidth - 40}
-        spacing={40}
+        spacing={20}
         initialSpacing={20}
-        barWidth={30}
-        noOfSections={2}
+        barWidth={20}
+        noOfSections={1}
+        barBorderRadius={4}
         yAxisThickness={1}
         xAxisThickness={1}
         yAxisTextStyle={chartConfig.yAxisTextStyle}
-        xAxisLabelTextStyle={[
-          chartConfig.xAxisLabelTextStyle,
-          { transform: [{ rotate: '-45deg' }] }
-        ]}
+        xAxisLabelTextStyle={chartConfig.xAxisLabelTextStyle}
         yAxisColor={chartConfig.axisColor}
         xAxisColor={chartConfig.axisColor}
-        maxValue={1}
-        showLine
-        rotateLabel
         hideRules
-        showGradient
-        gradientColor={isDarkMode ? '#60A5FA' : '#3B82F6'}
+        isAnimated
       />
     </View>
   );
   
-  // Render legend
+  // Updated legend with time series explanation
   const renderLegend = () => (
     <View style={[styles.legendContainer, { backgroundColor: chartConfig.backgroundColor }]}>
       <Text style={[styles.legendTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
@@ -599,37 +691,43 @@ export default function AnalyticsScreen() {
           Binary Alarms
         </Text>
         <View style={styles.legendItems}>
-          {sampleBinaryAlarms.map((alarm) => (
-            <View key={alarm.id} style={styles.legendItem}>
-              <View 
-                style={[
-                  styles.legendColorBox, 
-                  { backgroundColor: alarmColors[alarm.type as keyof typeof alarmColors] }
-                ]} 
-              />
-              <View style={styles.legendItemText}>
-                <Text 
-                  style={[styles.legendText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}
-                  numberOfLines={2}
-                >
-                  {alarm.description}
-                </Text>
-                <Text 
+          {Object.entries(alarmColors)
+            .filter(([type]) => ['level', 'heater', 'fan', 'conveyor'].includes(type))
+            .map(([type, color]) => (
+              <View key={type} style={styles.legendItem}>
+                <View 
                   style={[
-                    styles.legendSubText, 
-                    { 
-                      color: alarm.value === 'Normal' || alarm.value === 'Running' || alarm.value === 'Rotating'
-                        ? '#10B981'
-                        : '#EF4444'
-                    }
-                  ]}
-                >
-                  {alarm.value}
-                </Text>
+                    styles.legendColorBox, 
+                    { backgroundColor: color }
+                  ]} 
+                />
+                <View style={styles.legendItemText}>
+                  <Text 
+                    style={[styles.legendText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}
+                  >
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </Text>
+                  <Text 
+                    style={[styles.legendSubText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}
+                  >
+                    1 = Active, 0 = Inactive
+                  </Text>
+                </View>
               </View>
-            </View>
-          ))}
+            ))}
         </View>
+      </View>
+
+      {/* Time Series Explanation */}
+      <View style={[styles.legendSection, styles.legendSectionBorder]}>
+        <Text style={[styles.legendSectionTitle, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+          Time Series Data
+        </Text>
+        <Text style={[styles.legendNote, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+          Charts show simulated data over the selected time period. 
+          X-axis displays time in HH:MM format. Each analog alarm has 
+          its own trend line with a unique color.
+        </Text>
       </View>
     </View>
   );
@@ -937,16 +1035,31 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
   },
-  dataPoint: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: 'white',
-  },
-  dataPointLabel: {
+  xAxisLabel: {
     fontSize: 10,
-    marginTop: 4,
     textAlign: 'center',
+    width: 40,
+    transform: [{ rotate: '-45deg' }],
+  },
+  legendNote: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  inlineChartLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  inlineLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 8,
+    marginVertical: 4,
+  },
+  inlineLegendText: {
+    fontSize: 10,
+    marginLeft: 4,
   },
 }); 
