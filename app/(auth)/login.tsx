@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LoginCredentials } from '../types/auth';
+import { showErrorAlert } from '../utils/errorHandling';
 
 export default function LoginScreen() {
   const { login, authState } = useAuth();
@@ -37,8 +38,19 @@ export default function LoginScreen() {
   
   // Animation values
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
+
+  // Display the authentication error from context if exists
+  useEffect(() => {
+    if (authState.error) {
+      showErrorAlert(
+        { message: authState.error }, 
+        'Login Failed', 
+        'An error occurred during login'
+      );
+    }
+  }, [authState.error]);
   
-  React.useEffect(() => {
+  useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 800,
@@ -83,20 +95,12 @@ export default function LoginScreen() {
     setIsLoading(true);
     
     try {
-      // Call login function
+      // Call login function from AuthContext
+      // Navigation will be handled by the AuthContext after login
       await login({ email, password } as LoginCredentials);
-      
-      // Check user role for routing
-      if (authState.user?.role === 'admin') {
-        router.replace("/(dashboard)/admin" as any);
-      } else {
-        router.replace("/(dashboard)/operator" as any);
-      }
     } catch (error) {
-      Alert.alert(
-        'Login Failed',
-        error instanceof Error ? error.message : 'Failed to login. Please check your credentials and try again.'
-      );
+      // Error handling is now done in the AuthContext
+      console.error('Login error in component:', error);
     } finally {
       setIsLoading(false);
     }

@@ -45,7 +45,7 @@ export const AlarmCard: React.FC<AlarmCardProps> = ({
       case 'conveyor':
         return 'git-network-outline';
       case 'fan':
-        return 'fan-outline';
+        return 'aperture-outline';
       case 'heater':
         return 'flame-outline';
       case 'carbon':
@@ -148,4 +148,7 @@ export const AlarmCard: React.FC<AlarmCardProps> = ({
       )}
     </TouchableOpacity>
   );
-}; 
+};
+
+// Add default export
+export default AlarmCard; 

@@ -10,7 +10,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format as formatDate } from 'date-fns';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import { useTheme } from '../context/ThemeContext';
@@ -38,7 +38,7 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
   const { isDarkMode } = useTheme();
   
   // State for report options
-  const [format, setFormat] = useState<ReportFormat>('pdf');
+  const [reportFormat, setReportFormat] = useState<ReportFormat>('pdf');
   const [timeRange, setTimeRange] = useState<ReportTimeRange>(
     defaultTimeRange || {
       startDate: new Date(new Date().setHours(0, 0, 0, 0)),
@@ -111,7 +111,7 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
       setIsGenerating(true);
       
       // Call the onGenerate function passed as props
-      const fileUrl = await onGenerate(format, timeRange);
+      const fileUrl = await onGenerate(reportFormat, timeRange);
       
       // Check if sharing is available
       const isSharingAvailable = await Sharing.isAvailableAsync();
@@ -128,8 +128,8 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
           await FileSystem.makeDirectoryAsync(downloadDir, { intermediates: true });
         }
         
-        const fileName = `alarm-report-${format}-${format(new Date(), 'yyyy-MM-dd-HH-mm')}`;
-        const newFileUri = `${downloadDir}${fileName}.${format}`;
+        const fileName = `alarm-report-${reportFormat}-${formatDate(new Date(), 'yyyy-MM-dd-HH-mm')}`;
+        const newFileUri = `${downloadDir}${fileName}.${reportFormat}`;
         
         await FileSystem.copyAsync({
           from: fileUrl,
@@ -138,7 +138,7 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
         
         Alert.alert(
           'Report Generated',
-          `Report has been saved to your downloads folder as ${fileName}.${format}`
+          `Report has been saved to your downloads folder as ${fileName}.${reportFormat}`
         );
       }
       
@@ -152,7 +152,7 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  }, [format, timeRange, onGenerate, onClose]);
+  }, [reportFormat, timeRange, onGenerate, onClose]);
   
   return (
     <Modal
@@ -186,26 +186,26 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
                 <TouchableOpacity
                   style={[
                     styles.formatOption,
-                    format === 'pdf' && styles.formatOptionActive,
+                    reportFormat === 'pdf' && styles.formatOptionActive,
                     {
-                      backgroundColor: format === 'pdf'
+                      backgroundColor: reportFormat === 'pdf'
                         ? (isDarkMode ? '#3B82F6' : '#2563EB')
                         : (isDarkMode ? '#374151' : '#F3F4F6'),
                     }
                   ]}
-                  onPress={() => setFormat('pdf')}
+                  onPress={() => setReportFormat('pdf')}
                 >
                   <Ionicons
                     name="document-text-outline"
                     size={24}
-                    color={format === 'pdf' ? '#FFFFFF' : (isDarkMode ? '#E5E7EB' : '#4B5563')}
+                    color={reportFormat === 'pdf' ? '#FFFFFF' : (isDarkMode ? '#E5E7EB' : '#4B5563')}
                     style={styles.formatIcon}
                   />
                   <Text
                     style={[
                       styles.formatText,
                       {
-                        color: format === 'pdf'
+                        color: reportFormat === 'pdf'
                           ? '#FFFFFF'
                           : (isDarkMode ? '#E5E7EB' : '#4B5563'),
                       }
@@ -218,26 +218,26 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
                 <TouchableOpacity
                   style={[
                     styles.formatOption,
-                    format === 'excel' && styles.formatOptionActive,
+                    reportFormat === 'excel' && styles.formatOptionActive,
                     {
-                      backgroundColor: format === 'excel'
+                      backgroundColor: reportFormat === 'excel'
                         ? (isDarkMode ? '#3B82F6' : '#2563EB')
                         : (isDarkMode ? '#374151' : '#F3F4F6'),
                     }
                   ]}
-                  onPress={() => setFormat('excel')}
+                  onPress={() => setReportFormat('excel')}
                 >
                   <Ionicons
                     name="grid-outline"
                     size={24}
-                    color={format === 'excel' ? '#FFFFFF' : (isDarkMode ? '#E5E7EB' : '#4B5563')}
+                    color={reportFormat === 'excel' ? '#FFFFFF' : (isDarkMode ? '#E5E7EB' : '#4B5563')}
                     style={styles.formatIcon}
                   />
                   <Text
                     style={[
                       styles.formatText,
                       {
-                        color: format === 'excel'
+                        color: reportFormat === 'excel'
                           ? '#FFFFFF'
                           : (isDarkMode ? '#E5E7EB' : '#4B5563'),
                       }
@@ -277,71 +277,15 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
-            
-            {/* Selected Range Display */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                Selected Range
-              </Text>
-              <View style={[styles.selectedRange, { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }]}>
-                <Text style={[styles.rangeText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                  From: {format(timeRange.startDate, 'MMM d, yyyy HH:mm')}
-                </Text>
-                <Text style={[styles.rangeText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                  To: {format(timeRange.endDate, 'MMM d, yyyy HH:mm')}
-                </Text>
-              </View>
-            </View>
-            
-            {/* Report Description */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                Report Contents
-              </Text>
-              <View style={[styles.reportInfo, { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }]}>
-                <View style={styles.reportInfoItem}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={16}
-                    color={isDarkMode ? '#4ADE80' : '#22C55E'}
-                    style={styles.reportInfoIcon}
-                  />
-                  <Text style={[styles.reportInfoText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                    Alarm events and status changes
+              
+              {/* Show selected time range */}
+              <View style={styles.selectedTimeRange}>
+                <View style={[styles.selectedRange, { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }]}>
+                  <Text style={[styles.rangeText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+                    From: {formatDate(timeRange.startDate, 'MMM d, yyyy HH:mm')}
                   </Text>
-                </View>
-                <View style={styles.reportInfoItem}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={16}
-                    color={isDarkMode ? '#4ADE80' : '#22C55E'}
-                    style={styles.reportInfoIcon}
-                  />
-                  <Text style={[styles.reportInfoText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                    Analog value charts and statistics
-                  </Text>
-                </View>
-                <View style={styles.reportInfoItem}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={16}
-                    color={isDarkMode ? '#4ADE80' : '#22C55E'}
-                    style={styles.reportInfoIcon}
-                  />
-                  <Text style={[styles.reportInfoText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                    Binary state transitions
-                  </Text>
-                </View>
-                <View style={styles.reportInfoItem}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={16}
-                    color={isDarkMode ? '#4ADE80' : '#22C55E'}
-                    style={styles.reportInfoIcon}
-                  />
-                  <Text style={[styles.reportInfoText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                    Response time analytics
+                  <Text style={[styles.rangeText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+                    To: {formatDate(timeRange.endDate, 'MMM d, yyyy HH:mm')}
                   </Text>
                 </View>
               </View>
@@ -350,8 +294,12 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
           
           <View style={styles.modalFooter}>
             <TouchableOpacity
-              style={[styles.cancelButton, { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }]}
+              style={[
+                styles.cancelButton,
+                { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' }
+              ]}
               onPress={onClose}
+              disabled={isGenerating}
             >
               <Text style={[styles.cancelButtonText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
                 Cancel
@@ -361,10 +309,8 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
             <TouchableOpacity
               style={[
                 styles.generateButton,
-                { 
-                  backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB',
-                  opacity: isGenerating ? 0.7 : 1,
-                }
+                { backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB' },
+                isGenerating && { opacity: 0.7 }
               ]}
               onPress={handleGenerateReport}
               disabled={isGenerating}
@@ -372,17 +318,9 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
               {isGenerating ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <>
-                  <Ionicons
-                    name="download-outline"
-                    size={18}
-                    color="#FFFFFF"
-                    style={styles.generateButtonIcon}
-                  />
-                  <Text style={styles.generateButtonText}>
-                    Generate {format.toUpperCase()}
-                  </Text>
-                </>
+                <Text style={styles.generateButtonText}>
+                  Generate
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -467,6 +405,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+  selectedTimeRange: {
+    marginTop: 12,
+  },
   selectedRange: {
     padding: 12,
     borderRadius: 8,
@@ -474,21 +415,6 @@ const styles = StyleSheet.create({
   rangeText: {
     fontSize: 14,
     marginBottom: 4,
-  },
-  reportInfo: {
-    padding: 12,
-    borderRadius: 8,
-  },
-  reportInfoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  reportInfoIcon: {
-    marginRight: 8,
-  },
-  reportInfoText: {
-    fontSize: 14,
   },
   modalFooter: {
     flexDirection: 'row',
@@ -502,22 +428,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
   },
   cancelButtonText: {
     fontSize: 14,
     fontWeight: '500',
   },
   generateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
     minWidth: 120,
     justifyContent: 'center',
-  },
-  generateButtonIcon: {
-    marginRight: 8,
   },
   generateButtonText: {
     color: '#FFFFFF',

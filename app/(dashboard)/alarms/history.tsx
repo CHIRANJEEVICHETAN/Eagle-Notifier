@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { format, subDays } from 'date-fns';
+import { format as formatDate, subDays } from 'date-fns';
 import { useTheme } from '../../context/ThemeContext';
 import { AlarmDetails } from '../../components/AlarmDetails';
 import { useAlarmHistory } from '../../hooks/useAlarms';
@@ -91,7 +91,7 @@ export default function AlarmHistoryScreen() {
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         return (
-          alarm.name.toLowerCase().includes(query) ||
+          alarm.description.toLowerCase().includes(query) ||
           alarm.zone?.toLowerCase().includes(query) ||
           alarm.type.toLowerCase().includes(query) ||
           alarm.value.toString().toLowerCase().includes(query)
@@ -156,7 +156,7 @@ export default function AlarmHistoryScreen() {
     >
       <View style={styles.alarmHeader}>
         <Text style={[styles.alarmName, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-          {item.name}
+          {item.description}
         </Text>
         {renderStatusBadge(item.status)}
       </View>
@@ -185,7 +185,7 @@ export default function AlarmHistoryScreen() {
             Time:
           </Text>
           <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-            {format(new Date(item.timestamp), 'MMM d, yyyy HH:mm:ss')}
+            {formatDate(new Date(item.timestamp), 'MMM d, yyyy HH:mm:ss')}
           </Text>
         </View>
       </View>

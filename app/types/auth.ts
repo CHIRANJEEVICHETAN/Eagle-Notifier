@@ -6,6 +6,7 @@ export interface User {
   name: string;
   role: UserRole;
   avatar?: string;
+  pushToken?: string | null;
   createdAt: string;
   updatedAt: string;
 }

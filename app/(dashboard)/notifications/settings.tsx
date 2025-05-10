@@ -18,6 +18,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { updateNotificationSettings, updatePushToken, sendTestNotification } from '../../api/notificationsApi';
 import { useUpdateNotificationSettings } from '../../hooks/useNotifications';
 import TimeRangePicker from '../../components/TimeRangePicker';
+import * as SecureStore from 'expo-secure-store';
 
 export default function NotificationSettingsScreen() {
   const { isDarkMode } = useTheme();
@@ -39,6 +40,10 @@ export default function NotificationSettingsScreen() {
   // TanStack Query hooks
   const updateSettingsMutation = useUpdateNotificationSettings();
   
+  // Add state for tracking API operations
+  const [isTestingSending, setIsTestingSending] = useState(false);
+  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
+  
   // Request notification permissions and update token
   useEffect(() => {
     const requestPermissions = async () => {
@@ -56,7 +61,7 @@ export default function NotificationSettingsScreen() {
         
         // Get push token and update on server
         const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: process.env.EXPO_PROJECT_ID,
+          projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
         });
         
         if (tokenData.data) {
@@ -89,13 +94,30 @@ export default function NotificationSettingsScreen() {
     loadSettings();
   }, []);
   
-  // Handle settings toggle
+  // Handle settings toggle with local fallback
   const handleToggleSetting = useCallback((setting: keyof typeof settings) => {
     setSettings(prev => {
       const newSettings = { ...prev, [setting]: !prev[setting] };
       
       // Update settings on server
-      updateSettingsMutation.mutate(newSettings);
+      setIsUpdatingSettings(true);
+      updateSettingsMutation.mutate(newSettings, {
+        onError: (error) => {
+          // Show error toast or notification
+          console.error(`Failed to update ${setting}:`, error);
+          Alert.alert(
+            'Settings Update Failed',
+            'Your settings will be saved locally but may not sync with the server. Please check your connection.'
+          );
+        },
+        onSettled: () => {
+          setIsUpdatingSettings(false);
+        }
+      });
+      
+      // Save setting locally as fallback
+      SecureStore.setItemAsync(`notification_${setting}`, (!prev[setting]).toString())
+        .catch(error => console.error('Error saving setting to secure storage:', error));
       
       return newSettings;
     });
@@ -145,10 +167,16 @@ export default function NotificationSettingsScreen() {
   // Handle send test notification
   const handleSendTestNotification = useCallback(async () => {
     try {
+      setIsTestingSending(true);
       await sendTestNotification();
       Alert.alert('Test Notification Sent', 'A test notification has been sent to your device.');
     } catch (error) {
-      Alert.alert('Error', 'Failed to send test notification.');
+      Alert.alert(
+        'Error', 
+        'Failed to send test notification. Please check your network connection and try again.'
+      );
+    } finally {
+      setIsTestingSending(false);
     }
   }, []);
   
@@ -224,7 +252,7 @@ export default function NotificationSettingsScreen() {
               onValueChange={() => handleToggleSetting('pushEnabled')}
               trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
               thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
-              disabled={updateSettingsMutation.isPending}
+              disabled={isUpdatingSettings || updateSettingsMutation.isPending}
             />
           </View>
           
@@ -248,7 +276,7 @@ export default function NotificationSettingsScreen() {
               onValueChange={() => handleToggleSetting('emailEnabled')}
               trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
               thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
-              disabled={updateSettingsMutation.isPending}
+              disabled={isUpdatingSettings || updateSettingsMutation.isPending}
             />
           </View>
         </View>
@@ -285,7 +313,7 @@ export default function NotificationSettingsScreen() {
               onValueChange={() => handleToggleSetting('criticalOnly')}
               trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
               thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
-              disabled={updateSettingsMutation.isPending}
+              disabled={isUpdatingSettings || updateSettingsMutation.isPending}
             />
           </View>
           
@@ -312,7 +340,7 @@ export default function NotificationSettingsScreen() {
               onValueChange={handleToggleMute}
               trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
               thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
-              disabled={updateSettingsMutation.isPending}
+              disabled={isUpdatingSettings || updateSettingsMutation.isPending}
             />
           </View>
           
@@ -370,19 +398,27 @@ export default function NotificationSettingsScreen() {
           <TouchableOpacity
             style={[
               styles.testButton,
-              { backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB' }
+              { backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB' },
+              (isTestingSending) && { opacity: 0.7 }
             ]}
             onPress={handleSendTestNotification}
+            disabled={isTestingSending}
           >
-            <Ionicons
-              name="paper-plane-outline"
-              size={18}
-              color="#FFFFFF"
-              style={styles.testButtonIcon}
-            />
-            <Text style={styles.testButtonText}>
-              Send Test Notification
-            </Text>
+            {isTestingSending ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons
+                  name="paper-plane-outline"
+                  size={18}
+                  color="#FFFFFF"
+                  style={styles.testButtonIcon}
+                />
+                <Text style={styles.testButtonText}>
+                  Send Test Notification
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>

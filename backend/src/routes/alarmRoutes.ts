@@ -2,8 +2,10 @@ import express, { Request, Response, NextFunction } from 'express';
 import prisma from '../config/db';
 import { createError } from '../middleware/errorHandler';
 import { authenticate, authorize } from '../middleware/authMiddleware';
+import { Router } from 'express';
+import { NotificationService } from '../services/notificationService';
 
-const router = express.Router();
+const router = Router();
 
 // Apply authentication middleware to all alarm routes
 router.use(authenticate);
@@ -208,6 +210,41 @@ router.get('/history', async (req: Request, res: Response, next: NextFunction) =
   } catch (error) {
     next(error);
   }
+});
+
+/**
+ * Endpoint to trigger alarm notification to all users
+ */
+router.post('/notification', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  const {
+    type,
+    description,
+    value,
+    unit,
+    severity,
+    details,
+    alarmId
+  } = req.body;
+
+  // Construct alarm object for notification service
+  const alarm = {
+    id: alarmId || `temp-${Date.now()}`,
+    type,
+    description,
+    value: value.toString(),
+    unit,
+    severity: severity || 'INFO',
+    details,
+    createdAt: new Date().toISOString()
+  };
+
+  // Use notification service to create and send notifications
+  await NotificationService.createAlarmNotification(alarm);
+
+  res.status(200).json({ 
+    message: 'Notification has been triggered successfully',
+    success: true
+  });
 });
 
 export default router; 

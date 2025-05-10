@@ -15,6 +15,9 @@ backend/node_modules/
 backend/prisma/dev.db
 
 backend/.env
+backend/src/generated/prisma-client
+
+constants/
 
 .env
 

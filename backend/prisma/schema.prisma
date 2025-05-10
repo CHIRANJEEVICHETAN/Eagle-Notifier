@@ -3,6 +3,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma-client"
 }
 
 datasource db {
@@ -112,6 +113,7 @@ model Alarm {
   unit            String?
   lowLimit        Float?
   highLimit       Float?
+  notes           String?
   timestamp       DateTime      @default(now())
   acknowledgedById String?
   acknowledgedBy  User?         @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])

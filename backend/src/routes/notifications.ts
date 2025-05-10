@@ -1,297 +1,369 @@
-import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-import { verifyToken } from '../middleware/auth';
+import { Router, Request, Response, NextFunction } from 'express';
+import { PrismaClient } from '../generated/prisma-client';
+import { authenticate } from '../middleware/authMiddleware';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 
 const router = Router();
 const prisma = new PrismaClient();
 const expo = new Expo();
 
-// Get notifications with pagination
-router.get('/', verifyToken, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
-    const skip = (page - 1) * limit;
-    const filter = req.query.filter as string || 'all';
-    
-    // Build filter conditions
-    const where: any = { userId };
-    if (filter === 'unread') {
-      where.isRead = false;
+// Helper to handle Express route handler type issues
+type RouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
+
+const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>): RouteHandler => 
+  async (req, res, next): Promise<void> => {
+    try {
+      await fn(req, res, next);
+    } catch (error) {
+      next(error);
     }
-    
-    // Get total count for pagination
-    const total = await prisma.notification.count({ where });
-    
-    // Get notifications with pagination
-    const notifications = await prisma.notification.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-      include: {
-        relatedAlarm: {
-          select: {
-            id: true,
-            type: true,
-            severity: true,
-            status: true,
-            value: true,
-            unit: true,
-          }
+  };
+
+// Get notifications with pagination
+router.get('/', authenticate, asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+  
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const skip = (page - 1) * limit;
+  const filter = req.query.filter as string || 'all';
+  
+  // Build filter conditions
+  const where: any = { userId };
+  if (filter === 'unread') {
+    where.isRead = false;
+  }
+  
+  // Get total count for pagination
+  const total = await prisma.notification.count({ where });
+  
+  // Get notifications with pagination
+  const notifications = await prisma.notification.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    skip,
+    take: limit,
+    include: {
+      relatedAlarm: {
+        select: {
+          id: true,
+          type: true,
+          severity: true,
+          status: true,
+          value: true,
+          unit: true,
         }
       }
-    });
-    
-    // Calculate pagination info
-    const totalPages = Math.ceil(total / limit);
-    const hasMore = page < totalPages;
-    
-    return res.status(200).json({
-      notifications,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        hasMore
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching notifications:', error);
-    return res.status(500).json({ 
-      message: 'Failed to fetch notifications',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+    }
+  });
+  
+  // Calculate pagination info
+  const totalPages = Math.ceil(total / limit);
+  const hasMore = page < totalPages;
+  
+  res.status(200).json({
+    notifications,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasMore
+    }
+  });
+}));
 
 // Mark notification as read
-router.patch('/:id/read', verifyToken, async (req: Request, res: Response) => {
-  try {
-    const notificationId = req.params.id;
-    const userId = req.user?.id;
-    
-    // Check if notification exists and belongs to user
-    const notification = await prisma.notification.findFirst({
-      where: { id: notificationId, userId }
-    });
-    
-    if (!notification) {
-      return res.status(404).json({ message: 'Notification not found' });
-    }
-    
-    // Update notification
-    const updatedNotification = await prisma.notification.update({
-      where: { id: notificationId },
-      data: { 
-        isRead: true,
-        readAt: new Date()
-      }
-    });
-    
-    return res.status(200).json(updatedNotification);
-  } catch (error) {
-    console.error('Error marking notification as read:', error);
-    return res.status(500).json({ 
-      message: 'Failed to update notification',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
+router.patch('/:id/read', authenticate, asyncHandler(async (req, res) => {
+  const notificationId = req.params.id;
+  const userId = req.user?.id;
+  
+  if (!userId) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
   }
-});
+  
+  // Check if notification exists and belongs to user
+  const notification = await prisma.notification.findFirst({
+    where: { id: notificationId, userId }
+  });
+  
+  if (!notification) {
+    res.status(404).json({ message: 'Notification not found' });
+    return;
+  }
+  
+  // Update notification
+  const updatedNotification = await prisma.notification.update({
+    where: { id: notificationId },
+    data: { 
+      isRead: true,
+      readAt: new Date()
+    }
+  });
+  
+  res.status(200).json(updatedNotification);
+}));
 
 // Mark all notifications as read
-router.patch('/mark-all-read', verifyToken, async (req: Request, res: Response) => {
+router.patch('/mark-all-read', authenticate, asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  
+  if (!userId) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+  
+  // Update all unread notifications
+  await prisma.notification.updateMany({
+    where: { userId, isRead: false },
+    data: { 
+      isRead: true,
+      readAt: new Date()
+    }
+  });
+  
+  res.status(200).json({ message: 'All notifications marked as read' });
+}));
+
+// Delete a notification
+router.delete('/:id', authenticate, asyncHandler(async (req, res) => {
+  const notificationId = req.params.id;
+  const userId = req.user?.id;
+  
+  if (!userId) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+  
+  // Check if notification exists and belongs to user
+  const notification = await prisma.notification.findFirst({
+    where: { id: notificationId, userId }
+  });
+  
+  if (!notification) {
+    res.status(404).json({ message: 'Notification not found' });
+    return;
+  }
+  
+  // Delete notification
+  await prisma.notification.delete({
+    where: { id: notificationId }
+  });
+  
+  res.status(200).json({ message: 'Notification deleted' });
+}));
+
+// Update notification settings
+router.put('/settings', authenticate, asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+  
+  const { 
+    pushEnabled, 
+    emailEnabled, 
+    criticalOnly,
+    muteFrom,
+    muteTo
+  } = req.body;
+  
+  // Find existing settings
+  const existingSettings = await prisma.notificationSettings.findUnique({
+    where: { userId }
+  });
+  
+  let settings;
+  
+  if (existingSettings) {
+    // Update existing settings
+    settings = await prisma.notificationSettings.update({
+      where: { userId },
+      data: {
+        pushEnabled: pushEnabled !== undefined ? pushEnabled : existingSettings.pushEnabled,
+        emailEnabled: emailEnabled !== undefined ? emailEnabled : existingSettings.emailEnabled,
+        criticalOnly: criticalOnly !== undefined ? criticalOnly : existingSettings.criticalOnly,
+        muteFrom: muteFrom !== undefined ? muteFrom : existingSettings.muteFrom,
+        muteTo: muteTo !== undefined ? muteTo : existingSettings.muteTo,
+      }
+    });
+  } else {
+    // Create new settings with non-null userId
+    settings = await prisma.notificationSettings.create({
+      data: {
+        userId: userId, // Explicitly set as non-null
+        pushEnabled: pushEnabled !== undefined ? pushEnabled : true,
+        emailEnabled: emailEnabled !== undefined ? emailEnabled : false,
+        criticalOnly: criticalOnly !== undefined ? criticalOnly : false,
+        muteFrom,
+        muteTo,
+      }
+    });
+  }
+  
+  res.status(200).json(settings);
+}));
+
+// Update push token
+router.put('/push-token', authenticate, asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+  
+  const { pushToken } = req.body;
+  
+  // Log the request for debugging
+  console.log(`Attempting to update push token for user ${userId}:`, pushToken === null ? 'null (unregister request)' : pushToken ? pushToken.substring(0, 10) + '...' : 'undefined');
+  
+  // Handle special case: null pushToken means user wants to unregister
+  if (pushToken === null) {
+    try {
+      // Remove the push token from the user
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: { pushToken: null }
+      });
+      
+      console.log(`Successfully unregistered push token for user ${userId}`);
+      
+      res.status(200).json({ 
+        message: 'Push token unregistered successfully',
+        user: {
+          id: updatedUser.id,
+          name: updatedUser.name,
+          email: updatedUser.email,
+          pushToken: updatedUser.pushToken
+        }
+      });
+      return;
+    } catch (error) {
+      console.error('Error unregistering push token in database:', error);
+      res.status(500).json({ message: 'Failed to unregister push token' });
+      return;
+    }
+  }
+  
+  // Validate non-null push token (for registration case)
+  if (!pushToken) {
+    res.status(400).json({ message: 'Push token is required for registration' });
+    return;
+  }
+  
+  // Check if token is a valid Expo push token
+  if (!Expo.isExpoPushToken(pushToken)) {
+    console.warn(`Invalid push token format: ${pushToken.substring(0, 10)}...`);
+    res.status(400).json({ message: 'Invalid push token format' });
+    return;
+  }
+  
+  // Check if another user already has this token
   try {
-    const userId = req.user?.id;
-    
-    // Update all unread notifications
-    await prisma.notification.updateMany({
-      where: { userId, isRead: false },
-      data: { 
-        isRead: true,
-        readAt: new Date()
+    const existingUserWithToken = await prisma.user.findFirst({
+      where: { 
+        pushToken,
+        id: { not: userId } // Not the current user
       }
     });
     
-    return res.status(200).json({ message: 'All notifications marked as read' });
-  } catch (error) {
-    console.error('Error marking all notifications as read:', error);
-    return res.status(500).json({ 
-      message: 'Failed to update notifications',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
-
-// Delete a notification
-router.delete('/:id', verifyToken, async (req: Request, res: Response) => {
-  try {
-    const notificationId = req.params.id;
-    const userId = req.user?.id;
-    
-    // Check if notification exists and belongs to user
-    const notification = await prisma.notification.findFirst({
-      where: { id: notificationId, userId }
-    });
-    
-    if (!notification) {
-      return res.status(404).json({ message: 'Notification not found' });
-    }
-    
-    // Delete notification
-    await prisma.notification.delete({
-      where: { id: notificationId }
-    });
-    
-    return res.status(200).json({ message: 'Notification deleted' });
-  } catch (error) {
-    console.error('Error deleting notification:', error);
-    return res.status(500).json({ 
-      message: 'Failed to delete notification',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
-
-// Update notification settings
-router.put('/settings', verifyToken, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    const { 
-      pushEnabled, 
-      emailEnabled, 
-      criticalOnly,
-      muteFrom,
-      muteTo
-    } = req.body;
-    
-    // Find existing settings
-    const existingSettings = await prisma.notificationSettings.findUnique({
-      where: { userId }
-    });
-    
-    let settings;
-    
-    if (existingSettings) {
-      // Update existing settings
-      settings = await prisma.notificationSettings.update({
-        where: { userId },
-        data: {
-          pushEnabled: pushEnabled !== undefined ? pushEnabled : existingSettings.pushEnabled,
-          emailEnabled: emailEnabled !== undefined ? emailEnabled : existingSettings.emailEnabled,
-          criticalOnly: criticalOnly !== undefined ? criticalOnly : existingSettings.criticalOnly,
-          muteFrom: muteFrom !== undefined ? muteFrom : existingSettings.muteFrom,
-          muteTo: muteTo !== undefined ? muteTo : existingSettings.muteTo,
-        }
+    if (existingUserWithToken) {
+      // Token already registered to another user
+      console.log(`Push token already registered to another user: ${existingUserWithToken.id}`);
+      res.status(409).json({ 
+        message: 'Push token already registered to another user',
+        conflict: true
       });
-    } else {
-      // Create new settings
-      settings = await prisma.notificationSettings.create({
-        data: {
-          userId,
-          pushEnabled: pushEnabled !== undefined ? pushEnabled : true,
-          emailEnabled: emailEnabled !== undefined ? emailEnabled : false,
-          criticalOnly: criticalOnly !== undefined ? criticalOnly : false,
-          muteFrom,
-          muteTo,
-        }
-      });
+      return;
     }
-    
-    return res.status(200).json(settings);
-  } catch (error) {
-    console.error('Error updating notification settings:', error);
-    return res.status(500).json({ 
-      message: 'Failed to update notification settings',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
+  } catch (dbError) {
+    console.error('Database error when checking for existing token:', dbError);
+    res.status(500).json({ message: 'Error checking token uniqueness' });
+    return;
   }
-});
-
-// Update push token
-router.put('/push-token', verifyToken, async (req: Request, res: Response) => {
+  
   try {
-    const userId = req.user?.id;
-    const { pushToken } = req.body;
-    
-    if (!pushToken) {
-      return res.status(400).json({ message: 'Push token is required' });
-    }
-    
     // Update user with push token
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: { pushToken }
     });
     
-    return res.status(200).json({ message: 'Push token updated successfully' });
-  } catch (error) {
-    console.error('Error updating push token:', error);
-    return res.status(500).json({ 
-      message: 'Failed to update push token',
-      error: error instanceof Error ? error.message : 'Unknown error'
+    console.log(`Successfully updated push token for user ${userId}`);
+    
+    res.status(200).json({ 
+      message: 'Push token updated successfully',
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        pushToken: updatedUser.pushToken
+      }
     });
+  } catch (error) {
+    console.error('Error updating push token in database:', error);
+    res.status(500).json({ message: 'Failed to update push token' });
   }
-});
+}));
 
 // Send a test notification (dev-only)
-router.post('/send-test', verifyToken, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    
-    // Get user with push token
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { pushToken: true, name: true }
-    });
-    
-    if (!user?.pushToken) {
-      return res.status(400).json({ message: 'No push token found for user' });
+router.post('/send-test', authenticate, asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+  
+  // Get user with push token
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { pushToken: true, name: true }
+  });
+  
+  if (!user?.pushToken) {
+    res.status(400).json({ message: 'No push token found for user' });
+    return;
+  }
+  
+  // Create a notification in the database with non-null userId
+  const notification = await prisma.notification.create({
+    data: {
+      userId: userId, // Explicitly set as non-null
+      title: 'Test Notification',
+      body: 'This is a test notification',
+      type: 'INFO',
+      priority: 'MEDIUM',
     }
-    
-    // Create a notification in the database
-    const notification = await prisma.notification.create({
-      data: {
-        userId,
+  });
+  
+  // Send push notification if token is valid
+  if (Expo.isExpoPushToken(user.pushToken)) {
+    const messages: ExpoPushMessage[] = [
+      {
+        to: user.pushToken,
+        sound: 'default',
         title: 'Test Notification',
         body: 'This is a test notification',
-        type: 'INFO',
-        priority: 'MEDIUM',
+        data: { notificationId: notification.id },
       }
-    });
+    ];
     
-    // Send push notification if token is valid
-    if (Expo.isExpoPushToken(user.pushToken)) {
-      const messages: ExpoPushMessage[] = [
-        {
-          to: user.pushToken,
-          sound: 'default',
-          title: 'Test Notification',
-          body: 'This is a test notification',
-          data: { notificationId: notification.id },
-        }
-      ];
-      
-      const chunks = expo.chunkPushNotifications(messages);
-      for (const chunk of chunks) {
-        await expo.sendPushNotificationsAsync(chunk);
-      }
+    const chunks = expo.chunkPushNotifications(messages);
+    for (const chunk of chunks) {
+      await expo.sendPushNotificationsAsync(chunk);
     }
-    
-    return res.status(200).json({ 
-      message: 'Test notification sent',
-      notification
-    });
-  } catch (error) {
-    console.error('Error sending test notification:', error);
-    return res.status(500).json({ 
-      message: 'Failed to send test notification',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
   }
-});
+  
+  res.status(200).json({ 
+    message: 'Test notification sent',
+    notification
+  });
+}));
 
 export default router; 

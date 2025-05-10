@@ -15,8 +15,204 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { LineChart, BarChart } from 'react-native-gifted-charts';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { format, subDays, subHours, startOfDay, endOfDay } from 'date-fns';
+import { format as formatDate, subDays, subHours, startOfDay, endOfDay } from 'date-fns';
 import { useAlarmHistory } from '../../hooks/useAlarms';
+
+// Mock data for analog alarms
+const sampleAnalogAlarms = [
+  {
+    id: 'analog-1',
+    description: 'HARDENING ZONE 1 TEMPERATURE (LOW/HIGH)',
+    severity: 'warning',
+    status: 'active',
+    type: 'temperature',
+    value: '860',
+    unit: '°C',
+    setPoint: '870°C (-30/+10)',
+    lowLimit: '850°C',
+    highLimit: '880°C',
+    timestamp: new Date().toISOString(),
+    zone: 'zone1'
+  },
+  {
+    id: 'analog-2',
+    description: 'HARDENING ZONE 2 TEMPERATURE (LOW/HIGH)',
+    severity: 'critical',
+    status: 'active',
+    type: 'temperature',
+    value: '895',
+    unit: '°C',
+    setPoint: '880°C (-10/+10)',
+    lowLimit: '870°C',
+    highLimit: '890°C',
+    timestamp: new Date().toISOString(),
+    zone: 'zone2'
+  },
+  {
+    id: 'analog-3',
+    description: 'CARBON POTENTIAL (CP %)',
+    severity: 'info',
+    status: 'active',
+    type: 'carbon',
+    value: '0.42',
+    unit: '%',
+    setPoint: '0.40% (±0.05)',
+    lowLimit: '0.35%',
+    highLimit: '0.45%',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'analog-4',
+    description: 'OIL TEMPERATURE (LOW/HIGH)',
+    severity: 'warning',
+    status: 'active',
+    type: 'temperature',
+    value: '72',
+    unit: '°C',
+    setPoint: '60°C',
+    lowLimit: '-',
+    highLimit: '80°C',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'analog-5',
+    description: 'TEMPERING ZONE1 TEMPERATURE (LOW/HIGH)',
+    severity: 'warning',
+    status: 'active',
+    type: 'temperature',
+    value: '435',
+    unit: '°C',
+    setPoint: '450°C (-30/+10°C)',
+    lowLimit: '420°C',
+    highLimit: '460°C',
+    timestamp: new Date().toISOString(),
+    zone: 'zone1'
+  },
+  {
+    id: 'analog-6',
+    description: 'TEMPERING ZONE2 TEMPERATURE (LOW/HIGH)',
+    severity: 'info',
+    status: 'active',
+    type: 'temperature',
+    value: '455',
+    unit: '°C',
+    setPoint: '460°C (±10°C)',
+    lowLimit: '450°C',
+    highLimit: '470°C',
+    timestamp: new Date().toISOString(),
+    zone: 'zone2'
+  }
+];
+
+// Mock data for binary alarms
+const sampleBinaryAlarms = [
+  {
+    id: 'binary-1',
+    description: 'OIL LEVEL (LOW/HIGH)',
+    severity: 'critical',
+    status: 'active',
+    type: 'level',
+    value: 'Normal',
+    setPoint: 'Normal',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'binary-2',
+    description: 'HARDENING HEATER FAILURE (ZONE 1)',
+    severity: 'critical',
+    status: 'active',
+    type: 'heater',
+    value: 'Normal',
+    setPoint: 'Normal',
+    timestamp: new Date().toISOString(),
+    zone: 'zone1'
+  },
+  {
+    id: 'binary-3',
+    description: 'HARDENING HEATER FAILURE (ZONE 2)',
+    severity: 'critical',
+    status: 'active',
+    type: 'heater',
+    value: 'FAILURE',
+    setPoint: 'Normal',
+    timestamp: new Date().toISOString(),
+    zone: 'zone2'
+  },
+  {
+    id: 'binary-4',
+    description: 'HARDENING CONVEYOR (NOT ROTATING)',
+    severity: 'warning',
+    status: 'active',
+    type: 'conveyor',
+    value: 'NOT ROTATING',
+    setPoint: 'Rotating',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'binary-5',
+    description: 'OIL QUECH CONVEYOR (NOT ROTATING)',
+    severity: 'warning',
+    status: 'active',
+    type: 'conveyor',
+    value: 'NOT ROTATING',
+    setPoint: 'Rotating',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'binary-6',
+    description: 'HARDENING FAN MOTOR NOT RUNNING (ZONE 1)',
+    severity: 'warning',
+    status: 'active',
+    type: 'fan',
+    value: 'NOT RUNNING',
+    setPoint: 'Running',
+    timestamp: new Date().toISOString(),
+    zone: 'zone1'
+  },
+  {
+    id: 'binary-7',
+    description: 'HARDENING FAN MOTOR NOT RUNNING (ZONE 2)',
+    severity: 'warning',
+    status: 'active',
+    type: 'fan',
+    value: 'NOT RUNNING',
+    setPoint: 'Running',
+    timestamp: new Date().toISOString(),
+    zone: 'zone2'
+  },
+  {
+    id: 'binary-8',
+    description: 'TEMPERING CONVEYOR (NOT ROTATING)',
+    severity: 'warning',
+    status: 'active',
+    type: 'conveyor',
+    value: 'NOT ROTATING',
+    setPoint: 'Rotating',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'binary-9',
+    description: 'TEMPERING FAN MOTOR NOT RUNNING (ZONE 1)',
+    severity: 'warning',
+    status: 'active',
+    type: 'fan',
+    value: 'NOT RUNNING',
+    setPoint: 'Running',
+    timestamp: new Date().toISOString(),
+    zone: 'zone1'
+  },
+  {
+    id: 'binary-10',
+    description: 'TEMPERING FAN MOTOR NOT RUNNING (ZONE 2)',
+    severity: 'warning',
+    status: 'active',
+    type: 'fan',
+    value: 'NOT RUNNING',
+    setPoint: 'Running',
+    timestamp: new Date().toISOString(),
+    zone: 'zone2'
+  }
+];
 
 // Get screen width
 const screenWidth = Dimensions.get('window').width;
@@ -35,6 +231,16 @@ export default function AnalyticsScreen() {
   // State for custom date range
   const [startDate, setStartDate] = useState(subHours(new Date(), 24));
   const [endDate, setEndDate] = useState(new Date());
+
+  // Colors for different alarm types
+  const alarmColors = {
+    temperature: '#FF6384',
+    carbon: '#36A2EB',
+    level: '#FFCE56',
+    heater: '#4BC0C0',
+    fan: '#9966FF',
+    conveyor: '#FF9F40',
+  };
   
   // Calculate actual date range based on selected timeRange
   const dateRange = useMemo(() => {
@@ -96,165 +302,55 @@ export default function AnalyticsScreen() {
     setShowDatePicker(true);
   };
   
-  // Filter and prepare data for analog alarms chart
+  // Prepare analog chart data
   const analogChartData = useMemo(() => {
-    if (!alarmHistory) return null;
-    
-    // Filter for analog alarms (ones with numeric values)
-    const analogAlarms = alarmHistory.filter(alarm => 
-      ['temperature', 'carbon', 'pressure', 'level'].includes(alarm.type) &&
-      !isNaN(Number(alarm.value))
-    );
-    
-    // Group by type
-    const groupedByType = analogAlarms.reduce((acc, alarm) => {
-      const key = `${alarm.type}${alarm.zone ? `-${alarm.zone}` : ''}`;
-      if (!acc[key]) {
-        acc[key] = [];
-      }
-      acc[key].push({
-        ...alarm,
-        value: Number(alarm.value),
-        setPoint: Number(alarm.setPoint),
-        timestamp: new Date(alarm.timestamp),
-      });
-      return acc;
-    }, {} as Record<string, any[]>);
-    
-    // Prepare datasets for gifted-charts
-    const dataSets: any[] = [];
-    const allLabels: string[] = [];
-    
-    Object.entries(groupedByType).forEach(([key, alarms], index) => {
-      // Sort by timestamp
-      const sortedData = alarms.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-      
-      // Colors for different alarm types
-      const colors = [
-        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#8AC24A'
-      ];
-      const color = colors[index % colors.length];
-      
-      // Create data points for this series
-      const dataPoints = sortedData.map(alarm => {
-        const timeLabel = format(alarm.timestamp, 'HH:mm');
-        if (!allLabels.includes(timeLabel)) {
-          allLabels.push(timeLabel);
-        }
-        
-        return {
-          value: alarm.value,
-          dataPointText: alarm.value.toString(),
-          label: timeLabel,
-          dataPointColor: color,
-          showDataPoint: true,
-        };
-      });
-      
-      dataSets.push({
-        seriesName: key,
-        data: dataPoints,
-        color,
-      });
-    });
-    
-    // Sort all labels chronologically
-    allLabels.sort();
-    
-    // If too many labels, show fewer
-    let displayLabels = allLabels;
-    if (displayLabels.length > 6) {
-      const step = Math.ceil(displayLabels.length / 6);
-      displayLabels = displayLabels.filter((_, i) => i % step === 0);
-    }
-    
-    return {
-      dataSets,
-      labels: displayLabels,
-    };
-  }, [alarmHistory]);
-  
-  // Filter and prepare data for binary alarms chart
+    return sampleAnalogAlarms.map((alarm) => ({
+      value: parseFloat(alarm.value),
+      label: alarm.zone 
+        ? `${alarm.type.toUpperCase()} ${alarm.zone.toUpperCase()}`
+        : alarm.type.toUpperCase(),
+      dataPointText: `${alarm.value}${alarm.unit}`,
+      customDataPoint: () => (
+        <View style={[
+          styles.dataPoint,
+          { backgroundColor: alarmColors[alarm.type as keyof typeof alarmColors] }
+        ]} />
+      ),
+      color: alarmColors[alarm.type as keyof typeof alarmColors],
+      showValue: true,
+    }));
+  }, []);
+
+  // Prepare binary chart data
   const binaryChartData = useMemo(() => {
-    if (!alarmHistory) return null;
-    
-    // Filter for binary alarms (conveyor, motor, fan, heater)
-    const binaryAlarms = alarmHistory.filter(alarm => 
-      ['conveyor', 'motor', 'fan', 'heater'].includes(alarm.type)
-    );
-    
-    // Group by type
-    const groupedByType = binaryAlarms.reduce((acc, alarm) => {
-      const key = `${alarm.type}${alarm.zone ? `-${alarm.zone}` : ''}`;
-      if (!acc[key]) {
-        acc[key] = [];
-      }
-      acc[key].push({
-        ...alarm,
-        // Convert to 0 or 1 based on value (assuming "Running"/"Stopped" or similar text values)
-        value: alarm.value === 'Running' ? 1 : 0,
-        timestamp: new Date(alarm.timestamp),
-      });
-      return acc;
-    }, {} as Record<string, any[]>);
-    
-    // Prepare data for gifted-charts
-    const data: any[] = [];
-    const legend: string[] = [];
-    
-    // Colors based on alarm type
-    const colors = [
-      '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#8AC24A'
-    ];
-    
-    // Convert grouped data to the format expected by BarChart
-    Object.entries(groupedByType).forEach(([key, alarms], index) => {
-      // Sort by timestamp
-      const sortedData = alarms.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-      
-      // Add to legend
-      legend.push(key);
-      
-      // Create stacked bar data
-      sortedData.forEach(alarm => {
-        const timeLabel = format(alarm.timestamp, 'HH:mm');
-        
-        // Find existing item with this timestamp or create new
-        let item = data.find(d => d.label === timeLabel);
-        if (!item) {
-          item = { 
-            label: timeLabel,
-            value: 0,
-            spacing: 8,
-            labelWidth: 60,
-            labelTextStyle: { 
-              color: colors[index % colors.length],
-              textAlign: 'center',
-              fontSize: 10,
-            },
-            frontColor: colors[index % colors.length],
-          };
-          data.push(item);
-        }
-        
-        // Set the value for this key
-        item[key] = alarm.value;
-        item.value += alarm.value; // For total height
-      });
-    });
-    
-    return {
-      data,
-      legend,
-    };
-  }, [alarmHistory]);
+    return sampleBinaryAlarms.map((alarm) => ({
+      value: alarm.value === 'Normal' || alarm.value === 'Running' || alarm.value === 'Rotating' ? 1 : 0,
+      label: alarm.zone 
+        ? `${alarm.type.toUpperCase()} ${alarm.zone.toUpperCase()}`
+        : alarm.type.toUpperCase(),
+      frontColor: alarmColors[alarm.type as keyof typeof alarmColors],
+      topLabelComponent: () => (
+        <Text 
+          style={[
+            styles.dataPointLabel, 
+            { 
+              color: isDarkMode ? '#E5E7EB' : '#4B5563',
+              transform: [{ rotate: '-45deg' }]
+            }
+          ]}
+        >
+          {alarm.value}
+        </Text>
+      ),
+    }));
+  }, [isDarkMode]);
   
   // Handle generating report
   const handleGenerateReport = () => {
     // This would call the API to generate a report with the current date range
     console.log("Generating report for range:", {
-      from: format(dateRange.start, 'yyyy-MM-dd HH:mm:ss'),
-      to: format(dateRange.end, 'yyyy-MM-dd HH:mm:ss')
+      from: formatDate(dateRange.start, 'yyyy-MM-dd HH:mm:ss'),
+      to: formatDate(dateRange.end, 'yyyy-MM-dd HH:mm:ss')
     });
   };
   
@@ -331,7 +427,7 @@ export default function AnalyticsScreen() {
             styles.dateText,
             { color: isDarkMode ? '#E5E7EB' : '#4B5563' }
           ]}>
-            From: {format(startDate, 'yyyy-MM-dd HH:mm')}
+            From: {formatDate(startDate, 'yyyy-MM-dd HH:mm')}
           </Text>
         </TouchableOpacity>
         
@@ -352,7 +448,7 @@ export default function AnalyticsScreen() {
             styles.dateText,
             { color: isDarkMode ? '#E5E7EB' : '#4B5563' }
           ]}>
-            To: {format(endDate, 'yyyy-MM-dd HH:mm')}
+            To: {formatDate(endDate, 'yyyy-MM-dd HH:mm')}
           </Text>
         </TouchableOpacity>
         
@@ -368,14 +464,11 @@ export default function AnalyticsScreen() {
     );
   };
   
-  // Chart configuration for line chart
-  const lineChartConfig = {
+  // Chart configuration
+  const chartConfig = {
     backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
     textColor: isDarkMode ? '#E5E7EB' : '#4B5563',
     axisColor: isDarkMode ? 'rgba(229, 231, 235, 0.3)' : 'rgba(75, 85, 99, 0.3)',
-    showDataPointOnFocus: true,
-    hideRules: false,
-    hideYAxisText: false,
     yAxisTextStyle: {
       color: isDarkMode ? '#9CA3AF' : '#6B7280',
       fontSize: 10,
@@ -383,151 +476,163 @@ export default function AnalyticsScreen() {
     xAxisLabelTextStyle: {
       color: isDarkMode ? '#9CA3AF' : '#6B7280',
       fontSize: 10,
-      textAlign: 'center',
       width: 60,
+      textAlign: 'center',
     },
-    spacing: 40,
   };
-  
-  // Define colors for different chart series
-  const chartColors = [
-    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#8AC24A'
-  ];
 
-  // Render Analog Alarms Chart
-  const renderAnalogChart = () => {
-    if (!analogChartData || analogChartData.dataSets.length === 0) {
-      return (
-        <View style={styles.noDataContainer}>
-          <Ionicons
-            name="analytics-outline"
-            size={48}
-            color={isDarkMode ? '#4B5563' : '#9CA3AF'}
-          />
-          <Text style={[styles.noDataText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            No analog alarm data available for the selected time range.
-          </Text>
-        </View>
-      );
-    }
-
-    // Flatten all data points
-    const allData = analogChartData.dataSets.flatMap(set => set.data);
-
-    return (
+  // Render analog alarms chart
+  const renderAnalogChart = () => (
+    <View style={[styles.chartContainer, { backgroundColor: chartConfig.backgroundColor }]}>
+      <Text style={[styles.chartTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+        Analog Alarms
+      </Text>
       <LineChart
-        data={allData}
-        height={220}
+        data={analogChartData}
+        height={300}
         width={screenWidth - 40}
-        noOfSections={5}
-        spacing={lineChartConfig.spacing}
+        spacing={40}
+        initialSpacing={20}
         color={isDarkMode ? '#FFFFFF' : '#111827'}
         thickness={2}
         startFillColor="rgba(20,105,81,0.3)"
         endFillColor="rgba(20,85,81,0.01)"
         startOpacity={0.6}
         endOpacity={0.1}
-        initialSpacing={10}
+        noOfSections={5}
         yAxisThickness={1}
         xAxisThickness={1}
-        yAxisTextStyle={lineChartConfig.yAxisTextStyle}
-        xAxisLabelTextStyle={lineChartConfig.xAxisLabelTextStyle}
-        yAxisColor={lineChartConfig.axisColor}
-        xAxisColor={lineChartConfig.axisColor}
-        backgroundColor={lineChartConfig.backgroundColor}
+        yAxisTextStyle={chartConfig.yAxisTextStyle}
+        xAxisLabelTextStyle={chartConfig.xAxisLabelTextStyle}
+        yAxisColor={chartConfig.axisColor}
+        xAxisColor={chartConfig.axisColor}
+        rulesType="solid"
+        rulesColor={chartConfig.axisColor}
+        dataPointsColor={isDarkMode ? '#FFFFFF' : '#111827'}
+        dataPointsRadius={4}
+        hideDataPoints
+        showValuesAsDataPointsText
+        textFontSize={10}
+        textShiftY={-8}
+        textShiftX={8}
+        textColor={isDarkMode ? '#E5E7EB' : '#4B5563'}
         curved
       />
-    );
-  };
+    </View>
+  );
 
-  // Render Binary Alarms Chart
-  const renderBinaryChart = () => {
-    if (!binaryChartData || binaryChartData.data.length === 0) {
-      return (
-        <View style={styles.noDataContainer}>
-          <Ionicons
-            name="pulse-outline"
-            size={48}
-            color={isDarkMode ? '#4B5563' : '#9CA3AF'}
-          />
-          <Text style={[styles.noDataText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            No binary alarm data available for the selected time range.
-          </Text>
-        </View>
-      );
-    }
-
-    return (
+  // Render binary alarms chart
+  const renderBinaryChart = () => (
+    <View style={[styles.chartContainer, { backgroundColor: chartConfig.backgroundColor }]}>
+      <Text style={[styles.chartTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+        Binary Alarms
+      </Text>
       <BarChart
-        data={binaryChartData.data}
-        height={220}
+        data={binaryChartData}
+        height={300}
         width={screenWidth - 40}
+        spacing={40}
+        initialSpacing={20}
+        barWidth={30}
         noOfSections={2}
-        barWidth={22}
-        spacing={lineChartConfig.spacing}
-        color={isDarkMode ? '#FFFFFF' : '#111827'}
         yAxisThickness={1}
         xAxisThickness={1}
-        yAxisTextStyle={lineChartConfig.yAxisTextStyle}
-        xAxisLabelTextStyle={lineChartConfig.xAxisLabelTextStyle}
-        yAxisColor={lineChartConfig.axisColor}
-        xAxisColor={lineChartConfig.axisColor}
-        showLine
+        yAxisTextStyle={chartConfig.yAxisTextStyle}
+        xAxisLabelTextStyle={[
+          chartConfig.xAxisLabelTextStyle,
+          { transform: [{ rotate: '-45deg' }] }
+        ]}
+        yAxisColor={chartConfig.axisColor}
+        xAxisColor={chartConfig.axisColor}
         maxValue={1}
-        initialSpacing={10}
-        backgroundColor={lineChartConfig.backgroundColor}
+        showLine
+        rotateLabel
+        hideRules
+        showGradient
+        gradientColor={isDarkMode ? '#60A5FA' : '#3B82F6'}
       />
-    );
-  };
-
-  // Render the legend
-  const renderLegend = () => {
-    const legendItems: React.ReactNode[] = [];
-    
-    // Add analog chart legend items
-    if (analogChartData && analogChartData.dataSets.length > 0) {
-      analogChartData.dataSets.forEach((dataset, index) => {
-        legendItems.push(
-          <View key={`analog-${index}`} style={styles.legendItem}>
-            <View 
-              style={[
-                styles.legendColorBox, 
-                { backgroundColor: dataset.color }
-              ]} 
-            />
-            <Text style={[styles.legendText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-              {dataset.seriesName}
-            </Text>
-          </View>
-        );
-      });
-    }
-    
-    // Add binary chart legend items
-    if (binaryChartData && binaryChartData.legend.length > 0) {
-      binaryChartData.legend.forEach((key, index) => {
-        legendItems.push(
-          <View key={`binary-${index}`} style={styles.legendItem}>
-            <View 
-              style={[
-                styles.legendColorBox, 
-                { backgroundColor: chartColors[index % chartColors.length] }
-              ]} 
-            />
-            <Text style={[styles.legendText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-              {key} (Binary)
-            </Text>
-          </View>
-        );
-      });
-    }
-    
-    return (
-      <View style={styles.legendItems}>
-        {legendItems}
+    </View>
+  );
+  
+  // Render legend
+  const renderLegend = () => (
+    <View style={[styles.legendContainer, { backgroundColor: chartConfig.backgroundColor }]}>
+      <Text style={[styles.legendTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+        Legend
+      </Text>
+      
+      {/* Analog Alarms Legend */}
+      <View style={styles.legendSection}>
+        <Text style={[styles.legendSectionTitle, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+          Analog Alarms
+        </Text>
+        <View style={styles.legendItems}>
+          {sampleAnalogAlarms.map((alarm) => (
+            <View key={alarm.id} style={styles.legendItem}>
+              <View 
+                style={[
+                  styles.legendColorBox, 
+                  { backgroundColor: alarmColors[alarm.type as keyof typeof alarmColors] }
+                ]} 
+              />
+              <View style={styles.legendItemText}>
+                <Text 
+                  style={[styles.legendText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}
+                  numberOfLines={2}
+                >
+                  {alarm.description}
+                </Text>
+                <Text 
+                  style={[styles.legendSubText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}
+                >
+                  {`Current: ${alarm.value}${alarm.unit} (${alarm.status})`}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
       </View>
-    );
-  };
+      
+      {/* Binary Alarms Legend */}
+      <View style={[styles.legendSection, styles.legendSectionBorder]}>
+        <Text style={[styles.legendSectionTitle, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+          Binary Alarms
+        </Text>
+        <View style={styles.legendItems}>
+          {sampleBinaryAlarms.map((alarm) => (
+            <View key={alarm.id} style={styles.legendItem}>
+              <View 
+                style={[
+                  styles.legendColorBox, 
+                  { backgroundColor: alarmColors[alarm.type as keyof typeof alarmColors] }
+                ]} 
+              />
+              <View style={styles.legendItemText}>
+                <Text 
+                  style={[styles.legendText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}
+                  numberOfLines={2}
+                >
+                  {alarm.description}
+                </Text>
+                <Text 
+                  style={[
+                    styles.legendSubText, 
+                    { 
+                      color: alarm.value === 'Normal' || alarm.value === 'Running' || alarm.value === 'Rotating'
+                        ? '#10B981'
+                        : '#EF4444'
+                    }
+                  ]}
+                >
+                  {alarm.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
   
   // Render loading state
   if (isLoading) {
@@ -589,7 +694,7 @@ export default function AnalyticsScreen() {
         {/* Date Range Display */}
         <View style={styles.dateRangeDisplay}>
           <Text style={[styles.dateRangeText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Showing data from {format(dateRange.start, 'MMM d, yyyy HH:mm')} to {format(dateRange.end, 'MMM d, yyyy HH:mm')}
+            Showing data from {formatDate(dateRange.start, 'MMM d, yyyy HH:mm')} to {formatDate(dateRange.end, 'MMM d, yyyy HH:mm')}
           </Text>
         </View>
         
@@ -757,24 +862,43 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 12,
   },
+  legendSection: {
+    marginBottom: 16,
+  },
+  legendSectionBorder: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(156, 163, 175, 0.1)',
+    paddingTop: 16,
+  },
+  legendSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
   legendItems: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
   },
   legendItem: {
     flexDirection: 'row',
-    alignItems: 'center',
-    width: '50%',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   legendColorBox: {
     width: 12,
     height: 12,
     borderRadius: 4,
     marginRight: 8,
+    marginTop: 4,
+  },
+  legendItemText: {
+    flex: 1,
   },
   legendText: {
     fontSize: 12,
+    marginBottom: 2,
+  },
+  legendSubText: {
+    fontSize: 11,
   },
   loadingContainer: {
     flex: 1,
@@ -812,5 +936,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 16,
+  },
+  dataPoint: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  dataPointLabel: {
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: 'center',
   },
 }); 

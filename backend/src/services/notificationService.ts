@@ -1,11 +1,14 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../generated/prisma-client';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 
 const prisma = new PrismaClient();
 const expo = new Expo();
 
+// Define NotificationPriority type to match what Prisma expects
+type NotificationPriority = 'HIGH' | 'MEDIUM' | 'LOW';
+
 // Map of severity to notification priority
-const PRIORITY_MAP: Record<string, string> = {
+const PRIORITY_MAP: Record<string, NotificationPriority> = {
   'CRITICAL': 'HIGH',
   'WARNING': 'MEDIUM',
   'INFO': 'LOW'
@@ -33,8 +36,15 @@ export class NotificationService {
   static async createAlarmNotification(alarm: any): Promise<void> {
     try {
       // Create notification title and body based on alarm
-      const title = `${alarm.severity} Alarm: ${alarm.type}`;
-      const body = `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`;
+      const isResolution = alarm.type?.includes('RESOLVED');
+      const title = isResolution 
+        ? `${alarm.description} - Resolved` 
+        : `${alarm.severity} Alarm: ${alarm.description}`;
+      
+      const body = alarm.details || 
+        `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`;
+      
+      console.log(`Creating notification: ${title} - ${body}`);
       
       // Get all users with notification settings
       const users = await prisma.user.findMany({
@@ -81,8 +91,8 @@ export class NotificationService {
             userId: user.id,
             title,
             body,
-            type: 'ALARM',
-            priority: PRIORITY_MAP[alarm.severity] || 'MEDIUM',
+            type: isResolution ? 'INFO' : 'ALARM',
+            priority: PRIORITY_MAP[alarm.severity] || ('MEDIUM' as NotificationPriority),
             relatedAlarmId: alarm.id
           }
         });
@@ -90,25 +100,27 @@ export class NotificationService {
         // Send push notification if token exists and is valid
         if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
           // Create message
-          const message: ExpoPushMessage = {
-            to: user.pushToken,
-            sound: alarm.severity === 'CRITICAL' ? 'critical.wav' : 'default',
-            title,
-            body,
-            data: {
-              notificationId: notification.id,
-              alarmId: alarm.id,
-              type: alarm.type,
-              severity: alarm.severity
-            },
-            priority: alarm.severity === 'CRITICAL' ? 'high' : 'normal',
-            // Use badge count for iOS
-            badge: 1
-          };
+          const messages: ExpoPushMessage[] = [
+            {
+              to: user.pushToken,
+              sound: alarm.severity === 'CRITICAL' ? 'critical.wav' : 'default',
+              title,
+              body,
+              data: { 
+                notificationId: notification.id,
+                alarmId: alarm.id,
+                type: alarm.type,
+                severity: alarm.severity
+              },
+              priority: alarm.severity === 'CRITICAL' ? 'high' : 'normal',
+              // Use badge count for iOS
+              badge: 1
+            }
+          ];
           
           try {
             // Send notification
-            const chunks = expo.chunkPushNotifications([message]);
+            const chunks = expo.chunkPushNotifications(messages);
             for (const chunk of chunks) {
               await expo.sendPushNotificationsAsync(chunk);
             }

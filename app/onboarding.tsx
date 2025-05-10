@@ -1,5 +1,5 @@
-import React, { useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, Animated, Dimensions, Alert } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, Image, StyleSheet, Animated, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Link, useRouter } from 'expo-router';
@@ -32,6 +32,7 @@ export default function OnboardingScreen() {
   const { isDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [isLoading, setLoading] = useState(false);
   
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -61,6 +62,9 @@ export default function OnboardingScreen() {
   
   const requestNotificationPermission = useCallback(async () => {
     try {
+      // Set loading state
+      setLoading(true);
+      
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
       
@@ -74,13 +78,12 @@ export default function OnboardingScreen() {
         // Get push token
         try {
           const tokenData = await Notifications.getExpoPushTokenAsync({
-            projectId: "72e44855-a2b8-4fb2-bacb-2a39760c6ccd" // EAS project ID from app.json
+            projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
           });
           
           console.log("Expo push token:", tokenData.data);
           
           // Save token for when user logs in
-          // We'll store it temporarily and send it to backend after authentication
           await SecureStore.setItemAsync('tempPushToken', tokenData.data);
         } catch (tokenError) {
           console.error('Error getting push token:', tokenError);
@@ -95,12 +98,20 @@ export default function OnboardingScreen() {
         console.log('Notification permission not granted');
       }
       
+      // Mark onboarding as seen
+      await SecureStore.setItemAsync('hasSeenOnboarding', 'true');
+      
       // Navigate to login screen regardless of permission status
-      router.replace("/(auth)/login" as any);
+      router.replace("/(auth)/login");
     } catch (error) {
       console.error('Error requesting notification permission:', error);
+      // Mark onboarding as seen even if there's an error with notifications
+      await SecureStore.setItemAsync('hasSeenOnboarding', 'true');
+      
       // Navigate to login even if there's an error
-      router.replace("/(auth)/login" as any);
+      router.replace("/(auth)/login");
+    } finally {
+      setLoading(false);
     }
   }, [router]);
   
@@ -184,9 +195,16 @@ export default function OnboardingScreen() {
           style={[styles.button, { backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB' }]}
           onPress={requestNotificationPermission}
           activeOpacity={0.8}
+          disabled={isLoading}
         >
-          <Text style={styles.buttonText}>Get Started</Text>
-          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <Text style={styles.buttonText}>Get Started</Text>
+              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+            </>
+          )}
         </TouchableOpacity>
         
         <Text style={[styles.poweredBy, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>

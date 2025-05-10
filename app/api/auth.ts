@@ -1,4 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
+import { LoginCredentials, AuthResponse, RegisterData } from '../types/auth';
+import { apiConfig } from './config';
 
 // Token storage key
 const TOKEN_KEY = 'auth_token';
@@ -36,4 +38,44 @@ export const clearAuthToken = async (): Promise<void> => {
   } catch (error) {
     console.error('Error clearing auth token:', error);
   }
+};
+
+/**
+ * Login API call
+ */
+export const loginApi = async (credentials: LoginCredentials): Promise<AuthResponse> => {
+  const response = await fetch(`${apiConfig.apiUrl}/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Login failed');
+  }
+
+  return await response.json();
+};
+
+/**
+ * Register API call
+ */
+export const registerApi = async (data: RegisterData): Promise<AuthResponse> => {
+  const response = await fetch(`${apiConfig.apiUrl}/auth/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Registration failed');
+  }
+
+  return await response.json();
 }; 

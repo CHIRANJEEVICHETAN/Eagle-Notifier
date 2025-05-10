@@ -1,7 +1,7 @@
 import axios from 'axios';
-import { API_URL } from '../api/config';
+import { apiConfig } from './config';
 import { Notification, NotificationResponse, NotificationSettings } from '../types/notification';
-import { getAuthHeader } from '../api/auth';
+import { getAuthHeader } from './auth';
 
 /**
  * Fetch notifications with pagination
@@ -14,7 +14,7 @@ export const fetchNotifications = async (
   try {
     const headers = await getAuthHeader();
     const response = await axios.get(
-      `${API_URL}/notifications?page=${page}&limit=${limit}&filter=${filter}`,
+      `${apiConfig.apiUrl}/api/notifications?page=${page}&limit=${limit}&filter=${filter}`,
       { headers }
     );
     return response.data;
@@ -31,7 +31,7 @@ export const markNotificationAsRead = async (notificationId: string): Promise<No
   try {
     const headers = await getAuthHeader();
     const response = await axios.patch(
-      `${API_URL}/notifications/${notificationId}/read`,
+      `${apiConfig.apiUrl}/api/notifications/${notificationId}/read`,
       {},
       { headers }
     );
@@ -49,7 +49,7 @@ export const markAllNotificationsAsRead = async (): Promise<{ message: string }>
   try {
     const headers = await getAuthHeader();
     const response = await axios.patch(
-      `${API_URL}/notifications/mark-all-read`,
+      `${apiConfig.apiUrl}/api/notifications/mark-all-read`,
       {},
       { headers }
     );
@@ -67,7 +67,7 @@ export const deleteNotification = async (notificationId: string): Promise<{ mess
   try {
     const headers = await getAuthHeader();
     const response = await axios.delete(
-      `${API_URL}/notifications/${notificationId}`,
+      `${apiConfig.apiUrl}/api/notifications/${notificationId}`,
       { headers }
     );
     return response.data;
@@ -86,7 +86,7 @@ export const updateNotificationSettings = async (
   try {
     const headers = await getAuthHeader();
     const response = await axios.put(
-      `${API_URL}/notifications/settings`,
+      `${apiConfig.apiUrl}/api/notifications/settings`,
       settings,
       { headers }
     );
@@ -103,15 +103,30 @@ export const updateNotificationSettings = async (
 export const updatePushToken = async (pushToken: string): Promise<{ message: string }> => {
   try {
     const headers = await getAuthHeader();
+    
+    // Check if API URL is configured properly
+    if (!apiConfig.apiUrl) {
+      console.warn('API URL not configured properly');
+      return { message: 'API configuration missing' };
+    }
+    
+    // Set timeout to prevent hanging requests
     const response = await axios.put(
-      `${API_URL}/notifications/push-token`,
+      `${apiConfig.apiUrl}/api/notifications/push-token`,
       { pushToken },
-      { headers }
+      { 
+        headers,
+        timeout: 10000 // 10 second timeout
+      }
     );
     return response.data;
   } catch (error) {
     console.error('Error updating push token:', error);
-    throw error;
+    
+    // Return a friendly message instead of throwing
+    return { 
+      message: 'Failed to update push token. Will retry later.' 
+    };
   }
 };
 
@@ -122,7 +137,7 @@ export const sendTestNotification = async (): Promise<{ message: string; notific
   try {
     const headers = await getAuthHeader();
     const response = await axios.post(
-      `${API_URL}/notifications/send-test`,
+      `${apiConfig.apiUrl}/api/notifications/send-test`,
       {},
       { headers }
     );

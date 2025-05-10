@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Alarm } from '../types/alarm';
 import { Ionicons } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format as formatDate } from 'date-fns';
 import { useTheme } from '../context/ThemeContext';
 
 interface AlarmDetailsProps {
@@ -26,7 +26,7 @@ export const AlarmDetails: React.FC<AlarmDetailsProps> = ({
   const formattedTime = useMemo(() => {
     if (!alarm) return '';
     try {
-      return format(new Date(alarm.timestamp), 'PPpp'); // e.g., "Apr 29, 2023, 1:30 PM"
+      return formatDate(new Date(alarm.timestamp), 'PPpp'); // e.g., "Apr 29, 2023, 1:30 PM"
     } catch (error) {
       return 'Unknown time';
     }
@@ -62,6 +62,11 @@ export const AlarmDetails: React.FC<AlarmDetailsProps> = ({
         return alarm.status;
     }
   }, [alarm?.status]);
+  
+  const formatTimestamp = (timestamp: Date | string) => {
+    if (!timestamp) return 'N/A';
+    return formatDate(new Date(timestamp), 'PPpp'); // e.g., "Apr 29, 2023, 1:30 PM"
+  };
   
   if (!alarm) return null;
   

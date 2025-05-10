@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -62,7 +63,7 @@ const userService = {
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme } = useTheme();
-  const { authState, updateUserInfo } = useAuth();
+  const { authState, updateUser, logout } = useAuth();
   const router = useRouter();
   
   // Profile form state
@@ -83,12 +84,15 @@ export default function ProfileScreen() {
     criticalAlarmsOnly: false,
   });
   
+  // Logout modal state
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  
   // Profile update mutation
   const profileMutation = useMutation({
     mutationFn: userService.updateUserProfile,
     onSuccess: () => {
       // Update local auth state with new profile info
-      updateUserInfo({ name, email });
+      updateUser({ name, email });
       setEditingProfile(false);
       Alert.alert('Success', 'Profile updated successfully');
     },
@@ -518,27 +522,45 @@ export default function ProfileScreen() {
         </View>
         
         {/* Logout Button */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDarkMode ? '#EF4444' : '#F87171' }]}
-          onPress={() => {
-            Alert.alert(
-              'Confirm Logout',
-              'Are you sure you want to log out?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Logout', style: 'destructive', onPress: () => {
-                  // Call the logout function from auth context
-                  const { logout } = useAuth();
-                  logout();
-                }}
-              ]
-            );
-          }}
+          onPress={() => setLogoutModalVisible(true)}
         >
           <Ionicons name="log-out-outline" size={20} color="#FFFFFF" style={styles.logoutIcon} />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </ScrollView>
+      {/* Logout Confirmation Modal */}
+      <Modal
+        visible={logoutModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLogoutModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: isDarkMode ? '#1F2937' : '#FFF', borderRadius: 16, padding: 24, width: 320, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 8 }}>
+            <Ionicons name="log-out-outline" size={40} color={isDarkMode ? '#F87171' : '#EF4444'} style={{ marginBottom: 12 }} />
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: isDarkMode ? '#FFF' : '#1F2937', marginBottom: 8 }}>Confirm Logout</Text>
+            <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 15, textAlign: 'center', marginBottom: 24 }}>
+              Are you sure you want to log out?
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+              <TouchableOpacity
+                style={{ flex: 1, marginRight: 8, backgroundColor: isDarkMode ? '#374151' : '#E5E7EB', borderRadius: 8, paddingVertical: 12, alignItems: 'center' }}
+                onPress={() => setLogoutModalVisible(false)}
+              >
+                <Text style={{ color: isDarkMode ? '#FFF' : '#1F2937', fontWeight: '500', fontSize: 16 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, marginLeft: 8, backgroundColor: isDarkMode ? '#EF4444' : '#F87171', borderRadius: 8, paddingVertical: 12, alignItems: 'center' }}
+                onPress={() => { setLogoutModalVisible(false); logout(); }}
+              >
+                <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

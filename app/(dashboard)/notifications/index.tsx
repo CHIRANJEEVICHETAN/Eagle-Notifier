@@ -13,7 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
-import { format, isToday, isYesterday, isThisWeek } from 'date-fns';
+import { format as formatDate, isToday, isYesterday, isThisWeek } from 'date-fns';
 import { useTheme } from '../../context/ThemeContext';
 import { 
   useNotifications,
@@ -201,7 +201,7 @@ export default function NotificationsScreen() {
               styles.notificationTimestamp,
               { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
             ]}>
-              {format(new Date(item.createdAt), 'MMM d, h:mm a')}
+              {formatDate(new Date(item.createdAt), 'MMM d, h:mm a')}
             </Text>
             
             <TouchableOpacity

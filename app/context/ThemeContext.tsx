@@ -55,10 +55,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [theme, colorScheme]);
 
   const toggleTheme = useCallback(() => {
-    const nextTheme: ThemeType = theme === 'light' ? 'dark' : 
-                                theme === 'dark' ? 'system' : 'light';
+    const nextTheme: ThemeType = isDarkMode() ? 'light' : 'dark';
     setTheme(nextTheme);
-  }, [theme, setTheme]);
+  }, [isDarkMode, setTheme]);
 
   const value = {
     theme,
