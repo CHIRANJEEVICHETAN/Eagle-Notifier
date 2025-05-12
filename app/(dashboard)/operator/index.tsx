@@ -122,7 +122,7 @@ export default function OperatorDashboard() {
   // Add notification badge animation
   const [notificationBadgeScale] = useState(new Animated.Value(1));
 
-  // Sample analog alarms data - reduced to 4 key alarms
+  // Sample analog alarms data for when no real data is available
   const sampleAnalogAlarms = [
     {
       id: 'analog-1',
@@ -177,10 +177,38 @@ export default function OperatorDashboard() {
       lowLimit: '-',
       highLimit: '80°C',
       timestamp: new Date().toISOString()
+    },
+    {
+      id: 'analog-5',
+      description: 'TEMPERING ZONE1 TEMPERATURE (LOW/HIGH)',
+      severity: 'warning',
+      status: 'active',
+      type: 'temperature',
+      value: '435',
+      unit: '°C',
+      setPoint: '450°C (-30/+10°C)',
+      lowLimit: '420°C',
+      highLimit: '460°C',
+      timestamp: new Date().toISOString(),
+      zone: 'zone1'
+    },
+    {
+      id: 'analog-6',
+      description: 'TEMPERING ZONE2 TEMPERATURE (LOW/HIGH)',
+      severity: 'info',
+      status: 'active',
+      type: 'temperature',
+      value: '455',
+      unit: '°C',
+      setPoint: '460°C (±10°C)',
+      lowLimit: '450°C',
+      highLimit: '470°C',
+      timestamp: new Date().toISOString(),
+      zone: 'zone2'
     }
   ];
 
-  // Sample binary alarms data - reduced to 4 key alarms
+  // Sample binary alarms data for when no real data is available
   const sampleBinaryAlarms = [
     {
       id: 'binary-1',
@@ -198,13 +226,24 @@ export default function OperatorDashboard() {
       severity: 'critical',
       status: 'active',
       type: 'heater',
-      value: 'FAILURE',
+      value: 'Normal',
       setPoint: 'Normal',
       timestamp: new Date().toISOString(),
       zone: 'zone1'
     },
     {
       id: 'binary-3',
+      description: 'HARDENING HEATER FAILURE (ZONE 2)',
+      severity: 'critical',
+      status: 'active',
+      type: 'heater',
+      value: 'FAILURE',
+      setPoint: 'Normal',
+      timestamp: new Date().toISOString(),
+      zone: 'zone2'
+    },
+    {
+      id: 'binary-4',
       description: 'HARDENING CONVEYOR (NOT ROTATING)',
       severity: 'warning',
       status: 'active',
@@ -214,14 +253,68 @@ export default function OperatorDashboard() {
       timestamp: new Date().toISOString()
     },
     {
-      id: 'binary-4',
-      description: 'OIL QUENCH CONVEYOR (NOT ROTATING)',
+      id: 'binary-5',
+      description: 'OIL QUECH CONVEYOR (NOT ROTATING)',
       severity: 'warning',
       status: 'active',
       type: 'conveyor',
       value: 'NOT ROTATING',
       setPoint: 'Rotating',
       timestamp: new Date().toISOString()
+    },
+    {
+      id: 'binary-6',
+      description: 'HARDENING FAN MOTOR NOT RUNNING (ZONE 1)',
+      severity: 'warning',
+      status: 'active',
+      type: 'fan',
+      value: 'NOT RUNNING',
+      setPoint: 'Running',
+      timestamp: new Date().toISOString(),
+      zone: 'zone1'
+    },
+    {
+      id: 'binary-7',
+      description: 'HARDENING FAN MOTOR NOT RUNNING (ZONE 2)',
+      severity: 'warning',
+      status: 'active',
+      type: 'fan',
+      value: 'NOT RUNNING',
+      setPoint: 'Running',
+      timestamp: new Date().toISOString(),
+      zone: 'zone2'
+    },
+    {
+      id: 'binary-8',
+      description: 'TEMPERING CONVEYOR (NOT ROTATING)',
+      severity: 'warning',
+      status: 'active',
+      type: 'conveyor',
+      value: 'NOT ROTATING',
+      setPoint: 'Rotating',
+      timestamp: new Date().toISOString()
+    },
+    {
+      id: 'binary-9',
+      description: 'TEMPERING FAN MOTOR NOT RUNNING (ZONE 1)',
+      severity: 'warning',
+      status: 'active',
+      type: 'fan',
+      value: 'NOT RUNNING',
+      setPoint: 'Running',
+      timestamp: new Date().toISOString(),
+      zone: 'zone1'
+    },
+    {
+      id: 'binary-10',
+      description: 'TEMPERING FAN MOTOR NOT RUNNING (ZONE 2)',
+      severity: 'warning',
+      status: 'active',
+      type: 'fan',
+      value: 'NOT RUNNING',
+      setPoint: 'Running',
+      timestamp: new Date().toISOString(),
+      zone: 'zone2'
     }
   ];
 
@@ -459,7 +552,9 @@ export default function OperatorDashboard() {
       'HARDENING ZONE 1 TEMPERATURE',
       'HARDENING ZONE 2 TEMPERATURE',
       'CARBON POTENTIAL',
-      'OIL TEMPERATURE'
+      'OIL TEMPERATURE',
+      'TEMPERING ZONE1 TEMPERATURE',
+      'TEMPERING ZONE2 TEMPERATURE'
     ].some(name => (alarm.description || '').toUpperCase().includes(name))
   ) || [];
   
@@ -468,7 +563,10 @@ export default function OperatorDashboard() {
       'OIL LEVEL',
       'HARDENING HEATER FAILURE',
       'HARDENING CONVEYOR',
-      'OIL QUENCH CONVEYOR'
+      'OIL QUECH CONVEYOR',
+      'HARDENING FAN MOTOR',
+      'TEMPERING CONVEYOR',
+      'TEMPERING FAN MOTOR'
     ].some(name => (alarm.description || '').toUpperCase().includes(name))
   ) || [];
 

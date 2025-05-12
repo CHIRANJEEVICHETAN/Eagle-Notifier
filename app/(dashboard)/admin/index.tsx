@@ -117,7 +117,93 @@ const sampleAnalogAlarms: ExtendedAlarm[] = [
     zone: 'zone2'
   },
   {
+    id: 'analog-3',
+    description: 'CARBON POTENTIAL (CP %)',
+    severity: 'info' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'carbon' as AlarmType,
+    value: '0.42',
+    unit: '%',
+    setPoint: '0.40% (±0.05)',
+    lowLimit: '0.35%',
+    highLimit: '0.45%',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'analog-4',
+    description: 'OIL TEMPERATURE (LOW/HIGH)',
+    severity: 'warning' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'temperature' as AlarmType,
+    value: '72',
+    unit: '°C',
+    setPoint: '60°C',
+    lowLimit: '-',
+    highLimit: '80°C',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'analog-5',
+    description: 'TEMPERING ZONE1 TEMPERATURE (LOW/HIGH)',
+    severity: 'warning' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'temperature' as AlarmType,
+    value: '435',
+    unit: '°C',
+    setPoint: '450°C (-30/+10°C)',
+    lowLimit: '420°C',
+    highLimit: '460°C',
+    timestamp: new Date().toISOString(),
+    zone: 'zone1'
+  },
+  {
+    id: 'analog-6',
+    description: 'TEMPERING ZONE2 TEMPERATURE (LOW/HIGH)',
+    severity: 'info' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'temperature' as AlarmType,
+    value: '455',
+    unit: '°C',
+    setPoint: '460°C (±10°C)',
+    lowLimit: '450°C',
+    highLimit: '470°C',
+    timestamp: new Date().toISOString(),
+    zone: 'zone2'
+  },
+  {
     id: 'binary-1',
+    description: 'OIL LEVEL (LOW/HIGH)',
+    severity: 'critical' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'level' as AlarmType,
+    value: 'Normal',
+    setPoint: 'Normal',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'binary-2',
+    description: 'HARDENING HEATER FAILURE (ZONE 1)',
+    severity: 'critical' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'heater' as AlarmType,
+    value: 'Normal',
+    setPoint: 'Normal',
+    timestamp: new Date().toISOString(),
+    zone: 'zone1'
+  },
+  {
+    id: 'binary-3',
+    description: 'HARDENING HEATER FAILURE (ZONE 2)',
+    severity: 'critical' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'heater' as AlarmType,
+    value: 'FAILURE',
+    setPoint: 'Normal',
+    timestamp: new Date().toISOString(),
+    zone: 'zone2'
+  },
+  {
+    id: 'binary-4',
     description: 'HARDENING CONVEYOR (NOT ROTATING)',
     severity: 'warning' as AlarmSeverity,
     status: 'active' as AlarmStatus,
@@ -127,14 +213,68 @@ const sampleAnalogAlarms: ExtendedAlarm[] = [
     timestamp: new Date().toISOString()
   },
   {
-    id: 'binary-2',
+    id: 'binary-5',
     description: 'OIL QUENCH CONVEYOR (NOT ROTATING)',
-    severity: 'critical' as AlarmSeverity,
+    severity: 'warning' as AlarmSeverity,
     status: 'active' as AlarmStatus,
     type: 'conveyor' as AlarmType,
     value: 'NOT ROTATING',
     setPoint: 'Rotating',
     timestamp: new Date().toISOString()
+  },
+  {
+    id: 'binary-6',
+    description: 'HARDENING FAN MOTOR NOT RUNNING (ZONE 1)',
+    severity: 'warning' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'fan' as AlarmType,
+    value: 'NOT RUNNING',
+    setPoint: 'Running',
+    timestamp: new Date().toISOString(),
+    zone: 'zone1'
+  },
+  {
+    id: 'binary-7',
+    description: 'HARDENING FAN MOTOR NOT RUNNING (ZONE 2)',
+    severity: 'warning' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'fan' as AlarmType,
+    value: 'NOT RUNNING',
+    setPoint: 'Running',
+    timestamp: new Date().toISOString(),
+    zone: 'zone2'
+  },
+  {
+    id: 'binary-8',
+    description: 'TEMPERING CONVEYOR (NOT ROTATING)',
+    severity: 'warning' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'conveyor' as AlarmType,
+    value: 'NOT ROTATING',
+    setPoint: 'Rotating',
+    timestamp: new Date().toISOString()
+  },
+  {
+    id: 'binary-9',
+    description: 'TEMPERING FAN MOTOR NOT RUNNING (ZONE 1)',
+    severity: 'warning' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'fan' as AlarmType,
+    value: 'NOT RUNNING',
+    setPoint: 'Running',
+    timestamp: new Date().toISOString(),
+    zone: 'zone1'
+  },
+  {
+    id: 'binary-10',
+    description: 'TEMPERING FAN MOTOR NOT RUNNING (ZONE 2)',
+    severity: 'warning' as AlarmSeverity,
+    status: 'active' as AlarmStatus,
+    type: 'fan' as AlarmType,
+    value: 'NOT RUNNING',
+    setPoint: 'Running',
+    timestamp: new Date().toISOString(),
+    zone: 'zone2'
   }
 ];
 
@@ -393,14 +533,7 @@ export default function AdminDashboard() {
   };
   
   // Filter alarms by type - keep only the 3 key alarms
-  const filteredAlarms = (activeAlarms as ExtendedAlarm[] || sampleAnalogAlarms).filter(alarm => 
-    [
-      'HARDENING ZONE 1 TEMPERATURE',
-      'HARDENING ZONE 2 TEMPERATURE',
-      'HARDENING CONVEYOR',
-      'OIL QUENCH CONVEYOR'
-    ].some(name => (alarm.description || '').toUpperCase().includes(name))
-  );
+  const filteredAlarms = (activeAlarms as ExtendedAlarm[] || sampleAnalogAlarms);
   
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? THEME.dark.background : THEME.light.background }]}>
