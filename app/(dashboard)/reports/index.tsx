@@ -7,9 +7,11 @@ import { format as formatDate, subDays } from 'date-fns';
 import { ReportFormat, ReportGenerator, ReportTimeRange } from '../../components/ReportGenerator';
 import { useTheme } from '../../context/ThemeContext';
 import { useReportGenerator } from '../../hooks/useReportGenerator';
+import { useRouter } from 'expo-router';
 
 export default function ReportsScreen() {
   const { isDarkMode } = useTheme();
+  const router = useRouter();
   const [showReportModal, setShowReportModal] = useState(false);
   const [
     { isGenerating, generatedFilePath },
@@ -157,7 +159,28 @@ export default function ReportsScreen() {
     >
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       
-      <View style={styles.header}>
+      <View style={[
+        styles.header,
+        { 
+          backgroundColor: isDarkMode ? 'rgba(17, 24, 39, 0.9)' : 'rgba(249, 250, 251, 0.9)',
+          borderBottomColor: isDarkMode ? 'rgba(55, 65, 81, 0.4)' : 'rgba(229, 231, 235, 0.4)',
+          borderBottomWidth: 1,
+        }
+      ]}>
+        <TouchableOpacity
+          style={[
+            styles.backButton,
+            { backgroundColor: isDarkMode ? 'rgba(55, 65, 81, 0.5)' : 'rgba(243, 244, 246, 0.7)' }
+          ]}
+          onPress={() => router.back()}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={22}
+            color={isDarkMode ? '#E5E7EB' : '#4B5563'}
+          />
+        </TouchableOpacity>
+        
         <Text
           style={[
             styles.title,
@@ -249,6 +272,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
   },
   title: {
     fontSize: 24,

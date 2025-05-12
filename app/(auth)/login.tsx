@@ -19,7 +19,6 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LoginCredentials } from '../types/auth';
-import { showErrorAlert } from '../utils/errorHandling';
 
 export default function LoginScreen() {
   const { login, authState } = useAuth();
@@ -35,18 +34,17 @@ export default function LoginScreen() {
   // Error state
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [loginError, setLoginError] = useState('');
   
   // Animation values
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const errorShakeAnim = React.useRef(new Animated.Value(0)).current;
 
   // Display the authentication error from context if exists
   useEffect(() => {
     if (authState.error) {
-      showErrorAlert(
-        { message: authState.error }, 
-        'Login Failed', 
-        'An error occurred during login'
-      );
+      setLoginError(authState.error);
+      shakeError();
     }
   }, [authState.error]);
   
@@ -57,10 +55,37 @@ export default function LoginScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Shake animation for error
+  const shakeError = () => {
+    Animated.sequence([
+      Animated.timing(errorShakeAnim, {
+        toValue: 10,
+        duration: 100,
+        useNativeDriver: true
+      }),
+      Animated.timing(errorShakeAnim, {
+        toValue: -10,
+        duration: 100,
+        useNativeDriver: true
+      }),
+      Animated.timing(errorShakeAnim, {
+        toValue: 10,
+        duration: 100,
+        useNativeDriver: true
+      }),
+      Animated.timing(errorShakeAnim, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: true
+      })
+    ]).start();
+  };
   
   // Validate email
   const validateEmail = (text: string) => {
     setEmail(text);
+    setLoginError(''); // Clear login error when user types
     if (text.trim() === '') {
       setEmailError('Email is required');
     } else if (!/\S+@\S+\.\S+/.test(text)) {
@@ -73,6 +98,7 @@ export default function LoginScreen() {
   // Validate password
   const validatePassword = (text: string) => {
     setPassword(text);
+    setLoginError(''); // Clear login error when user types
     if (text.trim() === '') {
       setPasswordError('Password is required');
     } else if (text.length < 6) {
@@ -84,6 +110,9 @@ export default function LoginScreen() {
   
   // Handle login
   const handleLogin = async () => {
+    // Clear previous errors
+    setLoginError('');
+    
     // Validate inputs before submitting
     validateEmail(email);
     validatePassword(password);
@@ -95,12 +124,15 @@ export default function LoginScreen() {
     setIsLoading(true);
     
     try {
-      // Call login function from AuthContext
-      // Navigation will be handled by the AuthContext after login
       await login({ email, password } as LoginCredentials);
     } catch (error) {
-      // Error handling is now done in the AuthContext
       console.error('Login error in component:', error);
+      if (error instanceof Error) {
+        setLoginError(error.message);
+      } else {
+        setLoginError('An unexpected error occurred');
+      }
+      shakeError();
     } finally {
       setIsLoading(false);
     }
@@ -131,6 +163,23 @@ export default function LoginScreen() {
                 Log in to access your dashboard
               </Text>
             </View>
+
+            {/* Login Error Message */}
+            {loginError ? (
+              <Animated.View 
+                style={[
+                  styles.errorContainer,
+                  {
+                    transform: [{
+                      translateX: errorShakeAnim
+                    }]
+                  }
+                ]}
+              >
+                <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                <Text style={styles.errorMessage}>{loginError}</Text>
+              </Animated.View>
+            ) : null}
             
             <View style={styles.inputsContainer}>
               <View style={styles.inputGroup}>
@@ -277,6 +326,22 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     textAlign: 'center',
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  errorMessage: {
+    color: '#B91C1C',
+    marginLeft: 8,
+    fontSize: 14,
+    flex: 1,
   },
   inputsContainer: {
     marginBottom: 24,

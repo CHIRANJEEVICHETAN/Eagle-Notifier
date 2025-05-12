@@ -3,7 +3,6 @@ import { View, Text, ScrollView, RefreshControl, ActivityIndicator, FlatList, To
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AlarmCard } from './components/AlarmCard';
-import { AlarmCountSummary } from './components/AlarmCountSummary';
 import { AlarmDetails } from './components/AlarmDetails';
 import { useActiveAlarms } from './hooks/useAlarms';
 import { useUpdateAlarmStatus } from './hooks/useAlarms';
@@ -164,10 +163,31 @@ export default function Dashboard() {
           }
           ListHeaderComponent={
             <View className="px-4 pt-2">
-              <AlarmCountSummary
-                alarms={activeAlarms || []}
-                onPress={() => console.log('View all alarms')}
-              />
+              <View className="flex-row justify-between mb-4 mt-2">
+                <View className="w-[32%] bg-white dark:bg-gray-800 rounded-xl p-2 items-center justify-center border border-gray-100 dark:border-gray-700">
+                  <View className="w-7 h-7 rounded-full bg-red-100 dark:bg-red-900 items-center justify-center mb-1.5">
+                    <Ionicons name="alert-circle" size={16} color={isDarkMode ? '#FCA5A5' : '#991B1B'} />
+                  </View>
+                  <Text className="text-xl font-bold text-red-800 dark:text-red-300">{activeAlarms?.filter(a => a.severity === 'critical' && a.status === 'active').length || 0}</Text>
+                  <Text className="text-xs font-medium text-red-800 dark:text-red-300">Critical</Text>
+                </View>
+                
+                <View className="w-[32%] bg-white dark:bg-gray-800 rounded-xl p-2 items-center justify-center border border-gray-100 dark:border-gray-700">
+                  <View className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-900 items-center justify-center mb-1.5">
+                    <Ionicons name="warning" size={16} color={isDarkMode ? '#FCD34D' : '#92400E'} />
+                  </View>
+                  <Text className="text-xl font-bold text-amber-800 dark:text-amber-300">{activeAlarms?.filter(a => a.severity === 'warning' && a.status === 'active').length || 0}</Text>
+                  <Text className="text-xs font-medium text-amber-800 dark:text-amber-300">Warning</Text>
+                </View>
+                
+                <View className="w-[32%] bg-white dark:bg-gray-800 rounded-xl p-2 items-center justify-center border border-gray-100 dark:border-gray-700">
+                  <View className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900 items-center justify-center mb-1.5">
+                    <Ionicons name="information-circle" size={16} color={isDarkMode ? '#93C5FD' : '#1E40AF'} />
+                  </View>
+                  <Text className="text-xl font-bold text-blue-800 dark:text-blue-300">{activeAlarms?.filter(a => a.severity === 'info' && a.status === 'active').length || 0}</Text>
+                  <Text className="text-xs font-medium text-blue-800 dark:text-blue-300">Info</Text>
+                </View>
+              </View>
             </View>
           }
           ListEmptyComponent={renderEmptyState}
