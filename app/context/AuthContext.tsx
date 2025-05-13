@@ -12,6 +12,9 @@ const REFRESH_TOKEN_KEY = 'eagle_refresh_token';
 const USER_KEY = 'eagle_user';
 const ONBOARDING_KEY = 'hasSeenOnboarding';
 
+// Add error type to handle different kinds of errors
+export type ErrorType = 'error' | 'warning' | 'info';
+
 interface AuthContextProps {
   authState: AuthState;
   login: (credentials: LoginCredentials) => Promise<void>;
@@ -30,6 +33,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading: true,
     isAuthenticated: false,
     error: null,
+    errorType: 'error', // Add default error type
   });
   
   // Track if the user has seen onboarding
@@ -291,6 +295,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isLoading: false,
             isAuthenticated: true,
             error: null,
+            errorType: 'error',
           });
           
           // Try to register push token if we previously failed
@@ -312,6 +317,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isLoading: false,
           isAuthenticated: false,
           error: 'Failed to load user data',
+          errorType: 'error',
         });
       }
     };
@@ -435,6 +441,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...prev,
       isLoading: true,
       error: null,
+      errorType: 'error',
     }));
     
     try {
@@ -462,6 +469,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isLoading: false,
           isAuthenticated: true,
           error: null,
+          errorType: 'error',
         });
         // Ensure state is updated before proceeding
         setTimeout(resolve, 0);
@@ -555,6 +563,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Default error message
       let errorMessage = 'An error occurred while logging in';
+      let errorType: ErrorType = 'error';
       
       // User-friendly error messages based on error type
       if (error.response) {
@@ -578,20 +587,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             break;
           case 404:
             errorMessage = 'Login service is currently unavailable. Please try again later.';
+            errorType = 'warning';
             break;
           case 422:
             errorMessage = 'Invalid information provided. Please verify your details.';
             break;
           case 429:
             errorMessage = 'Too many login attempts. Please try again later.';
+            errorType = 'warning';
             break;
           case 500:
             errorMessage = 'The server encountered an error. Please try again later.';
+            errorType = 'warning';
             break;
           case 502:
           case 503:
           case 504:
             errorMessage = 'Service is currently unavailable. Please try again later.';
+            errorType = 'warning';
             break;
           default:
             // Try to get error message from response if available
@@ -605,10 +618,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Request was made but no response received
         if (error.code === 'ERR_NETWORK') {
           errorMessage = 'Cannot connect to server. Please check your network connection.';
+          errorType = 'warning';
         } else if (error.code === 'ECONNABORTED') {
           errorMessage = 'The request timed out. Please try again.';
+          errorType = 'warning';
         } else {
           errorMessage = 'No response from server. Please try again later.';
+          errorType = 'warning';
         }
       } else {
         // Something happened in setting up the request
@@ -620,14 +636,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         isAuthenticated: false,
         error: errorMessage,
+        errorType: errorType,
       });
-      
-      // Show error alert with user-friendly message
-      Alert.alert(
-        'Login Failed',
-        errorMessage,
-        [{ text: 'OK' }]
-      );
     }
   };
 
@@ -705,6 +715,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         isAuthenticated: false,
         error: null,
+        errorType: 'error',
       });
       
       // Navigation will be handled by checkAuthRoute effect
@@ -715,6 +726,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...prev,
         isLoading: false,
         error: 'Failed to logout',
+        errorType: 'error',
       }));
     }
   };

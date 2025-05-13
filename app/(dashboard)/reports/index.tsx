@@ -7,6 +7,7 @@ import { format as formatDate, subDays } from 'date-fns';
 import { ReportFormat, ReportGenerator, ReportTimeRange } from '../../components/ReportGenerator';
 import { useTheme } from '../../context/ThemeContext';
 import { useReportGenerator } from '../../hooks/useReportGenerator';
+import { router } from 'expo-router';
 
 export default function ReportsScreen() {
   const { isDarkMode } = useTheme();
@@ -15,7 +16,7 @@ export default function ReportsScreen() {
     { isGenerating, generatedFilePath },
     { generateReport, openReport, shareReport }
   ] = useReportGenerator();
-  
+
   // Default time range: last 7 days
   const defaultTimeRange: ReportTimeRange = useMemo(
     () => ({
@@ -24,17 +25,17 @@ export default function ReportsScreen() {
     }),
     []
   );
-  
+
   // Recent reports (would be loaded from storage or API in a real app)
   const [recentReports, setRecentReports] = useState<
     { id: string; format: ReportFormat; date: Date; filePath: string | null }[]
   >([]);
-  
+
   // Handle report generation
   const handleGenerateReport = useCallback(
     async (reportFormat: ReportFormat, timeRange: ReportTimeRange): Promise<string> => {
       const filePath = await generateReport(reportFormat, timeRange);
-      
+
       if (filePath) {
         // Add to recent reports
         const newReport = {
@@ -43,39 +44,49 @@ export default function ReportsScreen() {
           date: new Date(),
           filePath,
         };
-        
+
         setRecentReports(prev => [newReport, ...prev]);
         return filePath;
       }
-      
+
       // If filePath is null, throw an error to maintain Promise<string> return type
       throw new Error('Failed to generate report');
     },
     [generateReport]
   );
-  
+
   // Open the report modal
   const openReportModal = useCallback(() => {
     setShowReportModal(true);
   }, []);
-  
+
   // Close the report modal
   const closeReportModal = useCallback(() => {
     setShowReportModal(false);
   }, []);
-  
+
   // Format date for display
   const formatReportDate = (date: Date) => {
     return formatDate(date, 'PPP p');
   };
-  
+
+  // Theme colors
+  const theme = useMemo(() => ({
+    background: isDarkMode ? '#111827' : '#F9FAFB',
+    surface: isDarkMode ? '#1F2937' : '#FFFFFF',
+    text: isDarkMode ? '#F3F4F6' : '#1F2937',
+    subtext: isDarkMode ? '#9CA3AF' : '#6B7280',
+    border: isDarkMode ? 'rgba(75, 85, 99, 0.4)' : 'rgba(229, 231, 235, 0.4)',
+    primary: isDarkMode ? '#3B82F6' : '#2563EB',
+  }), [isDarkMode]);
+
   // Render report items
   const renderReportItem = useCallback(
     (report: typeof recentReports[0]) => {
       const getIcon = () => {
         return report.format === 'pdf' ? 'document-text-outline' : 'grid-outline';
       };
-      
+
       return (
         <View
           key={report.id}
@@ -118,7 +129,7 @@ export default function ReportsScreen() {
               </Text>
             </View>
           </View>
-          
+
           <View style={styles.reportActions}>
             <TouchableOpacity
               style={styles.reportAction}
@@ -130,7 +141,7 @@ export default function ReportsScreen() {
                 color={isDarkMode ? '#9CA3AF' : '#6B7280'}
               />
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={styles.reportAction}
               onPress={() => report.filePath && shareReport(report.filePath)}
@@ -147,7 +158,7 @@ export default function ReportsScreen() {
     },
     [isDarkMode, formatReportDate, openReport, shareReport]
   );
-  
+
   return (
     <SafeAreaView
       style={[
@@ -156,17 +167,32 @@ export default function ReportsScreen() {
       ]}
     >
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      
-      <View style={styles.header}>
-        <Text
+
+      <View style={[
+        styles.header,
+        {
+          backgroundColor: theme.surface,
+          borderBottomColor: theme.border,
+          borderBottomWidth: 1,
+        }
+      ]}>
+
+        <TouchableOpacity
           style={[
-            styles.title,
-            { color: isDarkMode ? '#FFFFFF' : '#1F2937' },
+            styles.backButton,
+            { backgroundColor: isDarkMode ? 'rgba(55, 65, 81, 0.5)' : 'rgba(243, 244, 246, 0.7)' }
           ]}
+          onPress={() => router.back()}
         >
-          Reports
-        </Text>
-        
+          <Ionicons name="arrow-back" size={22} color={theme.text} />
+        </TouchableOpacity>
+        <View style={styles.headerTextContainer}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Reports</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.subtext }]}>
+            Generate and share reports
+          </Text>
+        </View>
+
         <TouchableOpacity
           style={[
             styles.newReportButton,
@@ -185,7 +211,7 @@ export default function ReportsScreen() {
           )}
         </TouchableOpacity>
       </View>
-      
+
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
@@ -228,7 +254,7 @@ export default function ReportsScreen() {
           </View>
         )}
       </ScrollView>
-      
+
       <ReportGenerator
         visible={showReportModal}
         onClose={closeReportModal}
@@ -249,6 +275,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  headerSubtitle: {
+    fontSize: 14,
   },
   title: {
     fontSize: 24,

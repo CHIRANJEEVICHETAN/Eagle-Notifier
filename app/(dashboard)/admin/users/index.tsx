@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   TextInput,
   Alert,
   Switch,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -17,42 +18,32 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../../context/ThemeContext';
 import { UserRole, User } from '../../../types/auth';
+import { useAuth } from '../../../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
 
-// Mock API service for users
-// In a real app, this would be replaced with actual API calls
+// API Base URL
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+// Helper to get auth headers
+const getAuthHeader = async (token: string | null | undefined) => {
+  if (!token) {
+    // console.error('No authentication token found for API request.'); // Log for debugging
+    throw new Error('Authentication token is missing. Please log in again.');
+  }
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+};
+
+// Real API service for users
 const userService = {
-  getUsers: async (): Promise<User[]> => {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    // Mock user data
-    return [
-      {
-        id: '1',
-        email: 'admin@example.com',
-        name: 'Admin User',
-        role: 'admin',
-        createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        email: 'operator@example.com',
-        name: 'Operator User',
-        role: 'operator',
-        createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: '3',
-        email: 'jane@example.com',
-        name: 'Jane Smith',
-        role: 'operator',
-        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ];
+  getUsers: async (token: string | null | undefined): Promise<User[]> => {
+    const headers = await getAuthHeader(token);
+    const response = await axios.get(`${API_URL}/api/admin/users`, { headers });
+    return response.data;
   },
   
   createUser: async (userData: {
@@ -60,46 +51,26 @@ const userService = {
     email: string;
     password: string;
     role: UserRole;
-  }): Promise<User> => {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    // In a real app, this would send the data to the server
-    return {
-      id: Math.random().toString(36).substring(7),
-      email: userData.email,
-      name: userData.name,
-      role: userData.role,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+  }, token: string | null | undefined): Promise<User> => {
+    const headers = await getAuthHeader(token);
+    const response = await axios.post(`${API_URL}/api/admin/users`, userData, { headers });
+    return response.data;
   },
   
   updateUser: async (id: string, userData: {
     name?: string;
     email?: string;
+    password?: string;
     role?: UserRole;
-  }): Promise<User> => {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    // In a real app, this would send the data to the server
-    return {
-      id,
-      email: userData.email || 'updated@example.com',
-      name: userData.name || 'Updated User',
-      role: userData.role || 'operator',
-      createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+  }, token: string | null | undefined): Promise<User> => {
+    const headers = await getAuthHeader(token);
+    const response = await axios.put(`${API_URL}/api/admin/users/${id}`, userData, { headers });
+    return response.data;
   },
   
-  deleteUser: async (id: string): Promise<void> => {
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    // In a real app, this would send a delete request to the server
-    console.log(`User ${id} deleted`);
+  deleteUser: async (id: string, token: string | null | undefined): Promise<void> => {
+    const headers = await getAuthHeader(token);
+    await axios.delete(`${API_URL}/api/admin/users/${id}`, { headers });
   },
 };
 
@@ -113,10 +84,25 @@ interface UserFormData {
   role: UserRole;
 }
 
+const AUTH_TOKEN_KEY = 'eagle_auth_token';
+
 export default function UserManagementScreen() {
   const { isDarkMode } = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { authState } = useAuth();
+  
+  const [currentToken, setCurrentToken] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Get token on mount and when auth state changes
+  useEffect(() => {
+    const getToken = async () => {
+      const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+      setCurrentToken(token);
+    };
+    getToken();
+  }, [authState.isAuthenticated]);
   
   // Form state
   const [formMode, setFormMode] = useState<FormMode>('create');
@@ -125,7 +111,7 @@ export default function UserManagementScreen() {
     name: '',
     email: '',
     password: '',
-    role: 'operator',
+    role: 'OPERATOR',
   });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   
@@ -136,38 +122,65 @@ export default function UserManagementScreen() {
     isError,
     error,
     refetch,
-  } = useQuery({
+  } = useQuery<User[], Error>({
     queryKey: ['users'],
-    queryFn: userService.getUsers,
+    queryFn: () => userService.getUsers(currentToken),
+    enabled: !!currentToken,
   });
   
+  // Handle refresh
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } catch (error) {
+      console.error('Error refreshing users:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
+  
   // Create user mutation
-  const createUserMutation = useMutation({
-    mutationFn: userService.createUser,
+  const createUserMutation = useMutation<User, Error, UserFormData>({
+    mutationFn: (newUserData) => userService.createUser(newUserData, currentToken),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setFormVisible(false);
       resetForm();
+      Alert.alert('Success', 'User created successfully.');
     },
+    onError: (err: any) => {
+      const errorMessage = err.response?.data?.message || err.message || 'An unexpected error occurred.';
+      Alert.alert('Error Creating User', errorMessage);
+    }
   });
   
   // Update user mutation
-  const updateUserMutation = useMutation({
-    mutationFn: ({ id, userData }: { id: string; userData: Partial<UserFormData> }) =>
-      userService.updateUser(id, userData),
+  const updateUserMutation = useMutation<User, Error, { id: string; userData: Partial<UserFormData> }>({
+    mutationFn: ({ id, userData }) => userService.updateUser(id, userData, currentToken),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setFormVisible(false);
       resetForm();
+      Alert.alert('Success', 'User updated successfully.');
     },
+    onError: (err: any) => {
+      const errorMessage = err.response?.data?.message || err.message || 'An unexpected error occurred.';
+      Alert.alert('Error Updating User', errorMessage);
+    }
   });
   
   // Delete user mutation
-  const deleteUserMutation = useMutation({
-    mutationFn: userService.deleteUser,
+  const deleteUserMutation = useMutation<void, Error, string>({
+    mutationFn: (id) => userService.deleteUser(id, currentToken),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      Alert.alert('Success', 'User deleted successfully.');
     },
+    onError: (err: any) => {
+      const errorMessage = err.response?.data?.message || err.message || 'An unexpected error occurred.';
+      Alert.alert('Error Deleting User', errorMessage);
+    }
   });
   
   // Reset form state
@@ -176,47 +189,50 @@ export default function UserManagementScreen() {
       name: '',
       email: '',
       password: '',
-      role: 'operator',
+      role: 'OPERATOR',
     });
     setSelectedUserId(null);
   }, []);
   
   // Handle form submission
   const handleSubmit = useCallback(() => {
-    // Validate form data
     if (!formData.name.trim()) {
       Alert.alert('Validation Error', 'Name is required');
       return;
     }
-    
-    if (!formData.email.trim()) {
-      Alert.alert('Validation Error', 'Email is required');
+    if (!formData.email.trim() || !formData.email.includes('@')) {
+      Alert.alert('Validation Error', 'A valid email is required');
       return;
     }
-    
-    if (formMode === 'create' && !formData.password.trim()) {
-      Alert.alert('Validation Error', 'Password is required');
+    if (formMode === 'create' && (!formData.password.trim() || formData.password.length < 6)) {
+      Alert.alert('Validation Error', 'Password is required and must be at least 6 characters');
       return;
     }
-    
+    // Optional: add password length validation for edit mode if password is provided
+    if (formMode === 'edit' && formData.password.trim() && formData.password.length < 6) {
+      Alert.alert('Validation Error', 'New password must be at least 6 characters');
+      return;
+    }
+
+    const apiData: Partial<UserFormData> = {
+      name: formData.name,
+      email: formData.email,
+      role: formData.role,
+    };
+
+    if (formData.password.trim()) {
+      apiData.password = formData.password;
+    }
+
     if (formMode === 'create') {
-      createUserMutation.mutate(formData);
-    } else if (formMode === 'edit' && selectedUserId) {
-      const updateData: Partial<UserFormData> = {
-        name: formData.name,
-        email: formData.email,
-        role: formData.role
-      };
-      
-      // Only include password if it's not empty
-      if (formData.password.trim()) {
-        updateData.password = formData.password;
+      // Ensure all required fields for creation are present, especially password
+      if (!apiData.password) { // Should be caught by earlier validation, but as a safeguard
+        Alert.alert('Validation Error', 'Password is required for new user.');
+        return;
       }
-      
-      updateUserMutation.mutate({
-        id: selectedUserId,
-        userData: updateData,
-      });
+      createUserMutation.mutate(apiData as UserFormData); // Cast as UserFormData, password will be there
+    } else if (formMode === 'edit' && selectedUserId) {
+      updateUserMutation.mutate({ id: selectedUserId, userData: apiData });
     }
   }, [formMode, formData, selectedUserId, createUserMutation, updateUserMutation]);
   
@@ -229,6 +245,16 @@ export default function UserManagementScreen() {
   
   // Handle opening the edit form
   const handleEditUser = useCallback((user: User) => {
+    // Prevent editing current user
+    if (authState.user && user.id === authState.user.id) {
+      Alert.alert(
+        'Action Not Recommended',
+        'Editing your own account could lead to permission issues. Please have another admin edit your account if necessary.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setFormMode('edit');
     setSelectedUserId(user.id);
     setFormData({
@@ -238,10 +264,20 @@ export default function UserManagementScreen() {
       role: user.role,
     });
     setFormVisible(true);
-  }, []);
+  }, [authState.user]);
   
   // Handle delete user
   const handleDeleteUser = useCallback((id: string) => {
+    // Prevent deletion of current user
+    if (authState.user && id === authState.user.id) {
+      Alert.alert(
+        'Action Not Allowed',
+        'You cannot delete your own account while logged in.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     Alert.alert(
       'Confirm Delete',
       'Are you sure you want to delete this user? This action cannot be undone.',
@@ -254,7 +290,13 @@ export default function UserManagementScreen() {
         },
       ]
     );
-  }, [deleteUserMutation]);
+  }, [deleteUserMutation, authState.user]);
+  
+  // Filter out the current user from the list
+  const filteredUsers = useMemo(() => {
+    if (!users || !authState.user) return users;
+    return users.filter(user => user.id !== authState.user?.id);
+  }, [users, authState.user]);
   
   // Render user item
   const renderUserItem = useCallback(({ item }: { item: User }) => (
@@ -272,13 +314,13 @@ export default function UserManagementScreen() {
         <View style={styles.userDetails}>
           <View style={[
             styles.roleBadge,
-            { backgroundColor: item.role === 'admin' 
+            { backgroundColor: item.role === 'ADMIN' 
                 ? (isDarkMode ? '#4F46E5' : '#6366F1') 
                 : (isDarkMode ? '#2563EB' : '#3B82F6') 
             }
           ]}>
             <Text style={styles.roleText}>
-              {item.role === 'admin' ? 'Admin' : 'Operator'}
+              {item.role === 'ADMIN' ? 'Admin' : 'Operator'}
             </Text>
           </View>
         </View>
@@ -392,10 +434,20 @@ export default function UserManagementScreen() {
       
       {/* User List */}
       <FlatList
-        data={users}
+        data={filteredUsers}
         keyExtractor={(item) => item.id}
         renderItem={renderUserItem}
         contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[isDarkMode ? '#60A5FA' : '#2563EB']}
+            tintColor={isDarkMode ? '#60A5FA' : '#2563EB'}
+            title="Pull to refresh"
+            titleColor={isDarkMode ? '#9CA3AF' : '#6B7280'}
+          />
+        }
         ListEmptyComponent={
           <View style={[styles.emptyState, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
             <Ionicons
@@ -404,10 +456,12 @@ export default function UserManagementScreen() {
               color={isDarkMode ? '#4B5563' : '#9CA3AF'}
             />
             <Text style={[styles.emptyStateText, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-              No Users Found
+              {isLoading || refreshing ? 'Loading users...' : 'No Users Found'}
             </Text>
             <Text style={[styles.emptyStateSubtext, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-              Add new users to get started.
+              {isLoading || refreshing ? 
+                'Please wait while we load the user list' : 
+                'Add new users to get started or pull down to refresh'}
             </Text>
           </View>
         }
@@ -496,7 +550,7 @@ export default function UserManagementScreen() {
                   placeholderTextColor={isDarkMode ? '#9CA3AF' : '#6B7280'}
                   value={formData.password}
                   onChangeText={(text) => setFormData({ ...formData, password: text })}
-                  secureTextEntry
+                  // secureTextEntry
                   autoCapitalize="none"
                 />
               </View>
@@ -510,9 +564,9 @@ export default function UserManagementScreen() {
                     Admin
                   </Text>
                   <Switch
-                    value={formData.role === 'admin'}
+                    value={formData.role === 'ADMIN'}
                     onValueChange={(value) => {
-                      setFormData({ ...formData, role: value ? 'admin' : 'operator' });
+                      setFormData({ ...formData, role: value ? 'ADMIN' : 'OPERATOR' });
                     }}
                     trackColor={{ 
                       false: isDarkMode ? '#4B5563' : '#D1D5DB', 

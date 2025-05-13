@@ -9,7 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   Animated,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
@@ -19,7 +18,6 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LoginCredentials } from '../types/auth';
-import { showErrorAlert } from '../utils/errorHandling';
 
 export default function LoginScreen() {
   const { login, authState } = useAuth();
@@ -38,17 +36,8 @@ export default function LoginScreen() {
   
   // Animation values
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
-
-  // Display the authentication error from context if exists
-  useEffect(() => {
-    if (authState.error) {
-      showErrorAlert(
-        { message: authState.error }, 
-        'Login Failed', 
-        'An error occurred during login'
-      );
-    }
-  }, [authState.error]);
+  
+  // Remove the effect that shows the Alert dialog for authentication errors
   
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -103,6 +92,48 @@ export default function LoginScreen() {
       console.error('Login error in component:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Get error message styling based on error type
+  const getErrorStyles = () => {
+    if (!authState.error) return {};
+
+    switch (authState.errorType) {
+      case 'warning':
+        return {
+          container: {
+            backgroundColor: isDarkMode ? '#78350F' : '#FEF3C7',
+            borderColor: isDarkMode ? '#92400E' : '#F59E0B',
+          },
+          text: {
+            color: isDarkMode ? '#FCD34D' : '#92400E',
+          },
+          icon: isDarkMode ? '#FCD34D' : '#F59E0B',
+        };
+      case 'info':
+        return {
+          container: {
+            backgroundColor: isDarkMode ? '#1E3A8A' : '#EFF6FF',
+            borderColor: isDarkMode ? '#2563EB' : '#3B82F6',
+          },
+          text: {
+            color: isDarkMode ? '#93C5FD' : '#1D4ED8',
+          },
+          icon: isDarkMode ? '#93C5FD' : '#3B82F6',
+        };
+      case 'error':
+      default:
+        return {
+          container: {
+            backgroundColor: isDarkMode ? '#7F1D1D' : '#FEE2E2',
+            borderColor: isDarkMode ? '#B91C1C' : '#EF4444',
+          },
+          text: {
+            color: isDarkMode ? '#FCA5A5' : '#B91C1C',
+          },
+          icon: isDarkMode ? '#FCA5A5' : '#EF4444',
+        };
     }
   };
   
@@ -211,6 +242,26 @@ export default function LoginScreen() {
                 ) : null}
               </View>
             </View>
+            
+            {/* Authentication Error Message */}
+            {authState.error && (
+              <View style={[
+                styles.errorContainer, 
+                getErrorStyles().container
+              ]}>
+                <Ionicons 
+                  name={authState.errorType === 'warning' ? 'warning-outline' : 
+                         authState.errorType === 'info' ? 'information-circle-outline' : 
+                         'alert-circle-outline'} 
+                  size={20} 
+                  color={getErrorStyles().icon} 
+                  style={styles.errorIcon}
+                />
+                <Text style={[styles.authErrorText, getErrorStyles().text]}>
+                  {authState.error}
+                </Text>
+              </View>
+            )}
             
             <TouchableOpacity
               style={[
@@ -328,5 +379,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
     marginLeft: 4,
+  },
+  // New styles for auth error message
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 16,
+  },
+  errorIcon: {
+    marginRight: 8,
+  },
+  authErrorText: {
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
   },
 });

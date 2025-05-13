@@ -12,6 +12,7 @@ import {
   Platform,
   Dimensions,
   Alert,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -31,6 +32,74 @@ import { getAuthHeader } from '../../api/auth';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+// Theme Colors
+const THEME = {
+  dark: {
+    primary: '#1E3A8A',
+    secondary: '#2563EB',
+    accent: '#3B82F6',
+    background: '#0F172A',
+    cardBg: '#1E293B',
+    text: {
+      primary: '#F8FAFC',
+      secondary: '#94A3B8',
+      accent: '#60A5FA'
+    },
+    status: {
+      normal: '#1E293B',
+      warning: '#FFEB3B',
+      critical: '#FF0000', 
+      success: '#4CAF50'
+    },
+    border: '#334155',
+    shadow: 'rgba(0, 0, 0, 0.25)'
+  },
+  light: {
+    primary: '#2563EB',
+    secondary: '#3B82F6',
+    accent: '#60A5FA',
+    background: '#F8FAFC',
+    cardBg: '#FFFFFF',
+    text: {
+      primary: '#1E293B',
+      secondary: '#475569',
+      accent: '#2563EB'
+    },
+    status: {
+      normal: '#F1F5F9',
+      warning: '#FDE68A',
+      critical: '#FEE2E2',
+      success: '#DCFCE7'
+    },
+    border: '#E2E8F0',
+    shadow: 'rgba(0, 0, 0, 0.1)'
+  }
+};
+
+// Card Shadow Styles
+const CARD_SHADOW = Platform.select({
+  ios: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+  },
+  android: {
+    elevation: 8,
+  },
+});
+
+// Animation Constants
+const SCALE_ANIMATION_CONFIG = {
+  duration: 200,
+  useNativeDriver: true,
+};
+
+// Card Dimensions
+const SCREEN_PADDING = 16;
+const CARD_MARGIN = 8;
+const CARD_WIDTH = (SCREEN_WIDTH - (SCREEN_PADDING * 2) - (CARD_MARGIN * 2)) / 2;
+
 export default function OperatorDashboard() {
   const { isDarkMode, toggleTheme } = useTheme();
   const { authState, logout } = useAuth();
@@ -49,6 +118,9 @@ export default function OperatorDashboard() {
   const [previousBinaryStates, setPreviousBinaryStates] = useState<Record<string, string>>({});
   // For tracking if analog values are outside ranges
   const [alarmStates, setAlarmStates] = useState<Record<string, boolean>>({});
+
+  // Add notification badge animation
+  const [notificationBadgeScale] = useState(new Animated.Value(1));
 
   // Sample analog alarms data for when no real data is available
   const sampleAnalogAlarms = [
@@ -246,6 +318,28 @@ export default function OperatorDashboard() {
     }
   ];
 
+  // Add animation state AFTER sample data is defined
+  const [cardScales] = useState(() => 
+    new Map<string, Animated.Value>(
+      [...sampleAnalogAlarms, ...sampleBinaryAlarms].map(alarm => 
+        [alarm.id, new Animated.Value(1)]
+      )
+    )
+  );
+
+  // Animation handlers
+  const animateCard = useCallback((id: string, toValue: number) => {
+    const scale = cardScales.get(id);
+    if (scale) {
+      Animated.spring(scale, {
+        toValue,
+        useNativeDriver: true,
+        tension: 300,
+        friction: 20,
+      }).start();
+    }
+  }, [cardScales]);
+
   // Request notification permissions
   useEffect(() => {
     const requestPermissions = async () => {
@@ -427,12 +521,6 @@ export default function OperatorDashboard() {
     }
   }, [updateAlarmStatus, selectedAlarm]);
   
-  const handleAlarmPress = useCallback((id: string) => {
-    const alarm = activeAlarms?.find(a => a.id === id) || null;
-    setSelectedAlarm(alarm);
-    setDetailsVisible(true);
-  }, [activeAlarms]);
-  
   const handleCloseDetails = useCallback(() => {
     setDetailsVisible(false);
   }, []);
@@ -473,46 +561,46 @@ export default function OperatorDashboard() {
     return (
       <View style={styles.summaryContainer}>
         <View style={[
-          styles.summaryCardItem, 
-          { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }
+          styles.summaryCardItem,
+          { backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg }
         ]}>
-          <View style={[styles.summaryIcon, { backgroundColor: '#EF4444' }]}>
-            <Ionicons name="alert-circle" size={16} color="#FFFFFF" />
+          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.critical }]}>
+            <Ionicons name="alert-circle" size={16} color={THEME.dark.text.primary} />
           </View>
-          <Text style={[styles.summaryCount, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+          <Text style={[styles.summaryCount, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
             {activeAlarms?.filter(a => a.status === 'active' && a.severity === 'critical').length || 2}
           </Text>
-          <Text style={[styles.summaryLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+          <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
             Critical
           </Text>
         </View>
         
         <View style={[
-          styles.summaryCardItem, 
-          { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }
+          styles.summaryCardItem,
+          { backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg }
         ]}>
-          <View style={[styles.summaryIcon, { backgroundColor: '#F59E0B' }]}>
-            <Ionicons name="warning" size={16} color="#FFFFFF" />
+          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.warning }]}>
+            <Ionicons name="warning" size={16} color={THEME.dark.text.primary} />
           </View>
-          <Text style={[styles.summaryCount, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+          <Text style={[styles.summaryCount, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
             {activeAlarms?.filter(a => a.status === 'active' && a.severity === 'warning').length || 3}
           </Text>
-          <Text style={[styles.summaryLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+          <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
             Warning
           </Text>
         </View>
         
         <View style={[
-          styles.summaryCardItem, 
-          { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }
+          styles.summaryCardItem,
+          { backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg }
         ]}>
-          <View style={[styles.summaryIcon, { backgroundColor: '#10B981' }]}>
-            <Ionicons name="information-circle" size={16} color="#FFFFFF" />
+          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.success }]}>
+            <Ionicons name="information-circle" size={16} color={THEME.dark.text.primary} />
           </View>
-          <Text style={[styles.summaryCount, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+          <Text style={[styles.summaryCount, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
             {activeAlarms?.filter(a => a.status === 'active' && a.severity === 'info').length || 0}
           </Text>
-          <Text style={[styles.summaryLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+          <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
             Info
           </Text>
         </View>
@@ -527,129 +615,142 @@ export default function OperatorDashboard() {
         {/* Analog Alarms Section */}
         <View style={styles.alarmSection}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>Analog Alarms</Text>
-            <Text style={[styles.sectionSubtitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Continuous values with thresholds</Text>
+            <Text style={[styles.sectionTitle, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
+              Analog Alarms
+            </Text>
+            <Text style={[styles.sectionSubtitle, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+              Continuous values with thresholds
+            </Text>
           </View>
           <View style={styles.alarmGrid}>
             {sampleAnalogAlarms.map(alarm => (
-                <View key={alarm.id} style={styles.alarmCardWrapper}>
-                  <TouchableOpacity
-                    style={[
-                      styles.alarmCard,
-                      {
-                      backgroundColor: isDarkMode 
-                        ? getAnalogAlarmBackgroundDark(alarm) 
-                        : getAnalogAlarmBackground(alarm),
-                      borderColor: isDarkMode 
-                        ? getAnalogAlarmBorderDark(alarm) 
-                        : getAnalogAlarmBorder(alarm)
-                      }
-                    ]}
-                  onPress={() => {
-                    setSelectedAlarm(alarm as unknown as Alarm);
-                    setDetailsVisible(true);
-                  }}
-                  >
-                    <View style={styles.alarmCardTop}>
-                    <Text style={[styles.alarmCardTitle, { color: getAlarmTitleColor(alarm, isDarkMode) }]} numberOfLines={2}>{alarm.description}</Text>
-                      </View>
-                    <View style={styles.alarmCardContent}>
-                      <Ionicons 
-                        name={
-                          alarm.type === 'temperature' ? 'thermometer-outline' : 
-                          alarm.type === 'carbon' ? 'flask-outline' :
-                          alarm.type === 'level' ? 'water-outline' :
-                          'analytics-outline'
-                        } 
-                        size={24} 
-                        color="#6B7280" 
-                      />
-                      <View style={styles.alarmCardValues}>
-                      <Text style={[
-                        styles.valueText, 
-                        { color: getValueTextColor(alarm, isDarkMode) }
-                      ]}>Value: {alarm.value}{alarm.unit}</Text>
-                      <Text style={styles.setValue}>(Set: {alarm.setPoint})</Text>
-                      <Text style={styles.limitText}>Limits: {alarm.lowLimit} - {alarm.highLimit}</Text>
-                        <View style={styles.timeWrapper}>
-                          <Ionicons name="time-outline" size={12} color="#6B7280" />
-                        <Text style={styles.timeText}>{alarm.timestamp ? new Date(alarm.timestamp).toLocaleTimeString() : ''}</Text>
-                        </View>
+              <View key={alarm.id} style={styles.alarmCardWrapper}>
+                <View style={[
+                  styles.alarmCard,
+                  {
+                    backgroundColor: isDarkMode ? getAnalogAlarmBackground(alarm) : getAnalogAlarmBackground(alarm),
+                    borderColor: isDarkMode ? getAnalogAlarmBorder(alarm) : getAnalogAlarmBorder(alarm),
+                    borderLeftWidth: 4,
+                  }
+                ]}>
+                  <View style={styles.alarmCardTop}>
+                    <Text style={[styles.alarmCardTitle, { color: getAlarmTitleColor(alarm, isDarkMode) }]} numberOfLines={2}>
+                      {alarm.description}
+                    </Text>
+                  </View>
+                  <View style={styles.alarmCardContent}>
+                    <Ionicons 
+                      name={
+                        alarm.type === 'temperature' ? 'thermometer-outline' : 
+                        alarm.type === 'carbon' ? 'flask-outline' :
+                        alarm.type === 'level' ? 'water-outline' :
+                        'analytics-outline'
+                      } 
+                      size={20} 
+                      color={isDarkMode ? '#6B7280' : '#64748B'} 
+                    />
+                    <View style={styles.alarmCardValues}>
+                      <Text style={[styles.valueText, { color: getValueTextColor(alarm, isDarkMode) }]}>
+                        Value: {alarm.value}{alarm.unit}
+                      </Text>
+                      <Text style={[styles.setValue, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+                        (Set: {alarm.setPoint})
+                      </Text>
+                      <Text style={[styles.limitText, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+                        Limits: {alarm.lowLimit} - {alarm.highLimit}
+                      </Text>
+                      <View style={styles.timeWrapper}>
+                        <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#64748B'} />
+                        <Text style={[styles.timeText, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+                          {alarm.timestamp ? new Date(alarm.timestamp).toLocaleTimeString() : ''}
+                        </Text>
                       </View>
                     </View>
+                    {/* NEW ZONE PLACEMENT for Analog Alarms */}
                     {alarm.zone && (
-                      <View style={styles.zoneWrapper}>
-                      <Text style={styles.zoneText}>Zone: {alarm.zone === 'zone1' ? 'Zone 1' : 'Zone 2'}</Text>
-                      </View>
+                      <Text style={[
+                        styles.zoneText, 
+                        {
+                          color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary,
+                          marginLeft: 8, // Add spacing from the alarmCardValues
+                          alignSelf: 'center' // Vertically align with other items in alarmCardContent
+                        }
+                      ]}>
+                        {alarm.zone === 'zone1' ? 'Zone 1' : 'Zone 2'}
+                      </Text>
                     )}
-                  </TouchableOpacity>
+                  </View>
                 </View>
+              </View>
             ))}
-                      </View>
-                    </View>
+          </View>
+        </View>
+
         {/* Binary Alarms Section */}
         <View style={styles.alarmSection}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>Binary Alarms</Text>
-            <Text style={[styles.sectionSubtitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Status indicators (OK/Alarm)</Text>
+            <Text style={[styles.sectionTitle, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
+              Binary Alarms
+            </Text>
+            <Text style={[styles.sectionSubtitle, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+              Status indicators (OK/Alarm)
+            </Text>
           </View>
           <View style={styles.alarmGrid}>
             {sampleBinaryAlarms.map(alarm => (
-                <View key={alarm.id} style={styles.alarmCardWrapper}>
-                  <TouchableOpacity
-                    style={[
-                      styles.alarmCard,
-                      {
-                      backgroundColor: isDarkMode 
-                        ? getBinaryAlarmBackgroundDark(alarm) 
-                        : getBinaryAlarmBackground(alarm),
-                      borderColor: isDarkMode 
-                        ? getBinaryAlarmBorderDark(alarm) 
-                        : getBinaryAlarmBorder(alarm)
-                      }
-                    ]}
-                  onPress={() => {
-                    setSelectedAlarm(alarm as unknown as Alarm);
-                    setDetailsVisible(true);
-                  }}
-                  >
-                    <View style={styles.alarmCardTop}>
-                    <Text style={[styles.alarmCardTitle, { color: getBinaryTitleColor(alarm, isDarkMode) }]} numberOfLines={2}>{alarm.description}</Text>
+              <View key={alarm.id} style={styles.alarmCardWrapper}>
+                <View style={[
+                  styles.alarmCard,
+                  {
+                    backgroundColor: isDarkMode ? getBinaryAlarmBackground(alarm) : getBinaryAlarmBackground(alarm),
+                    borderColor: isDarkMode ? getBinaryAlarmBorder(alarm) : getBinaryAlarmBorder(alarm),
+                    borderLeftWidth: 4,
+                  }
+                ]}>
+                  <View style={styles.alarmCardTop}>
+                    <Text style={[styles.alarmCardTitle, { color: getBinaryTitleColor(alarm, isDarkMode) }]} numberOfLines={2}>
+                      {alarm.description}
+                    </Text>
+                  </View>
+                  <View style={styles.alarmCardContent}>
+                    <Ionicons 
+                      name={
+                        alarm.type === 'conveyor' ? 'swap-horizontal-outline' : 
+                        alarm.type === 'fan' ? 'aperture-outline' :
+                        alarm.type === 'heater' ? 'flame-outline' :
+                        alarm.type === 'level' ? 'water-outline' :
+                        'alert-circle-outline'
+                      } 
+                      size={20} 
+                      color={isDarkMode ? '#6B7280' : '#64748B'} 
+                    />
+                    <View style={styles.alarmCardValues}>
+                      <View style={styles.statusRow}>
+                        <Text style={[styles.valueText, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+                          Status: <Text style={{ color: getBinaryValueColor(alarm, isDarkMode), fontWeight: 'bold' }}>{alarm.value}</Text>
+                        </Text>
+                        {alarm.zone && (
+                          <Text style={[styles.zoneText, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+                            {alarm.zone === 'zone1' ? 'Zone 1' : 'Zone 2'}
+                          </Text>
+                        )}
                       </View>
-                    <View style={styles.alarmCardContent}>
-                      <Ionicons 
-                        name={
-                          alarm.type === 'conveyor' ? 'swap-horizontal-outline' : 
-                          alarm.type === 'fan' ? 'aperture-outline' :
-                          alarm.type === 'heater' ? 'flame-outline' :
-                          alarm.type === 'level' ? 'water-outline' :
-                          'alert-circle-outline'
-                        } 
-                        size={24} 
-                        color="#6B7280" 
-                      />
-                      <View style={styles.alarmCardValues}>
-                      <Text style={styles.valueText}>Status: <Text style={{ 
-                        color: getBinaryValueColor(alarm, isDarkMode),
-                        fontWeight: 'bold' 
-                      }}>{alarm.value}</Text></Text>
-                      <Text style={styles.setValue}>(Expected: {alarm.setPoint})</Text>
-                        <View style={styles.timeWrapper}>
-                          <Ionicons name="time-outline" size={12} color="#6B7280" />
-                        <Text style={styles.timeText}>{alarm.timestamp ? new Date(alarm.timestamp).toLocaleTimeString() : ''}</Text>
-                        </View>
+                      <Text style={[styles.setValue, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+                        (Expected: {alarm.setPoint})
+                      </Text>
+                      <View style={styles.timeWrapper}>
+                        <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#64748B'} />
+                        <Text style={[styles.timeText, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+                          {alarm.timestamp ? new Date(alarm.timestamp).toLocaleTimeString() : ''}
+                        </Text>
                       </View>
                     </View>
-                    {alarm.zone && (
-                      <View style={styles.zoneWrapper}>
-                      <Text style={styles.zoneText}>Zone: {alarm.zone === 'zone1' ? 'Zone 1' : 'Zone 2'}</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                  </View>
                 </View>
+              </View>
             ))}
-                      </View>
-                    </View>
+          </View>
+        </View>
       </View>
     );
   };
@@ -662,17 +763,19 @@ export default function OperatorDashboard() {
     setPoint: string;
   }
 
-  // Enhanced color system for better theme matching
   const getAnalogAlarmBackground = (alarm: AlarmData): string => {
     const value = parseFloat(alarm.value);
     const lowLimit = alarm.lowLimit && alarm.lowLimit !== '-' ? parseFloat(alarm.lowLimit) : null;
     const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
     
     if ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit)) {
-      return '#FEE2E2'; // Light theme - Error background (light red)
-    } else {
-      return '#DCFCE7'; // Light theme - Success background (light green)
+      return isDarkMode ? 
+        'rgba(136, 19, 55, 0.3)' : // Softer dark red background
+        'rgba(254, 226, 226, 0.6)'; // Light red with more opacity
     }
+    return isDarkMode ? 
+      'rgba(6, 95, 70, 0.2)' : // Softer dark green background
+      'rgba(220, 252, 231, 0.6)'; // Light green with more opacity
   };
 
   const getAnalogAlarmBackgroundDark = (alarm: AlarmData): string => {
@@ -681,10 +784,9 @@ export default function OperatorDashboard() {
     const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
     
     if ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit)) {
-      return '#7F1D1D'; // Dark theme - Error background (lighter red)
-    } else {
-      return '#065F46'; // Dark theme - Success background (lighter green)
+      return 'rgba(136, 19, 55, 0.3)'; // Softer dark red
     }
+    return 'rgba(6, 95, 70, 0.2)'; // Softer dark green
   };
 
   const getAnalogAlarmBorder = (alarm: AlarmData): string => {
@@ -693,119 +795,506 @@ export default function OperatorDashboard() {
     const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
     
     if ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit)) {
-      return '#F87171'; // Light theme - Error border (medium red)
-    } else {
-      return '#4ADE80'; // Light theme - Success border (medium green)
+      return isDarkMode ? THEME.dark.status.critical : THEME.light.status.critical;
     }
-  };
-
-  const getAnalogAlarmBorderDark = (alarm: AlarmData): string => {
-    const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit && alarm.lowLimit !== '-' ? parseFloat(alarm.lowLimit) : null;
-    const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
-    
-    if ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit)) {
-      return '#EF4444'; // Dark theme - Error border (brighter red)
-    } else {
-      return '#34D399'; // Dark theme - Success border (brighter green)
-    }
+    return isDarkMode ? THEME.dark.status.success : THEME.light.status.success;
   };
 
   const getBinaryAlarmBackground = (alarm: AlarmData): string => {
-    return alarm.value === alarm.setPoint ? '#DCFCE7' : '#FEE2E2'; // Light theme backgrounds
-  };
-
-  const getBinaryAlarmBackgroundDark = (alarm: AlarmData): string => {
-    return alarm.value === alarm.setPoint ? '#065F46' : '#7F1D1D'; // Dark theme backgrounds - lighter colors
+    return alarm.value === alarm.setPoint ? 
+      (isDarkMode ? 'rgba(6, 95, 70, 0.2)' : 'rgba(220, 252, 231, 0.6)') :
+      (isDarkMode ? 'rgba(136, 19, 55, 0.3)' : 'rgba(254, 226, 226, 0.6)');
   };
 
   const getBinaryAlarmBorder = (alarm: AlarmData): string => {
-    return alarm.value === alarm.setPoint ? '#4ADE80' : '#F87171'; // Light theme borders
+    return alarm.value === alarm.setPoint ? 
+      (isDarkMode ? THEME.dark.status.success : THEME.light.status.success) :
+      (isDarkMode ? THEME.dark.status.critical : THEME.light.status.critical);
   };
 
-  const getBinaryAlarmBorderDark = (alarm: AlarmData): string => {
-    return alarm.value === alarm.setPoint ? '#34D399' : '#EF4444'; // Dark theme borders - brighter colors
-  };
-
-  // Get text color for alarm card title based on theme and alarm status
   const getAlarmTitleColor = (alarm: AlarmData, isDark: boolean): string => {
     const value = parseFloat(alarm.value);
     const lowLimit = alarm.lowLimit && alarm.lowLimit !== '-' ? parseFloat(alarm.lowLimit) : null;
     const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
     const isOutOfRange = ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit));
     
-    if (isDark) {
-      return isOutOfRange ? '#FEE2E2' : '#D1FAE5'; // Dark theme - brighter text for better contrast
-    } else {
-      return isOutOfRange ? '#991B1B' : '#065F46'; // Light theme - unchanged
-    }
+    return isDark ? 
+      (isOutOfRange ? '#FCA5A5' : '#6EE7B7') : // More visible in dark mode
+      (isOutOfRange ? '#991B1B' : '#065F46'); // More readable in light mode
   };
 
-  // Get text color for binary alarm card title based on theme and alarm status
   const getBinaryTitleColor = (alarm: AlarmData, isDark: boolean): string => {
     const isNormal = alarm.value === alarm.setPoint;
-    
-    if (isDark) {
-      return isNormal ? '#D1FAE5' : '#FEE2E2'; // Dark theme - brighter text for better contrast
-    } else {
-      return isNormal ? '#065F46' : '#991B1B'; // Light theme - unchanged
-    }
+    return isDark ? 
+      (isNormal ? '#6EE7B7' : '#FCA5A5') : // More visible in dark mode
+      (isNormal ? '#065F46' : '#991B1B'); // More readable in light mode
   };
 
-  // Get text color for the value display based on alarm status
   const getValueTextColor = (alarm: AlarmData, isDark: boolean): string => {
     const value = parseFloat(alarm.value);
     const lowLimit = alarm.lowLimit && alarm.lowLimit !== '-' ? parseFloat(alarm.lowLimit) : null;
     const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
     const isOutOfRange = ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit));
     
-    if (isDark) {
-      return isOutOfRange ? '#FCA5A5' : '#6EE7B7'; // Bright colors for dark theme - unchanged
-    } else {
-      return isOutOfRange ? '#DC2626' : '#059669'; // Strong colors for light theme - unchanged
-    }
+    return isDark ? 
+      (isOutOfRange ? '#FCA5A5' : '#6EE7B7') : // More visible in dark mode
+      (isOutOfRange ? '#991B1B' : '#065F46'); // More readable in light mode
   };
 
-  // Get text color for binary alarm value display
   const getBinaryValueColor = (alarm: AlarmData, isDark: boolean): string => {
     const isNormal = alarm.value === alarm.setPoint;
-    
-    if (isDark) {
-      return isNormal ? '#6EE7B7' : '#FCA5A5'; // Bright colors for dark theme
-    } else {
-      return isNormal ? '#059669' : '#DC2626'; // Strong colors for light theme
-    }
+    return isDark ? 
+      (isNormal ? '#6EE7B7' : '#FCA5A5') : // More visible in dark mode
+      (isNormal ? '#065F46' : '#991B1B'); // More readable in light mode
   };
   
+  // Add notification badge animation
+  useEffect(() => {
+    // Animate notification badge when count changes
+    Animated.sequence([
+      Animated.spring(notificationBadgeScale, {
+        toValue: 1.2,
+        useNativeDriver: true,
+        tension: 400,
+        friction: 20,
+      }),
+      Animated.spring(notificationBadgeScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 400,
+        friction: 20,
+      }),
+    ]).start();
+  }, [unreadNotifications]);
+
+  // Define styles inside the component to access isDarkMode
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 3,
+        },
+        android: {
+          elevation: 3,
+        },
+      }),
+    },
+    headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    logoContainer: {
+      padding: 8,
+      borderRadius: 14,
+    },
+    logo: {
+      width: 40,
+      height: 40,
+    },
+    titleContainer: {
+      marginLeft: 14,
+    },
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: '600',
+      letterSpacing: 0.3,
+    },
+    headerSubtitle: {
+      fontSize: 13,
+      marginTop: 2,
+      fontWeight: '400',
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    headerButton: {
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+    },
+    notificationBadge: {
+      position: 'absolute',
+      top: -4,
+      right: -4,
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 4,
+    },
+    notificationBadgeText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '600',
+    },
+    scrollContent: {
+      padding: SCREEN_PADDING,
+      paddingBottom: 80,
+    },
+    // New summary card styles
+    summaryContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+      marginTop: 8,
+      paddingHorizontal: 4,
+    },
+    summaryCardItem: {
+      width: '32%',
+      borderRadius: 12,
+      padding: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.15,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 3,
+        },
+      }),
+    },
+    summaryIcon: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 6,
+    },
+    summaryCount: {
+      fontSize: 18,
+      fontWeight: '700',
+      marginBottom: 2,
+    },
+    summaryLabel: {
+      fontSize: 11,
+      fontWeight: '500',
+    },
+    // Alarm section styles
+    alarmSections: {
+      marginBottom: 16,
+      marginTop: 16,
+    },
+    alarmSection: {
+      marginBottom: 24,
+    },
+    sectionHeader: {
+      marginBottom: 16,
+      backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.8)' : 'rgba(241, 245, 249, 0.8)',
+      padding: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDarkMode ? 'rgba(71, 85, 105, 0.3)' : 'rgba(203, 213, 225, 0.8)',
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      marginBottom: 2,
+    },
+    sectionSubtitle: {
+      fontSize: 12,
+      marginTop: 2,
+    },
+    alarmGrid: {
+      flexDirection: 'column',
+      marginHorizontal: 0,
+    },
+    alarmCardWrapper: {
+      width: '100%',
+      marginHorizontal: 0,
+      marginBottom: 8,
+    },
+    alarmCard: {
+      borderRadius: 8,
+      padding: 10,
+      backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+      borderWidth: 1,
+      borderColor: isDarkMode ? 'rgba(71, 85, 105, 0.3)' : 'rgba(203, 213, 225, 0.8)',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.1,
+          shadowRadius: 2,
+        },
+        android: {
+          elevation: 2,
+        },
+      }),
+    },
+    alarmCardTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 8,
+    },
+    alarmCardTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      flex: 1,
+      marginRight: 8,
+    },
+    alarmCardContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+      padding: 8,
+      borderRadius: 6,
+      marginTop: 6,
+    },
+    alarmCardValues: {
+      marginLeft: 10,
+      flex: 1,
+    },
+    statusRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 2,
+    },
+    valueText: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    setValue: {
+      fontSize: 11,
+      marginBottom: 2,
+      opacity: 0.9,
+    },
+    limitText: {
+      fontSize: 10,
+      opacity: 0.8,
+    },
+    timeWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 6,
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+      padding: 4,
+      borderRadius: 4,
+      alignSelf: 'flex-start',
+    },
+    timeText: {
+      fontSize: 10,
+      marginLeft: 3,
+      opacity: 0.9,
+    },
+    zoneWrapper: {
+      marginTop: 8,
+      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+      padding: 4,
+      borderRadius: 4,
+      alignSelf: 'flex-start',
+    },
+    zoneText: {
+      fontSize: 12,
+      fontWeight: '500',
+      backgroundColor: 'rgba(0, 0, 0, 0.05)',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    emptyStateContainer: {
+      padding: 16,
+      backgroundColor: '#FFFFFF',
+      borderRadius: 12,
+      alignItems: 'center',
+    },
+    emptyStateText: {
+      color: '#6B7280',
+      fontSize: 14,
+    },
+    lastUpdatedText: {
+      textAlign: 'center',
+      fontSize: 12,
+      fontWeight: '500',
+      color: THEME.dark.text.secondary,
+    },
+    updateInfoText: {
+      textAlign: 'center',
+      fontSize: 10,
+      marginTop: 2,
+      color: THEME.dark.text.secondary,
+    },
+    bottomNav: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      borderRadius: 10,
+      paddingVertical: 10,
+      borderTopWidth: 1,
+      backgroundColor: THEME.dark.cardBg,
+      borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    navItem: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 6,
+    },
+    navLabel: {
+      fontSize: 12,
+      marginTop: 2,
+      color: THEME.dark.text.secondary,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingText: {
+      marginTop: 12,
+      fontSize: 16,
+      color: THEME.dark.text.secondary,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    errorTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      marginTop: 16,
+      marginBottom: 8,
+      textAlign: 'center',
+      color: THEME.dark.text.primary,
+    },
+    errorMessage: {
+      fontSize: 14,
+      textAlign: 'center',
+      marginBottom: 24,
+      color: THEME.dark.text.secondary,
+    },
+    retryButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      borderRadius: 8,
+      backgroundColor: THEME.dark.primary,
+    },
+    retryButtonText: {
+      color: THEME.dark.text.primary,
+      fontSize: 16,
+      fontWeight: '500',
+    },
+    alarmCardActions: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: '#F3F4F6',
+    },
+    actionButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 6,
+      backgroundColor: '#F3F4F6',
+      flex: 1,
+      marginHorizontal: 4,
+    },
+    actionButtonText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#6B7280',
+      marginLeft: 4,
+    },
+  });
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#0F172A' : '#F8FAFC' }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
-        <View style={styles.logoContainer}>
-          <Image 
-            source={require('../../../assets/images/icon.png')} 
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={[styles.headerTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-            Eagle Notifier
-          </Text>
+      {/* Enhanced Header */}
+      <View style={[
+        styles.header,
+        {
+          backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.95)' : 'rgba(248, 250, 252, 0.95)',
+          borderBottomColor: isDarkMode ? 'rgba(51, 65, 85, 0.3)' : 'rgba(226, 232, 240, 0.8)',
+        }
+      ]}>
+        <View style={styles.headerLeft}>
+          <View style={[
+            styles.logoContainer,
+            {
+              backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
+            }
+          ]}>
+            <Image 
+              source={require('../../../assets/images/icon.png')} 
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+          <View style={styles.titleContainer}>
+            <Text style={[
+              styles.headerTitle,
+              { 
+                color: isDarkMode ? '#F8FAFC' : '#1E293B',
+              }
+            ]}>
+              Eagle Notifier
+            </Text>
+            <Text style={[
+              styles.headerSubtitle,
+              { 
+                color: isDarkMode ? '#94A3B8' : '#64748B',
+              }
+            ]}>
+              Operator Dashboard
+            </Text>
+          </View>
         </View>
         
         <View style={styles.headerActions}>
           <TouchableOpacity 
-            style={styles.notificationButton}
+            style={[styles.headerButton, {
+              backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)',
+            }]}
             onPress={() => router.push('/notifications')}
           >
             <Ionicons 
               name="notifications-outline" 
-              size={24} 
-              color={isDarkMode ? '#E5E7EB' : '#4B5563'} 
+              size={22} 
+              color={isDarkMode ? '#94A3B8' : '#475569'}
             />
             {unreadNotifications > 0 && (
-              <View style={styles.notificationBadge}>
+              <View style={[
+                styles.notificationBadge,
+                { 
+                  backgroundColor: isDarkMode ? '#EF4444' : '#DC2626',
+                }
+              ]}>
                 <Text style={styles.notificationBadgeText}>
                   {unreadNotifications > 9 ? '9+' : unreadNotifications}
                 </Text>
@@ -814,13 +1303,16 @@ export default function OperatorDashboard() {
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={[styles.iconButton, { backgroundColor: isDarkMode ? '#1F2937' : '#F3F4F6' }]}
+            style={[
+              styles.headerButton,
+              { backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)' }
+            ]}
             onPress={toggleTheme}
           >
             <Ionicons 
               name={isDarkMode ? 'sunny-outline' : 'moon-outline'} 
               size={22}
-              color={isDarkMode ? '#E5E7EB' : '#4B5563'}
+              color={isDarkMode ? '#94A3B8' : '#475569'}
             />
           </TouchableOpacity>
         </View>
@@ -883,66 +1375,61 @@ export default function OperatorDashboard() {
       )}
       
       {/* Bottom Navigation */}
-      <View style={[styles.bottomNav, { 
-        backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
-        borderTopColor: isDarkMode ? '#374151' : '#E5E7EB'
-      }]}>
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push('/(dashboard)/operator/' as any)}
+      <SafeAreaView edges={['bottom']} style={{ backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }}>
+        <View style={[styles.bottomNav, { 
+          backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+          borderTopColor: isDarkMode ? '#374151' : '#E5E7EB'
+        }]}
         >
-          <Ionicons 
-            name="home" 
-            size={22} 
-            color={isDarkMode ? '#60A5FA' : '#2563EB'} 
-          />
-          <Text style={[styles.navLabel, { color: isDarkMode ? '#60A5FA' : '#2563EB' }]}>
-            Dashboard
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push('/(dashboard)/analytics')}
-        >
-          <Ionicons 
-            name="analytics-outline" 
-            size={22} 
-            color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
-          />
-          <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Analytics
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push('/(dashboard)/reports')}
-        >
-          <Ionicons 
-            name="document-text-outline" 
-            size={22} 
-            color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
-          />
-          <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Reports
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.navItem}
-          onPress={() => router.push('/(dashboard)/profile')}
-        >
-          <Ionicons 
-            name="settings-outline" 
-            size={22} 
-            color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
-          />
-          <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Settings
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity 
+            style={styles.navItem}
+            onPress={() => router.push('/(dashboard)/operator/' as any)}
+          >
+            <Ionicons 
+              name="home" 
+              size={22} 
+              color={isDarkMode ? '#60A5FA' : '#2563EB'} 
+            />
+            <Text style={[styles.navLabel, { color: isDarkMode ? '#60A5FA' : '#2563EB' }]}>Dashboard</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.navItem}
+            onPress={() => router.push('/(dashboard)/analytics')}
+          >
+            <Ionicons 
+              name="analytics-outline" 
+              size={22} 
+              color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
+            />
+            <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Analytics</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.navItem}
+            onPress={() => router.push('/(dashboard)/reports')}
+          >
+            <Ionicons 
+              name="document-text-outline" 
+              size={22} 
+              color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
+            />
+            <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Reports</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.navItem}
+            onPress={() => router.push('/(dashboard)/profile')}
+          >
+            <Ionicons 
+              name="settings-outline" 
+              size={22} 
+              color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
+            />
+            <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Settings</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
       
       {/* Alarm Details Modal */}
       <AlarmDetails
@@ -955,298 +1442,4 @@ export default function OperatorDashboard() {
       />
     </SafeAreaView>
   );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logo: {
-    width: 36,
-    height: 36,
-    marginRight: 18,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  notificationButton: {
-    position: 'relative',
-    padding: 8,
-    marginRight: 8,
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#EF4444',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  notificationBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 80, // Extra space for bottom nav
-  },
-  // New summary card styles
-  summaryContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  summaryCardItem: {
-    width: '30%',
-    borderRadius: 6,
-    padding: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  summaryIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  summaryCount: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  summaryLabel: {
-    fontSize: 10,
-  },
-  // Alarm section styles
-  alarmSections: {
-    marginBottom: 16,
-    marginTop: 10,
-  },
-  alarmSection: {
-    marginBottom: 16,
-  },
-  sectionHeader: {
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  alarmGrid: {
-    flexDirection: 'column',
-  },
-  alarmCardWrapper: {
-    marginBottom: 12,
-  },
-  alarmCard: {
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  alarmCardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  alarmCardTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    flex: 1,
-    marginRight: 8,
-  },
-  alarmCardIcons: {
-    flexDirection: 'row',
-  },
-  iconBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 4,
-  },
-  alarmCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  alarmCardValues: {
-    marginLeft: 8,
-    flex: 1,
-  },
-  valueText: {
-    fontSize: 14,
-    color: '#1F2937',
-  },
-  setValue: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  limitText: {
-    fontSize: 11,
-    color: '#6B7280',
-  },
-  timeWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  timeText: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginLeft: 4,
-  },
-  zoneWrapper: {
-    marginTop: 8,
-  },
-  zoneText: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  emptyStateContainer: {
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    color: '#6B7280',
-    fontSize: 14,
-  },
-  lastUpdatedText: {
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  updateInfoText: {
-    textAlign: 'center',
-    fontSize: 10,
-    marginTop: 2,
-  },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 10,
-    borderTopWidth: 1,
-  },
-  navItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-  },
-  navLabel: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  errorMessage: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  retryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  alarmCardActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    backgroundColor: '#F3F4F6',
-    flex: 1,
-    marginHorizontal: 4,
-  },
-  actionButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginLeft: 4,
-  },
-}); 
+} 

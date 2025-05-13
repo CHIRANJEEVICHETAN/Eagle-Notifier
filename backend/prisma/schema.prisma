@@ -22,7 +22,7 @@ model User {
   password        String
   name            String
   role            UserRole  @default(OPERATOR)
-  avatar          String?
+  avatar          String?   @db.Text
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   acknowledgedAlarms Alarm[] @relation("AcknowledgedBy")

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -17,54 +19,42 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import * as ImagePicker from 'expo-image-picker';
+import axios from 'axios';
+import { apiConfig } from '../../api/config';
+import { getAuthHeader } from '../../api/auth';
+import { UserRole } from '../../types/auth';
+import { NotificationSettings } from '../../types/notification';
 
-// Mock user service
-const userService = {
-  updateUserProfile: async (data: {
-    name?: string;
-    email?: string;
-  }) => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    console.log('Updating user profile with:', data);
-    return { success: true };
-  },
-  
-  changePassword: async (data: {
-    currentPassword: string;
-    newPassword: string;
-  }) => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // In a real app, we would validate the current password
-    if (data.currentPassword === 'wrongpassword') {
-      throw new Error('Current password is incorrect');
-    }
-    
-    console.log('Changing password with:', data);
-    return { success: true };
-  },
-  
-  updateNotificationSettings: async (settings: {
-    pushEnabled: boolean;
-    emailEnabled: boolean;
-    criticalAlarmsOnly: boolean;
-  }) => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    console.log('Updating notification settings with:', settings);
-    return { success: true };
-  },
+// Types for profile API responses
+interface ProfileResponse {
+  message: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    avatar?: string;
+    createdAt: string;
+    updatedAt: string;
+    pushToken?: string;
+  };
+}
+
+// Helper function to convert API user to local User type
+const convertApiUserToUserType = (apiUser: ProfileResponse['user']) => {
+  return {
+    ...apiUser,
+    role: apiUser.role as UserRole, // Cast the role string to UserRole type
+  };
 };
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme } = useTheme();
   const { authState, updateUser, logout } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
   
   // Profile form state
   const [name, setName] = useState(authState.user?.name || '');
@@ -78,83 +68,198 @@ export default function ProfileScreen() {
   const [passwordFormVisible, setPasswordFormVisible] = useState(false);
   
   // Notification settings state
-  const [notificationSettings, setNotificationSettings] = useState({
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
     pushEnabled: true,
     emailEnabled: false,
-    criticalAlarmsOnly: false,
+    criticalOnly: false,
   });
   
   // Logout modal state
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   
+  // Validation states
+  const [nameError, setNameError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [currentPasswordError, setCurrentPasswordError] = useState('');
+  const [newPasswordError, setNewPasswordError] = useState('');
+  const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  
+  // Image picker state
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  
+  // Fetch notification settings
+  const { data: settingsData } = useQuery({
+    queryKey: ['notificationSettings'],
+    queryFn: async () => {
+      const headers = await getAuthHeader();
+      const response = await axios.get<NotificationSettings>(
+        `${apiConfig.apiUrl}/api/notifications/settings`,
+        { headers }
+      );
+      return response.data;
+    }
+  });
+  
+  // Update notification settings from API data
+  useEffect(() => {
+    if (settingsData) {
+      setNotificationSettings(settingsData);
+    }
+  }, [settingsData]);
+  
   // Profile update mutation
   const profileMutation = useMutation({
-    mutationFn: userService.updateUserProfile,
-    onSuccess: () => {
-      // Update local auth state with new profile info
-      updateUser({ name, email });
+    mutationFn: async (data: { name: string; email: string }) => {
+      const headers = await getAuthHeader();
+      const response = await axios.put<ProfileResponse>(
+        `${apiConfig.apiUrl}/api/auth/profile`, 
+        data,
+        { headers }
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      // Update local auth state
+      if (data.user) {
+        updateUser(convertApiUserToUserType(data.user));
+      }
+      
       setEditingProfile(false);
       Alert.alert('Success', 'Profile updated successfully');
     },
-    onError: (error) => {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to update profile');
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.message || 'An error occurred. Please try again.';
+      Alert.alert('Error', errorMessage);
     },
   });
   
   // Password change mutation
   const passwordMutation = useMutation({
-    mutationFn: userService.changePassword,
+    mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
+      const headers = await getAuthHeader();
+      const response = await axios.put(
+        `${apiConfig.apiUrl}/api/auth/change-password`, 
+        data,
+        { headers }
+      );
+      return response.data;
+    },
     onSuccess: () => {
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
       setPasswordFormVisible(false);
-      resetPasswordForm();
       Alert.alert('Success', 'Password changed successfully');
     },
-    onError: (error) => {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to change password');
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.message || 'An error occurred. Please try again.';
+      
+      // Check if it's a current password error
+      if (errorMessage.includes('Current password')) {
+        setCurrentPasswordError(errorMessage);
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     },
   });
   
   // Notification settings mutation
   const notificationMutation = useMutation({
-    mutationFn: userService.updateNotificationSettings,
-    onSuccess: () => {
+    mutationFn: async (settings: Partial<NotificationSettings>) => {
+      const headers = await getAuthHeader();
+      const response = await axios.put<NotificationSettings>(
+        `${apiConfig.apiUrl}/api/notifications/settings`,
+        settings,
+        { headers }
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setNotificationSettings(data);
+      queryClient.invalidateQueries({ queryKey: ['notificationSettings'] });
       Alert.alert('Success', 'Notification settings updated');
     },
-    onError: (error) => {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to update notification settings');
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.message || 'Failed to update notification settings';
+      Alert.alert('Error', errorMessage);
     },
   });
   
+  // Avatar update mutation
+  const avatarMutation = useMutation({
+    mutationFn: async (data: { avatar: string | null }) => {
+      const headers = await getAuthHeader();
+      const response = await axios.put<ProfileResponse>(
+        `${apiConfig.apiUrl}/api/auth/profile`, 
+        data,
+        { headers }
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      // Update local auth state
+      if (data.user) {
+        updateUser(convertApiUserToUserType(data.user));
+      }
+      Alert.alert('Success', 'Profile picture updated');
+    },
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.message || 'Failed to update profile picture';
+      Alert.alert('Error', errorMessage);
+    },
+  });
+  
+  // Remove avatar mutation
+  const removeAvatarMutation = useMutation({
+    mutationFn: async () => {
+      const headers = await getAuthHeader();
+      const response = await axios.delete<ProfileResponse>(
+        `${apiConfig.apiUrl}/api/auth/avatar`, 
+        { headers }
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      // Update local auth state
+      if (data.user) {
+        updateUser(convertApiUserToUserType(data.user));
+      }
+      Alert.alert('Success', 'Profile picture removed');
+    },
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.message || 'Failed to remove profile picture';
+      Alert.alert('Error', errorMessage);
+    },
+  });
+  
+  // Update name whenever authState changes
+  useEffect(() => {
+    setName(authState.user?.name || '');
+    setEmail(authState.user?.email || '');
+  }, [authState.user]);
+  
   // Handle profile save
   const handleProfileSave = useCallback(() => {
-    // Validate email (basic)
-    if (!email.includes('@')) {
-      Alert.alert('Validation Error', 'Please enter a valid email address');
-      return;
-    }
+    const isNameValid = validateName(name);
+    const isEmailValid = validateEmail(email);
     
-    profileMutation.mutate({ name, email });
+    if (isNameValid && isEmailValid) {
+      profileMutation.mutate({ name, email });
+    }
   }, [name, email, profileMutation]);
   
   // Handle password change
   const handlePasswordChange = useCallback(() => {
-    // Validate
-    if (!currentPassword) {
-      Alert.alert('Validation Error', 'Current password is required');
-      return;
-    }
+    const isCurrentPasswordValid = validateCurrentPassword(currentPassword);
+    const isNewPasswordValid = validateNewPassword(newPassword);
+    const isConfirmPasswordValid = validateConfirmPassword(confirmPassword);
     
-    if (newPassword.length < 6) {
-      Alert.alert('Validation Error', 'New password must be at least 6 characters');
-      return;
+    if (isCurrentPasswordValid && isNewPasswordValid && isConfirmPasswordValid) {
+      passwordMutation.mutate({ 
+        currentPassword, 
+        newPassword
+      });
     }
-    
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Validation Error', 'Passwords do not match');
-      return;
-    }
-    
-    passwordMutation.mutate({ currentPassword, newPassword });
   }, [currentPassword, newPassword, confirmPassword, passwordMutation]);
   
   // Reset password form
@@ -165,7 +270,7 @@ export default function ProfileScreen() {
   }, []);
   
   // Handle notification setting toggle
-  const handleToggleSetting = useCallback((setting: keyof typeof notificationSettings) => {
+  const handleToggleSetting = useCallback((setting: keyof NotificationSettings) => {
     setNotificationSettings(prev => {
       const newSettings = {
         ...prev,
@@ -183,8 +288,163 @@ export default function ProfileScreen() {
   const cancelProfileEdit = useCallback(() => {
     setName(authState.user?.name || '');
     setEmail(authState.user?.email || '');
+    setNameError('');
+    setEmailError('');
     setEditingProfile(false);
   }, [authState.user]);
+  
+  // Image picker functions
+  const pickImage = async (useCamera = false) => {
+    try {
+      if (useCamera) {
+        // Request camera permissions
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera permission is required to take photos');
+          return;
+        }
+      } else {
+        // Request media library permissions
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Media library permission is required to select photos');
+          return;
+        }
+      }
+      
+      setAvatarLoading(true);
+      
+      // Launch camera or image picker based on current expo-image-picker API
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+            base64: true,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+            base64: true,
+          });
+      
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        
+        // Convert to base64 if not already provided
+        let base64Image = '';
+        if (asset.base64) {
+          base64Image = `data:image/jpeg;base64,${asset.base64}`;
+        } else if (asset.uri) {
+          // This fallback shouldn't be needed as we requested base64, but just in case
+          Alert.alert('Error', 'Failed to convert image to base64');
+          setAvatarLoading(false);
+          return;
+        }
+        
+        // Update avatar in API and local state
+        await avatarMutation.mutateAsync({ avatar: base64Image });
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to process image');
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
+  
+  // Handle avatar selection with options
+  const handleAvatarSelection = () => {
+    Alert.alert(
+      'Update Profile Picture',
+      'Choose an option',
+      [
+        { text: 'Take Photo', onPress: () => pickImage(true) },
+        { text: 'Choose from Library', onPress: () => pickImage(false) },
+        { 
+          text: 'Remove Photo', 
+          onPress: () => {
+            if (authState.user?.avatar) {
+              removeAvatarMutation.mutate();
+            }
+          },
+          style: 'destructive'
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+  
+  // Validation functions
+  const validateName = (value: string) => {
+    setName(value);
+    if (!value.trim()) {
+      setNameError('Name is required');
+      return false;
+    } else if (value.trim().length < 2) {
+      setNameError('Name must be at least 2 characters');
+      return false;
+    } else {
+      setNameError('');
+      return true;
+    }
+  };
+  
+  const validateEmail = (value: string) => {
+    setEmail(value);
+    if (!value.trim()) {
+      setEmailError('Email is required');
+      return false;
+    } else if (!/\S+@\S+\.\S+/.test(value)) {
+      setEmailError('Please enter a valid email address');
+      return false;
+    } else {
+      setEmailError('');
+      return true;
+    }
+  };
+  
+  const validateCurrentPassword = (value: string) => {
+    setCurrentPassword(value);
+    if (!value) {
+      setCurrentPasswordError('Current password is required');
+      return false;
+    } else {
+      setCurrentPasswordError('');
+      return true;
+    }
+  };
+  
+  const validateNewPassword = (value: string) => {
+    setNewPassword(value);
+    if (!value) {
+      setNewPasswordError('New password is required');
+      return false;
+    } else if (value.length < 6) {
+      setNewPasswordError('Password must be at least 6 characters');
+      return false;
+    } else {
+      setNewPasswordError('');
+      return true;
+    }
+  };
+  
+  const validateConfirmPassword = (value: string) => {
+    setConfirmPassword(value);
+    if (!value) {
+      setConfirmPasswordError('Please confirm your password');
+      return false;
+    } else if (value !== newPassword) {
+      setConfirmPasswordError('Passwords do not match');
+      return false;
+    } else {
+      setConfirmPasswordError('');
+      return true;
+    }
+  };
   
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
@@ -265,20 +525,41 @@ export default function ProfileScreen() {
           </View>
           
           <View style={styles.profileInfo}>
-            <View style={styles.avatarContainer}>
-              <View style={[styles.avatar, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
-                <Text style={[styles.avatarText, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-                  {authState.user?.name?.charAt(0) || 'U'}
-                </Text>
-              </View>
+            <TouchableOpacity
+              style={styles.avatarContainer}
+              onPress={handleAvatarSelection}
+              disabled={avatarLoading || avatarMutation.isPending || removeAvatarMutation.isPending}
+            >
+              {avatarLoading || avatarMutation.isPending || removeAvatarMutation.isPending ? (
+                <View style={[styles.avatar, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
+                  <ActivityIndicator color={isDarkMode ? '#60A5FA' : '#2563EB'} />
+                </View>
+              ) : authState.user?.avatar ? (
+                <Image 
+                  source={{ uri: authState.user.avatar }} 
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <View style={[styles.avatar, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
+                  <Text style={[styles.avatarText, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+                    {authState.user?.name?.charAt(0) || 'U'}
+                  </Text>
+                  <Ionicons
+                    name="camera"
+                    size={16}
+                    color={isDarkMode ? '#9CA3AF' : '#6B7280'}
+                    style={styles.cameraIcon}
+                  />
+                </View>
+              )}
               <Text style={[styles.roleBadge, { 
-                backgroundColor: authState.user?.role === 'admin' 
+                backgroundColor: authState.user?.role === 'ADMIN' 
                   ? (isDarkMode ? '#4F46E5' : '#6366F1')
                   : (isDarkMode ? '#2563EB' : '#3B82F6'),
               }]}>
-                {authState.user?.role === 'admin' ? 'Admin' : 'Operator'}
+                {authState.user?.role === 'ADMIN' ? 'Admin' : 'Operator'}
               </Text>
-            </View>
+            </TouchableOpacity>
             
             <View style={styles.profileFields}>
               {editingProfile ? (
@@ -291,13 +572,16 @@ export default function ProfileScreen() {
                       style={[styles.input, { 
                         backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
                         color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                        borderColor: isDarkMode ? '#4B5563' : '#D1D5DB',
+                        borderColor: nameError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
                       }]}
                       value={name}
-                      onChangeText={setName}
+                      onChangeText={validateName}
                       placeholder="Your name"
                       placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
                     />
+                    {nameError ? (
+                      <Text style={styles.errorText}>{nameError}</Text>
+                    ) : null}
                   </View>
                   
                   <View style={styles.inputContainer}>
@@ -308,15 +592,18 @@ export default function ProfileScreen() {
                       style={[styles.input, { 
                         backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
                         color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                        borderColor: isDarkMode ? '#4B5563' : '#D1D5DB',
+                        borderColor: emailError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
                       }]}
                       value={email}
-                      onChangeText={setEmail}
+                      onChangeText={validateEmail}
                       placeholder="Your email"
                       placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
                       keyboardType="email-address"
                       autoCapitalize="none"
                     />
+                    {emailError ? (
+                      <Text style={styles.errorText}>{emailError}</Text>
+                    ) : null}
                   </View>
                 </>
               ) : (
@@ -370,14 +657,17 @@ export default function ProfileScreen() {
                   style={[styles.input, { 
                     backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
                     color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                    borderColor: isDarkMode ? '#4B5563' : '#D1D5DB',
+                    borderColor: currentPasswordError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
                   }]}
                   value={currentPassword}
-                  onChangeText={setCurrentPassword}
+                  onChangeText={validateCurrentPassword}
                   placeholder="Enter current password"
                   placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
                   secureTextEntry
                 />
+                {currentPasswordError ? (
+                  <Text style={styles.errorText}>{currentPasswordError}</Text>
+                ) : null}
               </View>
               
               <View style={styles.inputContainer}>
@@ -388,14 +678,17 @@ export default function ProfileScreen() {
                   style={[styles.input, { 
                     backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
                     color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                    borderColor: isDarkMode ? '#4B5563' : '#D1D5DB',
+                    borderColor: newPasswordError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
                   }]}
                   value={newPassword}
-                  onChangeText={setNewPassword}
+                  onChangeText={validateNewPassword}
                   placeholder="Enter new password"
                   placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
                   secureTextEntry
                 />
+                {newPasswordError ? (
+                  <Text style={styles.errorText}>{newPasswordError}</Text>
+                ) : null}
               </View>
               
               <View style={styles.inputContainer}>
@@ -406,14 +699,17 @@ export default function ProfileScreen() {
                   style={[styles.input, { 
                     backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
                     color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                    borderColor: isDarkMode ? '#4B5563' : '#D1D5DB',
+                    borderColor: confirmPasswordError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
                   }]}
                   value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  onChangeText={validateConfirmPassword}
                   placeholder="Confirm new password"
                   placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
                   secureTextEntry
                 />
+                {confirmPasswordError ? (
+                  <Text style={styles.errorText}>{confirmPasswordError}</Text>
+                ) : null}
               </View>
               
               <TouchableOpacity
@@ -488,8 +784,8 @@ export default function ProfileScreen() {
               </Text>
             </View>
             <Switch
-              value={notificationSettings.criticalAlarmsOnly}
-              onValueChange={() => handleToggleSetting('criticalAlarmsOnly')}
+              value={notificationSettings.criticalOnly}
+              onValueChange={() => handleToggleSetting('criticalOnly')}
               trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
               thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
               disabled={notificationMutation.isPending}
@@ -523,12 +819,17 @@ export default function ProfileScreen() {
         
         {/* Logout Button */}
         <TouchableOpacity
-          style={[styles.logoutButton, { backgroundColor: isDarkMode ? '#EF4444' : '#F87171' }]}
+          style={[styles.logoutButton, { backgroundColor: isDarkMode ? '#DC2626' : '#EF4444' }]}
           onPress={() => setLogoutModalVisible(true)}
         >
           <Ionicons name="log-out-outline" size={20} color="#FFFFFF" style={styles.logoutIcon} />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>© 2025 TecoSoft Digital Solutions. All rights reserved.</Text>
+          <Text style={[styles.footerText, { marginTop: 5, paddingBottom: 10 }]}>Version {process.env.EXPO_PUBLIC_APP_VERSION}</Text>
+        </View>
       </ScrollView>
       {/* Logout Confirmation Modal */}
       <Modal
@@ -669,6 +970,19 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
   },
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 10,
+    padding: 4,
+  },
   roleBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -761,7 +1075,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     height: 44,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 32,
   },
   logoutIcon: {
@@ -771,5 +1085,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',
+  },
+  footer: {
+    paddingBottom: 16,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 12,
+    marginTop: 4,
   },
 }); 
