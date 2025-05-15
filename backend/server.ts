@@ -24,22 +24,8 @@ const PORT = process.env.PORT || 8000;
 app.use(helmet());
 
 // CORS configuration
-app.use(cors({
-  origin: (origin, callback) => {
-    const allowedOrigins = [
-      'http://localhost:19000',
-      'http://localhost:19006', // Expo web
-      `exp://${process.env.FRONTEND_URL}:19000`
-    ];
-    // null origin happens with mobile apps or Postman
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
-}));
+app.use(cors());
+
 
 // Rate limiting
 const apiLimiter = rateLimit({
