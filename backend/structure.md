@@ -55,6 +55,5 @@ backend
 ├──package.json
 ├──server.ts
 ├──tsconfig.json
-├──.dockerignore
 └──.env.example
 ```
