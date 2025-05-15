@@ -8,7 +8,6 @@
   "dev": "nodemon --exec ts-node server.ts",
   "build": "tsc",
   "serve": "node dist/server.js",
-  "test": "jest",
   "lint": "eslint . --ext .ts",
   "migrate": "prisma migrate deploy",
   "postinstall": "prisma generate"
