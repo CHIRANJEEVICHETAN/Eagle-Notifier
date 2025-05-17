@@ -26,21 +26,40 @@ app.use(helmet());
 // CORS configuration
 app.use(cors());
 
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 
 
 // Rate limiting
 const apiLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes by default
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100'), // limit each IP to 100 requests per windowMs
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 min
+  max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0];
+    return (ip || req.ip || 'unknown-ip') as string;
+  },
 });
+
 
 // Apply rate limiting to auth routes
 app.use('/api/auth', apiLimiter);
 
 app.use(express.json());
+
+app.use((req, res, next) => {
+  console.log('IP:', req.ip);
+  console.log('X-Forwarded-For:', req.headers['x-forwarded-for']);
+  next();
+});
+
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
+
 
 // API Routes
 app.get('/', (req, res) => {
