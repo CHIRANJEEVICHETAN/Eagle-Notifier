@@ -24,7 +24,10 @@ const PORT = process.env.PORT || 8000;
 app.use(helmet());
 
 // CORS configuration
-app.use(cors());
+app.use(cors({
+  origin: '*',
+}));
+
 
 app.set('trust proxy', 1);
 
@@ -51,6 +54,8 @@ app.use(express.json());
 app.use((req, res, next) => {
   console.log('IP:', req.ip);
   console.log('X-Forwarded-For:', req.headers['x-forwarded-for']);
+  console.log("Headers:", req.headers);
+  console.log("Origin:", req.headers.origin);
   next();
 });
 
@@ -63,7 +68,7 @@ app.use((req, res, next) => {
 
 // API Routes
 app.get('/', (req, res) => {
-  res.json({ message: 'Eagle Notifier API' });
+  res.send('Eagle Notifier API');
 });
 
 // Mount route modules
