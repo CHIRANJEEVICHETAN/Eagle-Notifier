@@ -36,7 +36,7 @@ jobs:
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v2
         with:
-          app-name: "EagleNotifierServer"      # ← Update to your App Service name
+          app-name: "Eagle-Notifier-Server"
           slot-name: "production"
           images: "chiranjeevichetan/eagle-notifier-app:v${{ github.run_number }}"
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
