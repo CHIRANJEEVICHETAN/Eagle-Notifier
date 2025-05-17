@@ -26,6 +26,8 @@ app.use(helmet());
 // CORS configuration
 app.use(cors());
 
+app.set('trust proxy', true);
+
 
 // Rate limiting
 const apiLimiter = rateLimit({
