@@ -3,13 +3,14 @@ FROM node:20.5.0-alpine3.18 AS builder
 
 WORKDIR /app
 
-# 1. Install all deps (including dev), generate Prisma client, build TS
+# 1. Copy package files + Prisma schema upfront
 COPY package.json package-lock.json tsconfig.json ./
+COPY prisma ./prisma
+
+# 2. Install all deps (will run postinstall: prisma generate)
 RUN npm install
 
-COPY prisma ./prisma
-RUN npx prisma generate
-
+# 3. Copy source and compile TS
 COPY src ./src
 RUN npm run build
 
@@ -18,15 +19,15 @@ FROM node:20.5.0-alpine3.18
 
 WORKDIR /app
 
-# 2. Copy package files, install only prod deps, skip scripts
+# 4. Copy package files and install only prod deps, skipping hooks
 COPY package.json package-lock.json ./
 RUN npm install --omit=dev --ignore-scripts
 
-# 3. Copy built output and pre-generated Prisma client
+# 5. Copy built code + pre‐generated Prisma client
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 
-# 4. Runtime config
+# 6. Final setup
 ENV NODE_ENV=production
 EXPOSE 8080
 CMD ["npm", "start"]
