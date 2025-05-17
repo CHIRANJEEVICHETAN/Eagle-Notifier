@@ -54,6 +54,8 @@ backend
 ├──package-lock.json
 ├──package.json
 ├──server.ts
+├──.dockerignore
+├──Dockerfile
 ├──tsconfig.json
 └──.env.example
 ```
