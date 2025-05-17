@@ -1,6 +1,4 @@
-# .github/workflows/main_eagle-notifier.yml
-
-name: Build and deploy Node.js app to Azure Web App - Eagle-Notifier
+name: CI/CD for Eagle-Notifier
 
 on:
   push:
@@ -8,73 +6,37 @@ on:
       - main
     paths:
       - 'backend/**'
-  workflow_dispatch:
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
 
     steps:
-      # 1) Check out the code
-      - uses: actions/checkout@v4
+      # 1. Checkout the repo
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      # 2) Install & build in backend/, including Prisma client generation
-      - name: Install, generate Prisma client, build & test
-        working-directory: backend
-        run: |
-          npm install
-          npx prisma generate
-          npm run build --if-present
+      # 2. Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 3) Zip up only the runtime artifacts (dist + package files)
-      - name: Zip artifact for deployment
+      # 3. Build and push Docker image
+      - name: Build and Push Docker Image
         run: |
           cd backend
-          zip -r ../release.zip dist package.json package-lock.json
+          IMAGE_NAME=chiranjeevichetan/eagle-notifier-app
+          IMAGE_TAG=v${{ github.run_number }}
+          docker build -t $IMAGE_NAME:$IMAGE_TAG .
+          docker push $IMAGE_NAME:$IMAGE_TAG
 
-      # 4) Upload the build artifact to the deploy job
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+      # 4. Deploy to Azure App Service
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v2
         with:
-          name: node-app
-          path: release.zip
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    environment:
-      name: 'Production'
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      # 1) Download the zip from the build job
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
-
-      # 2) Unzip into the workspace root
-      - name: Unzip artifact
-        run: unzip release.zip
-
-      # 3) Log in to Azure
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id:       ${{ secrets.AZUREAPPSERVICE_CLIENTID_17FF508032D24CB3905CEDD387D7EE12 }}
-          tenant-id:       ${{ secrets.AZUREAPPSERVICE_TENANTID_4CF9B02AD79C48E6ABBACBCDBF0E04CB }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_1FE3383C051F4E428644F0824D00580D }}
-
-      # 4) Deploy the unzipped folder (contains dist/ + package files)
-      - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'Eagle-Notifier'
-          slot-name: 'Production'
-          package: '.'
+          app-name: "EagleNotifierServer"      # ← Update to your App Service name
+          slot-name: "production"
+          images: "chiranjeevichetan/eagle-notifier-app:v${{ github.run_number }}"
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}

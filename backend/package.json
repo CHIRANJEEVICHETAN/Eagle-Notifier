@@ -4,14 +4,14 @@
   "description": "Eagle Notifier Backend",
   "main": "server.ts",
   "scripts": {
-  "start": "npm run build && npm run migrate && node dist/server.js",
-  "dev": "nodemon --exec ts-node server.ts",
-  "build": "tsc",
-  "serve": "node dist/server.js",
-  "lint": "eslint . --ext .ts",
-  "migrate": "prisma migrate deploy",
-  "postinstall": "prisma generate"
-},
+    "start": "node dist/server.js",
+    "dev": "nodemon --exec ts-node server.ts",
+    "build": "tsc",
+    "serve": "node dist/server.js",
+    "lint": "eslint . --ext .ts",
+    "migrate": "prisma migrate deploy",
+    "postinstall": "prisma generate"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

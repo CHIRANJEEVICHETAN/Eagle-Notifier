@@ -8,7 +8,6 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://localhost:3000/api",
         "EXPO_PUBLIC_PROJECT_ID": "72e44855-a2b8-4fb2-bacb-2a39760c6ccd",
         "EXPO_PUBLIC_APP_VERSION": "1.0.0"
       }
@@ -16,7 +15,6 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.example.com",
         "EXPO_PUBLIC_PROJECT_ID": "72e44855-a2b8-4fb2-bacb-2a39760c6ccd",
         "EXPO_PUBLIC_APP_VERSION": "1.0.0"
       }
@@ -24,7 +22,6 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.example.com",
         "EXPO_PUBLIC_PROJECT_ID": "72e44855-a2b8-4fb2-bacb-2a39760c6ccd",
         "EXPO_PUBLIC_APP_VERSION": "1.0.0"
       }
