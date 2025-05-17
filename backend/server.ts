@@ -1,8 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+// import rateLimit from 'express-rate-limit';
 import { errorHandler } from './src/middleware/errorHandler';
 
 // Load environment variables
@@ -19,52 +18,39 @@ import notificationRoutes from './src/routes/notifications';
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// Middleware
-// Apply security headers
-app.use(helmet());
-
 // CORS configuration
-app.use(cors({
-  origin: '*',
-}));
+app.use(
+  cors({
+    origin: '*',
+  })
+);
 
+// app.set('trust proxy', 1);
 
-app.set('trust proxy', 1);
+// // Rate limiting
+// const apiLimiter = rateLimit({
+//   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 min
+//   max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   keyGenerator: (req) => {
+//     const forwarded = req.headers['x-forwarded-for'];
+//     const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0];
+//     return (ip || req.ip || 'unknown-ip') as string;
+//   },
+// });
 
-
-// Rate limiting
-const apiLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 min
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const forwarded = req.headers['x-forwarded-for'];
-    const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0];
-    return (ip || req.ip || 'unknown-ip') as string;
-  },
-});
-
-
-// Apply rate limiting to auth routes
-app.use('/api/auth', apiLimiter);
+// // Apply rate limiting to auth routes
+// app.use('/api/auth', apiLimiter);
 
 app.use(express.json());
 
+// Debug middleware to log all requests
 app.use((req, res, next) => {
-  console.log('IP:', req.ip);
-  console.log('X-Forwarded-For:', req.headers['x-forwarded-for']);
-  console.log("Headers:", req.headers);
-  console.log("Origin:", req.headers.origin);
+  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+  console.log('Headers:', req.headers);
   next();
 });
-
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
-
-
 
 // API Routes
 app.get('/', (req, res) => {
@@ -78,8 +64,19 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/operator', operatorRoutes);
 app.use('/api/notifications', notificationRoutes);
 
+// Route not found handler
+app.use((req, res, next) => {
+  console.log('Route not found:', req.method, req.path);
+  res.status(404).json({
+    error: 'Route not found',
+    path: req.path,
+    method: req.method,
+  });
+});
+
 // Error handling middleware (must be after all other middleware and routes)
 app.use(errorHandler);
+
 
 // Start server
 app.listen(PORT, () => {
