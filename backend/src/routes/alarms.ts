@@ -35,7 +35,12 @@ router.post('/notification', authenticate, asyncHandler(async (req: Request, res
     };
 
     // Use notification service to create and send notifications
-    await NotificationService.createAlarmNotification(alarm);
+    await NotificationService.createNotification({
+      title: `${alarm.severity} Alarm: ${alarm.description}`,
+      body: `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
+      severity: alarm.severity,
+      type: 'ALARM'
+    });
 
     res.status(200).json({ 
       message: 'Notification has been triggered successfully',

@@ -26,6 +26,7 @@ import { apiConfig } from '../../api/config';
 import { getAuthHeader } from '../../api/auth';
 import { UserRole } from '../../types/auth';
 import { NotificationSettings } from '../../types/notification';
+import { BlurView } from 'expo-blur';
 
 // Types for profile API responses
 interface ProfileResponse {
@@ -52,7 +53,7 @@ const convertApiUserToUserType = (apiUser: ProfileResponse['user']) => {
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme } = useTheme();
-  const { authState, updateUser, logout } = useAuth();
+  const { authState, updateUser, logout, refreshAuthToken } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   
@@ -86,6 +87,8 @@ export default function ProfileScreen() {
   
   // Image picker state
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const [avatarOptionsVisible, setAvatarOptionsVisible] = useState(false);
+  const [avatarKey, setAvatarKey] = useState(0);
   
   // Fetch notification settings
   const { data: settingsData } = useQuery({
@@ -106,6 +109,24 @@ export default function ProfileScreen() {
       setNotificationSettings(settingsData);
     }
   }, [settingsData]);
+  
+  // Add profile fetch query
+  const { data: profileData } = useQuery({
+    queryKey: ['profile'],
+    queryFn: async () => {
+      const headers = await getAuthHeader();
+      const response = await axios.get<ProfileResponse>(
+        `${apiConfig.apiUrl}/api/auth/profile`,
+        { headers }
+      );
+      if (response.data.user) {
+        updateUser(convertApiUserToUserType(response.data.user));
+      }
+      return response.data;
+    },
+    retry: 2,
+    staleTime: 300000 // 5 minutes
+  });
   
   // Profile update mutation
   const profileMutation = useMutation({
@@ -293,18 +314,16 @@ export default function ProfileScreen() {
     setEditingProfile(false);
   }, [authState.user]);
   
-  // Image picker functions
+  // Update pickImage function
   const pickImage = async (useCamera = false) => {
     try {
       if (useCamera) {
-        // Request camera permissions
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
           Alert.alert('Permission Denied', 'Camera permission is required to take photos');
           return;
         }
       } else {
-        // Request media library permissions
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
           Alert.alert('Permission Denied', 'Media library permission is required to select photos');
@@ -314,68 +333,123 @@ export default function ProfileScreen() {
       
       setAvatarLoading(true);
       
-      // Launch camera or image picker based on current expo-image-picker API
+      // Launch camera or image picker with optimized settings
       const result = useCamera
         ? await ImagePicker.launchCameraAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 0.7,
+            quality: 0.1,
             base64: true,
+            exif: false,
+            cameraType: ImagePicker.CameraType.front,
+            presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN
           })
         : await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 0.7,
+            quality: 0.1,
             base64: true,
+            exif: false
           });
       
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
-        
-        // Convert to base64 if not already provided
         let base64Image = '';
-        if (asset.base64) {
-          base64Image = `data:image/jpeg;base64,${asset.base64}`;
-        } else if (asset.uri) {
-          // This fallback shouldn't be needed as we requested base64, but just in case
-          Alert.alert('Error', 'Failed to convert image to base64');
-          setAvatarLoading(false);
-          return;
-        }
         
-        // Update avatar in API and local state
-        await avatarMutation.mutateAsync({ avatar: base64Image });
+        try {
+          if (asset.base64) {
+            base64Image = `data:image/jpeg;base64,${asset.base64}`;
+            
+            // Get fresh auth headers before making the request
+            const headers = await getAuthHeader();
+            
+            // Update avatar in API with increased timeout
+            const response = await axios.put(
+              `${apiConfig.apiUrl}/api/auth/profile`,
+              { avatar: base64Image },
+              { 
+                headers,
+                timeout: 60000,
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity
+              }
+            );
+            
+            if (response.data.user) {
+              const updatedUser = convertApiUserToUserType(response.data.user);
+              updateUser(updatedUser);
+              queryClient.invalidateQueries({ queryKey: ['profile'] });
+              Alert.alert('Success', 'Profile picture updated successfully');
+            }
+          } else {
+            throw new Error('Failed to get base64 image data');
+          }
+        } catch (error: any) {
+          console.error('Avatar update error:', error);
+          
+          if (error?.response?.status === 401) {
+            try {
+              const newToken = await refreshAuthToken();
+              if (newToken) {
+                const response = await axios.put(
+                  `${apiConfig.apiUrl}/api/auth/profile`,
+                  { avatar: base64Image },
+                  { 
+                    headers: {
+                      'Authorization': `Bearer ${newToken}`,
+                      'Content-Type': 'application/json'
+                    },
+                    timeout: 60000,
+                    maxContentLength: Infinity,
+                    maxBodyLength: Infinity
+                  }
+                );
+                
+                if (response.data.user) {
+                  const updatedUser = convertApiUserToUserType(response.data.user);
+                  updateUser(updatedUser);
+                  queryClient.invalidateQueries({ queryKey: ['profile'] });
+                  Alert.alert('Success', 'Profile picture updated successfully');
+                }
+              }
+            } catch (refreshError) {
+              console.error('Token refresh failed:', refreshError);
+              Alert.alert(
+                'Session Expired',
+                'Your session has expired. Please log in again.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      logout();
+                      router.replace('/(auth)/login');
+                    }
+                  }
+                ]
+              );
+            }
+          } else {
+            Alert.alert(
+              'Error',
+              'Failed to update profile picture. Please try again with a smaller image.'
+            );
+          }
+        }
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to process image');
+      Alert.alert('Error', 'Failed to process image. Please try again with a smaller image or lower quality.');
     } finally {
       setAvatarLoading(false);
+      setAvatarOptionsVisible(false);
     }
   };
   
   // Handle avatar selection with options
   const handleAvatarSelection = () => {
-    Alert.alert(
-      'Update Profile Picture',
-      'Choose an option',
-      [
-        { text: 'Take Photo', onPress: () => pickImage(true) },
-        { text: 'Choose from Library', onPress: () => pickImage(false) },
-        { 
-          text: 'Remove Photo', 
-          onPress: () => {
-            if (authState.user?.avatar) {
-              removeAvatarMutation.mutate();
-            }
-          },
-          style: 'destructive'
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    setAvatarOptionsVisible(true);
   };
   
   // Validation functions
@@ -444,6 +518,125 @@ export default function ProfileScreen() {
       setConfirmPasswordError('');
       return true;
     }
+  };
+  
+  // Add this component before your return statement
+  const AvatarOptionsModal = ({ visible, onClose }: { visible: boolean; onClose: () => void }) => {
+    const { isDarkMode } = useTheme();
+    
+    if (!visible) return null;
+    
+    const options = [
+      {
+        icon: 'camera',
+        text: 'Take Photo',
+        onPress: () => {
+          onClose();
+          pickImage(true);
+        }
+      },
+      {
+        icon: 'images',
+        text: 'Choose from Library',
+        onPress: () => {
+          onClose();
+          pickImage(false);
+        }
+      },
+      {
+        icon: 'trash',
+        text: 'Remove Photo',
+        onPress: () => {
+          onClose();
+          if (authState.user?.avatar) {
+            removeAvatarMutation.mutate();
+          }
+        },
+        destructive: true
+      }
+    ];
+    
+    return (
+      <Modal
+        visible={visible}
+        transparent
+        animationType="fade"
+        onRequestClose={onClose}
+      >
+        <BlurView
+          intensity={20}
+          style={StyleSheet.absoluteFill}
+          tint={isDarkMode ? 'dark' : 'light'}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={onClose}
+          >
+            <View style={[
+              styles.modalContent,
+              { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }
+            ]}>
+              <Text style={[
+                styles.modalTitle,
+                { color: isDarkMode ? '#FFFFFF' : '#1F2937' }
+              ]}>
+                Update Profile Picture
+              </Text>
+              
+              <View style={styles.optionsList}>
+                {options.map((option, index) => (
+                  <TouchableOpacity
+                    key={option.text}
+                    style={[
+                      styles.optionButton,
+                      index < options.length - 1 && styles.optionBorder,
+                      { borderColor: isDarkMode ? '#374151' : '#E5E7EB' }
+                    ]}
+                    onPress={option.onPress}
+                  >
+                    <Ionicons
+                      name={option.icon as any}
+                      size={24}
+                      color={option.destructive
+                        ? '#EF4444'
+                        : (isDarkMode ? '#60A5FA' : '#2563EB')
+                      }
+                      style={styles.optionIcon}
+                    />
+                    <Text style={[
+                      styles.optionText,
+                      option.destructive && styles.destructiveText,
+                      { color: option.destructive
+                        ? '#EF4444'
+                        : (isDarkMode ? '#FFFFFF' : '#1F2937')
+                      }
+                    ]}>
+                      {option.text}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              
+              <TouchableOpacity
+                style={[
+                  styles.cancelButton,
+                  { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }
+                ]}
+                onPress={onClose}
+              >
+                <Text style={[
+                  styles.cancelText,
+                  { color: isDarkMode ? '#E5E7EB' : '#4B5563' }
+                ]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </BlurView>
+      </Modal>
+    );
   };
   
   return (
@@ -536,8 +729,14 @@ export default function ProfileScreen() {
                 </View>
               ) : authState.user?.avatar ? (
                 <Image 
-                  source={{ uri: authState.user.avatar }} 
+                  key={avatarKey}
+                  source={{ uri: authState.user.avatar }}
                   style={styles.avatarImage}
+                  onError={() => {
+                    console.error('Failed to load avatar image');
+                    // Fallback to initial if image fails to load
+                    setAvatarKey(prev => prev + 1);
+                  }}
                 />
               ) : (
                 <View style={[styles.avatar, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
@@ -862,6 +1061,11 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+      {/* Avatar Options Modal */}
+      <AvatarOptionsModal
+        visible={avatarOptionsVisible}
+        onClose={() => setAvatarOptionsVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -930,9 +1134,7 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  cancelButton: {
-    marginRight: 12,
+    gap: 10,
   },
   cancelButtonText: {
     fontSize: 14,
@@ -1098,5 +1300,57 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 12,
     marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  modalContent: {
+    width: '100%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  optionsList: {
+    marginBottom: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  optionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  optionBorder: {
+    borderBottomWidth: 1,
+  },
+  optionIcon: {
+    marginRight: 12,
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  destructiveText: {
+    color: '#EF4444',
+  },
+  cancelButton: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 

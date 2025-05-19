@@ -208,7 +208,7 @@ export default function OnboardingScreen() {
         </TouchableOpacity>
         
         <Text style={[styles.poweredBy, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-          Powered by Loginware.ai
+          Powered by TecoSoft Digital Solutions
         </Text>
       </View>
     </View>

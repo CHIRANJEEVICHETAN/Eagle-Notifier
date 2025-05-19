@@ -23,6 +23,7 @@ interface AuthContextProps {
   updateUser: (userData: Partial<User>) => void;
   checkAuthRoute: () => void;
   hasSeenOnboarding: boolean | null;
+  refreshAuthToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
@@ -110,60 +111,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshToken
       });
 
-      const { token: newToken, refreshToken: newRefreshToken } = response.data;
+      const { token: newToken, refreshToken: newRefreshToken, user } = response.data;
       
-      // Save new tokens
-      await SecureStore.setItemAsync(AUTH_TOKEN_KEY, newToken);
-      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefreshToken || refreshToken);
+      // Save new tokens and user data
+      await Promise.all([
+        SecureStore.setItemAsync(AUTH_TOKEN_KEY, newToken),
+        SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefreshToken || refreshToken),
+        SecureStore.setItemAsync(USER_KEY, JSON.stringify(user))
+      ]);
+      
+      // Update auth state with new user data
+      setAuthState(prev => ({
+        ...prev,
+        user,
+        isAuthenticated: true,
+        error: null,
+        errorType: 'error'
+      }));
       
       // Update axios headers
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
       
       return newToken;
     } catch (error: any) {
-      // Log detailed error information
       console.error('Token refresh failed:', error);
       
-      let errorMessage = 'Failed to refresh authentication token';
+      // Clear auth state and storage on refresh failure
+      await Promise.all([
+        SecureStore.deleteItemAsync(AUTH_TOKEN_KEY),
+        SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
+        SecureStore.deleteItemAsync(USER_KEY)
+      ]);
       
-      if (error.response) {
-        // Handle specific error responses
-        const status = error.response.status;
-        
-        switch (status) {
-          case 400:
-            console.error('Invalid refresh token format');
-            break;
-          case 401:
-            console.error('Refresh token expired or invalid');
-            break;
-          case 403:
-            console.error('Refresh token forbidden');
-            break;
-          case 404:
-            console.error('Refresh token endpoint not found');
-            break;
-          case 500:
-            console.error('Server error during token refresh');
-            break;
-          default:
-            console.error(`Unknown error (${status}) during token refresh`);
-        }
-        
-        // Log detailed response for debugging
-        if (error.response.data) {
-          console.error('Response data:', error.response.data);
-        }
-      } else if (error.request) {
-        // Request made but no response received
-        console.error('No response received during token refresh');
-        
-        if (error.code === 'ERR_NETWORK') {
-          console.error('Network error during token refresh');
-        } else if (error.code === 'ECONNABORTED') {
-          console.error('Token refresh request timed out');
-        }
-      }
+      setAuthState({
+        user: null,
+        isLoading: false,
+        isAuthenticated: false,
+        error: 'Session expired. Please log in again.',
+        errorType: 'error'
+      });
       
       return null;
     }
@@ -736,7 +722,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ authState, login, logout, clearError, updateUser, checkAuthRoute, hasSeenOnboarding }}>
+    <AuthContext.Provider value={{ authState, login, logout, clearError, updateUser, checkAuthRoute, hasSeenOnboarding, refreshAuthToken }}>
       {children}
     </AuthContext.Provider>
   );

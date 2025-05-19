@@ -113,6 +113,14 @@ router.post('/', authorize(['ADMIN']), async (req: Request, res: Response, next:
       },
     });
     
+    // Create notification for new alarm
+    await NotificationService.createNotification({
+      title: `${alarm.severity} Alarm: ${alarm.description}`,
+      body: `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
+      severity: alarm.severity,
+      type: 'ALARM'
+    });
+    
     res.status(201).json(alarm);
   } catch (error) {
     next(error);
@@ -171,6 +179,16 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
         acknowledgedAt: status === 'ACKNOWLEDGED' ? new Date() : null,
         resolvedAt: status === 'RESOLVED' ? new Date() : null,
       },
+    });
+    
+    // Send notification
+    await NotificationService.createNotification({
+      title: status === 'RESOLVED' 
+        ? `${alarm.description} - Resolved` 
+        : `${alarm.severity} Alarm: ${alarm.description}`,
+      body: `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
+      severity: alarm.severity,
+      type: status === 'RESOLVED' ? 'INFO' : 'ALARM'
     });
     
     res.json(updatedAlarm);
@@ -239,7 +257,12 @@ router.post('/notification', authenticate, async (req: Request, res: Response, n
   };
 
   // Use notification service to create and send notifications
-  await NotificationService.createAlarmNotification(alarm);
+  await NotificationService.createNotification({
+    title: `${alarm.severity} Alarm: ${alarm.description}`,
+    body: `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
+    severity: alarm.severity,
+    type: 'ALARM'
+  });
 
   res.status(200).json({ 
     message: 'Notification has been triggered successfully',

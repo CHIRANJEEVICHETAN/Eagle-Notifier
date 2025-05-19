@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '../generated/prisma-client';
 import { authenticate } from '../middleware/authMiddleware';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
+import { NotificationService } from '../services/notificationService';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -46,19 +47,7 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
     where,
     orderBy: { createdAt: 'desc' },
     skip,
-    take: limit,
-    include: {
-      relatedAlarm: {
-        select: {
-          id: true,
-          type: true,
-          severity: true,
-          status: true,
-          value: true,
-          unit: true,
-        }
-      }
-    }
+    take: limit
   });
   
   // Calculate pagination info
@@ -156,6 +145,35 @@ router.delete('/:id', authenticate, asyncHandler(async (req, res) => {
   });
   
   res.status(200).json({ message: 'Notification deleted' });
+}));
+
+// Get notification settings
+router.get('/settings', authenticate, asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+
+  // Get user's notification settings
+  const settings = await prisma.notificationSettings.findUnique({
+    where: { userId }
+  });
+
+  // If no settings exist, return default settings
+  if (!settings) {
+    const defaultSettings = {
+      pushEnabled: true,
+      emailEnabled: false,
+      criticalOnly: false,
+      muteFrom: null,
+      muteTo: null
+    };
+    res.status(200).json(defaultSettings);
+    return;
+  }
+
+  res.status(200).json(settings);
 }));
 
 // Update notification settings
@@ -312,7 +330,34 @@ router.put('/push-token', authenticate, asyncHandler(async (req, res) => {
   }
 }));
 
-// Send a test notification (dev-only)
+// Send notification to all users
+router.post('/send', authenticate, asyncHandler(async (req, res) => {
+  const { title, body, severity, type } = req.body;
+  
+  // Validate input
+  if (!title || !body) {
+    res.status(400).json({ message: 'Title and body are required' });
+    return;
+  }
+  
+  try {
+    await NotificationService.createNotification({
+      title,
+      body,
+      severity,
+      type
+    });
+    
+    res.status(200).json({ 
+      message: 'Notification sent successfully'
+    });
+  } catch (error) {
+    console.error('Error sending notification:', error);
+    res.status(500).json({ message: 'Failed to send notification' });
+  }
+}));
+
+// Update send-test route to use new notification service
 router.post('/send-test', authenticate, asyncHandler(async (req, res) => {
   const userId = req.user?.id;
   if (!userId) {
@@ -320,50 +365,21 @@ router.post('/send-test', authenticate, asyncHandler(async (req, res) => {
     return;
   }
   
-  // Get user with push token
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { pushToken: true, name: true }
-  });
-  
-  if (!user?.pushToken) {
-    res.status(400).json({ message: 'No push token found for user' });
-    return;
-  }
-  
-  // Create a notification in the database with non-null userId
-  const notification = await prisma.notification.create({
-    data: {
-      userId: userId, // Explicitly set as non-null
+  try {
+    await NotificationService.createNotification({
       title: 'Test Notification',
       body: 'This is a test notification',
       type: 'INFO',
-      priority: 'MEDIUM',
-    }
-  });
-  
-  // Send push notification if token is valid
-  if (Expo.isExpoPushToken(user.pushToken)) {
-    const messages: ExpoPushMessage[] = [
-      {
-        to: user.pushToken,
-        sound: 'default',
-        title: 'Test Notification',
-        body: 'This is a test notification',
-        data: { notificationId: notification.id },
-      }
-    ];
+      severity: 'INFO'
+    });
     
-    const chunks = expo.chunkPushNotifications(messages);
-    for (const chunk of chunks) {
-      await expo.sendPushNotificationsAsync(chunk);
-    }
+    res.status(200).json({ 
+      message: 'Test notification sent successfully'
+    });
+  } catch (error) {
+    console.error('Error sending test notification:', error);
+    res.status(500).json({ message: 'Failed to send test notification' });
   }
-  
-  res.status(200).json({ 
-    message: 'Test notification sent',
-    notification
-  });
 }));
 
 export default router; 

@@ -31,106 +31,136 @@ type UserWithSettings = {
  */
 export class NotificationService {
   /**
-   * Create a notification for an alarm and send push notifications to relevant users
+   * Create and send notifications to all eligible users
    */
-  static async createAlarmNotification(alarm: any): Promise<void> {
+  static async createNotification(data: {
+    title: string;
+    body: string;
+    severity?: 'CRITICAL' | 'WARNING' | 'INFO';
+    type?: 'ALARM' | 'INFO' | 'SYSTEM' | 'MAINTENANCE';
+  }): Promise<void> {
     try {
-      // Create notification title and body based on alarm
-      const isResolution = alarm.type?.includes('RESOLVED');
-      const title = isResolution 
-        ? `${alarm.description} - Resolved` 
-        : `${alarm.severity} Alarm: ${alarm.description}`;
+      console.log('🔔 Creating notification:', {
+        title: data.title,
+        body: data.body,
+        severity: data.severity || 'INFO',
+        type: data.type || 'INFO'
+      });
       
-      const body = alarm.details || 
-        `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`;
-      
-      console.log(`Creating notification: ${title} - ${body}`);
-      
-      // Get all users with notification settings
+      // Get all users with notification settings and push tokens
       const users = await prisma.user.findMany({
+        where: {
+          pushToken: { not: null } // Only get users with push tokens
+        },
         include: {
           notificationSettings: true
         }
       });
       
+      console.log(`📱 Found ${users.length} users with push tokens`);
+      
       // Filter users who should receive this notification
       const eligibleUsers = users.filter((user: UserWithSettings) => {
-        // Skip users without notification settings
-        if (!user.notificationSettings) return false;
+        if (!user.notificationSettings) {
+          console.log(`ℹ️ User ${user.id} has no notification settings, using defaults`);
+          // Use default settings
+          return true;
+        }
+        if (!user.notificationSettings.pushEnabled) {
+          console.log(`🔕 User ${user.id} has disabled push notifications`);
+          return false;
+        }
+        if (user.notificationSettings.criticalOnly && data.severity !== 'CRITICAL') {
+          console.log(`⚡ User ${user.id} only wants critical notifications`);
+          return false;
+        }
         
-        // Only send to users with push enabled
-        if (!user.notificationSettings.pushEnabled) return false;
-        
-        // If critical only is enabled, only send critical alarms
-        if (user.notificationSettings.criticalOnly && alarm.severity !== 'CRITICAL') return false;
-        
-        // Check if we're in the mute hours
+        // Check mute hours
         if (user.notificationSettings.muteFrom !== null && user.notificationSettings.muteTo !== null) {
           const currentHour = new Date().getHours();
           const muteFrom = user.notificationSettings.muteFrom;
           const muteTo = user.notificationSettings.muteTo;
           
-          // Handle different mute hour scenarios
           if (muteFrom < muteTo) {
-            // Simple case: e.g., mute from 22:00 to 06:00
-            if (currentHour >= muteFrom && currentHour < muteTo) return false;
+            if (currentHour >= muteFrom && currentHour < muteTo) {
+              console.log(`🌙 User ${user.id} has muted notifications for current hour`);
+              return false;
+            }
           } else {
-            // Overnight case: e.g., mute from 22:00 to 06:00
-            if (currentHour >= muteFrom || currentHour < muteTo) return false;
+            if (currentHour >= muteFrom || currentHour < muteTo) {
+              console.log(`🌙 User ${user.id} has muted notifications for current hour`);
+              return false;
+            }
           }
         }
         
         return true;
       });
       
-      // For each eligible user, create a database notification
+      console.log(`✅ Found ${eligibleUsers.length} eligible users for notification`);
+      
+      // Prepare messages for batch sending
+      const messages: ExpoPushMessage[] = [];
+      
+      // For each eligible user, create a notification and prepare push message
       for (const user of eligibleUsers) {
-        // Create notification in database
-        const notification = await prisma.notification.create({
-          data: {
-            userId: user.id,
-            title,
-            body,
-            type: isResolution ? 'INFO' : 'ALARM',
-            priority: PRIORITY_MAP[alarm.severity] || ('MEDIUM' as NotificationPriority),
-            relatedAlarmId: alarm.id
-          }
-        });
-        
-        // Send push notification if token exists and is valid
-        if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
-          // Create message
-          const messages: ExpoPushMessage[] = [
-            {
+        try {
+          // Create notification in database
+          const notification = await prisma.notification.create({
+            data: {
+              userId: user.id,
+              title: data.title,
+              body: data.body,
+              type: data.type || 'INFO',
+              priority: PRIORITY_MAP[data.severity || 'INFO']
+            }
+          });
+          
+          console.log(`📝 Created notification in database for user ${user.id}`);
+          
+          // Add push message to batch if token exists and is valid
+          if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
+            messages.push({
               to: user.pushToken,
-              sound: alarm.severity === 'CRITICAL' ? 'critical.wav' : 'default',
-              title,
-              body,
+              sound: data.severity === 'CRITICAL' ? 'critical.wav' : 'default',
+              title: data.title,
+              body: data.body,
               data: { 
                 notificationId: notification.id,
-                alarmId: alarm.id,
-                type: alarm.type,
-                severity: alarm.severity
+                type: data.type,
+                severity: data.severity
               },
-              priority: alarm.severity === 'CRITICAL' ? 'high' : 'normal',
-              // Use badge count for iOS
+              priority: data.severity === 'CRITICAL' ? 'high' : 'normal',
               badge: 1
-            }
-          ];
-          
-          try {
-            // Send notification
-            const chunks = expo.chunkPushNotifications(messages);
-            for (const chunk of chunks) {
-              await expo.sendPushNotificationsAsync(chunk);
-            }
-          } catch (error) {
-            console.error('Error sending push notification:', error);
+            });
+            console.log(`📬 Prepared push message for user ${user.id}`);
           }
+        } catch (error) {
+          console.error(`❌ Error creating notification for user ${user.id}:`, error);
         }
       }
+      
+      // Send push notifications in batches
+      if (messages.length > 0) {
+        try {
+          console.log(`🚀 Sending ${messages.length} push notifications...`);
+          const chunks = expo.chunkPushNotifications(messages);
+          
+          for (const chunk of chunks) {
+            const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+            console.log('📨 Push notification result:', ticketChunk);
+          }
+          
+          console.log('✅ Successfully sent all push notifications');
+        } catch (error) {
+          console.error('❌ Error sending push notifications:', error);
+        }
+      } else {
+        console.log('ℹ️ No push notifications to send');
+      }
+      
     } catch (error) {
-      console.error('Error creating alarm notification:', error);
+      console.error('❌ Error in createNotification:', error);
     }
   }
   
@@ -148,23 +178,6 @@ export class NotificationService {
     } catch (error) {
       console.error('Error getting unread notification count:', error);
       return 0;
-    }
-  }
-  
-  /**
-   * Helper function to send a batch of push notifications
-   */
-  static async sendPushNotifications(messages: ExpoPushMessage[]): Promise<void> {
-    try {
-      // Split messages into chunks
-      const chunks = expo.chunkPushNotifications(messages);
-      
-      // Send each chunk
-      for (const chunk of chunks) {
-        await expo.sendPushNotificationsAsync(chunk);
-      }
-    } catch (error) {
-      console.error('Error sending push notifications:', error);
     }
   }
 } 

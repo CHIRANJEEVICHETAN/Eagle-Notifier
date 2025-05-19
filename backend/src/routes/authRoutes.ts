@@ -1,16 +1,25 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import prisma from '../config/db';
+import { PrismaClient } from '../generated/prisma-client';
 import { createError } from '../middleware/errorHandler';
+import { authenticate } from '../middleware/authMiddleware';
+import multer from 'multer';
+import { Router } from 'express';
 
 const router = express.Router();
+const prisma = new PrismaClient();
 
-/**
- * @route   POST /api/auth/register
- * @desc    Register a new user
- * @access  Public
- */
+// Configure multer for file uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB limit
+  },
+});
+
+// Public routes (no authentication required)
 router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, email, password, role = 'OPERATOR' } = req.body;
@@ -55,11 +64,10 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     
     const expiresIn = process.env.JWT_EXPIRES_IN || '1d';
     
-    // @ts-ignore - Bypassing type checking for JWT sign
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET!,
-      { expiresIn }
+      process.env.JWT_SECRET as string,
+      { expiresIn } as SignOptions
     );
     
     // Return user info (except password) and token
@@ -79,11 +87,6 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
   }
 });
 
-/**
- * @route   POST /api/auth/login
- * @desc    Authenticate user & get token
- * @access  Public
- */
 router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password } = req.body;
@@ -127,19 +130,17 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     const expiresIn = process.env.JWT_EXPIRES_IN || '1d';
     const refreshExpiresIn = '7d'; // Refresh tokens last longer
     
-    // @ts-ignore
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn }
+      process.env.JWT_SECRET as string,
+      { expiresIn } as SignOptions
     );
     
     // Generate refresh token
-    // @ts-ignore
     const refreshToken = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: refreshExpiresIn }
+      process.env.JWT_SECRET as string,
+      { expiresIn: refreshExpiresIn } as SignOptions
     );
     
     // Log successful login
@@ -165,11 +166,84 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-/**
- * @route   GET /api/auth/me
- * @desc    Get current user
- * @access  Private
- */
+router.post('/refresh', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { refreshToken } = req.body;
+    
+    if (!refreshToken) {
+      throw createError('Refresh token is required', 400);
+    }
+    
+    if (!process.env.JWT_SECRET) {
+      throw createError('JWT_SECRET environment variable is required', 500);
+    }
+    
+    try {
+      // Verify the refresh token
+      const decoded = jwt.verify(
+        refreshToken,
+        process.env.JWT_SECRET
+      ) as { id: string; email: string; role: string };
+      
+      // Find the user
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+      });
+      
+      if (!user) {
+        throw createError('User not found', 404);
+      }
+      
+      // Generate new tokens
+      const expiresIn = process.env.JWT_EXPIRES_IN || '1d';
+      const refreshExpiresIn = '7d';
+      
+      // Generate new access token
+      const token = jwt.sign(
+        { id: user.id, email: user.email, role: user.role },
+        process.env.JWT_SECRET as string,
+        { expiresIn } as SignOptions
+      );
+      
+      // Generate new refresh token
+      const newRefreshToken = jwt.sign(
+        { id: user.id, email: user.email, role: user.role },
+        process.env.JWT_SECRET as string,
+        { expiresIn: refreshExpiresIn } as SignOptions
+      );
+      
+      // Return the new tokens
+      res.json({
+        token,
+        refreshToken: newRefreshToken,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+          pushToken: user.pushToken,
+        }
+      });
+    } catch (error) {
+      if (error instanceof jwt.TokenExpiredError) {
+        throw createError('Refresh token expired', 401);
+      } else if (error instanceof jwt.JsonWebTokenError) {
+        throw createError('Invalid refresh token', 401);
+      } else {
+        throw error;
+      }
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Apply authentication middleware for protected routes
+router.use(authenticate);
+
+// Protected routes (authentication required)
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user || !req.user.id) {
@@ -198,84 +272,6 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-/**
- * @route   POST /api/auth/refresh
- * @desc    Refresh access token using refresh token
- * @access  Public
- */
-router.post('/refresh', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { refreshToken } = req.body;
-    
-    if (!refreshToken) {
-      throw createError('Refresh token is required', 400);
-    }
-    
-    // Verify the refresh token
-    if (!process.env.JWT_SECRET) {
-      throw createError('JWT_SECRET environment variable is required', 500);
-    }
-    
-    try {
-      // Verify the refresh token
-      const decoded = jwt.verify(
-        refreshToken,
-        process.env.JWT_SECRET
-      ) as { id: string; email: string; role: string };
-      
-      // Find the user
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.id },
-      });
-      
-      if (!user) {
-        throw createError('User not found', 404);
-      }
-      
-      // Generate new tokens
-      const expiresIn = process.env.JWT_EXPIRES_IN || '1d';
-      const refreshExpiresIn = '7d'; // Refresh tokens last longer
-      
-      // Generate new access token
-      // @ts-ignore - Bypassing type checking for JWT sign
-      const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
-        process.env.JWT_SECRET,
-        { expiresIn }
-      );
-      
-      // Generate new refresh token (optional - can keep using the same one)
-      // @ts-ignore - Bypassing type checking for JWT sign
-      const newRefreshToken = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
-        process.env.JWT_SECRET,
-        { expiresIn: refreshExpiresIn }
-      );
-      
-      // Return the new tokens
-      res.json({
-        token,
-        refreshToken: newRefreshToken
-      });
-    } catch (error) {
-      if (error instanceof jwt.TokenExpiredError) {
-        throw createError('Refresh token expired', 401);
-      } else if (error instanceof jwt.JsonWebTokenError) {
-        throw createError('Invalid refresh token', 401);
-      } else {
-        throw error;
-      }
-    }
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * @route   PUT /api/auth/change-password
- * @desc    Change user password
- * @access  Private
- */
 router.put('/change-password', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user || !req.user.id) {
@@ -331,11 +327,6 @@ router.put('/change-password', async (req: Request, res: Response, next: NextFun
   }
 });
 
-/**
- * @route   PUT /api/auth/profile
- * @desc    Update user profile (name, email, avatar)
- * @access  Private
- */
 router.put('/profile', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user || !req.user.id) {
@@ -430,11 +421,6 @@ router.put('/profile', async (req: Request, res: Response, next: NextFunction) =
   }
 });
 
-/**
- * @route   DELETE /api/auth/avatar
- * @desc    Remove user avatar
- * @access  Private
- */
 router.delete('/avatar', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user || !req.user.id) {
@@ -477,5 +463,41 @@ router.delete('/avatar', async (req: Request, res: Response, next: NextFunction)
     next(error);
   }
 });
+
+// Get user profile
+const getProfile: RequestHandler = async (req, res, next): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: 'User not authenticated' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        avatar: true,
+        createdAt: true,
+        updatedAt: true,
+        pushToken: true,
+      }
+    });
+
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    res.json({ message: 'Profile retrieved successfully', user });
+  } catch (error) {
+    next(error);
+  }
+};
+
+router.get('/profile', authenticate, getProfile);
 
 export default router; 
