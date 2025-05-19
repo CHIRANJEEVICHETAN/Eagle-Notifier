@@ -17,7 +17,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@prisma/client": "^6.7.0",
+    "@prisma/client": "^6.8.2",
     "@types/exceljs": "^0.5.3",
     "@types/express-fileupload": "^1.5.1",
     "@types/fs-extra": "^11.0.4",
@@ -40,8 +40,7 @@
     "node-schedule": "^2.1.1",
     "pdfkit": "^0.17.1",
     "pdfkit-table": "^0.1.99",
-    "pg": "^8.15.6",
-    "prisma": "^6.7.0"
+    "pg": "^8.15.6"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -52,6 +51,7 @@
     "@types/node-schedule": "^2.1.7",
     "@types/pg": "^8.15.0",
     "nodemon": "^3.1.10",
+    "prisma": "^6.8.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
