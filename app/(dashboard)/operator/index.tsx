@@ -1330,27 +1330,34 @@ export default function OperatorDashboard() {
       color: THEME.dark.text.secondary,
     },
     bottomNav: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
       flexDirection: 'row',
-      justifyContent: 'space-around',
-      borderRadius: 10,
-      paddingVertical: 10,
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 16,
       borderTopWidth: 1,
-      backgroundColor: THEME.dark.cardBg,
-      borderTopColor: 'rgba(255, 255, 255, 0.1)',
+      width: '100%',
     },
     navItem: {
+      flex: 1,
+      minWidth: 64,
+      height: 56,
       alignItems: 'center',
       justifyContent: 'center',
       paddingVertical: 6,
     },
     navLabel: {
       fontSize: 12,
-      marginTop: 2,
-      color: THEME.dark.text.secondary,
+      marginTop: 4,
+      textAlign: 'center',
+      fontWeight: '500',
+    },
+    bottomNavContainer: {
+      backgroundColor: 'transparent',
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
     },
     loadingContainer: {
       flex: 1,
@@ -1598,71 +1605,79 @@ export default function OperatorDashboard() {
       )}
       
       {/* Bottom Navigation */}
-      <SafeAreaView edges={['bottom']} style={{ backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }}>
-        <View style={[styles.bottomNav, { 
-          backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
-          borderTopColor: isDarkMode ? '#374151' : '#E5E7EB'
-        }]}
-        >
-          <TouchableOpacity 
-            style={styles.navItem}
-            onPress={() => router.push('/(dashboard)/operator/' as any)}
-          >
-            <Ionicons 
-              name="home" 
-              size={22} 
-              color={isDarkMode ? '#60A5FA' : '#2563EB'} 
-            />
-            <Text style={[styles.navLabel, { color: isDarkMode ? '#60A5FA' : '#2563EB' }]}>Dashboard</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.navItem}
-            onPress={() => router.push('/(dashboard)/analytics')}
-          >
-            <Ionicons 
-              name="analytics-outline" 
-              size={22} 
-              color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
-            />
-            <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Analytics</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.navItem}
-            onPress={() => router.push('/(dashboard)/alarms/history')}
-          >
-            <Ionicons 
-              name="alarm-outline" 
-              size={22} 
-              color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
-            />
-            <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Alarms History</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.navItem}
-            onPress={() => router.push('/(dashboard)/reports')}
-          >
-            <Ionicons 
-              name="document-text-outline" 
-              size={22} 
-              color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
-            />
-            <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Reports</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.navItem}
-            onPress={() => router.push('/(dashboard)/profile')}
-          >
-            <Ionicons 
-              name="settings-outline" 
-              size={22} 
-              color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
-            />
-            <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Settings</Text>
-          </TouchableOpacity>
+      <SafeAreaView 
+        edges={['bottom']} 
+        style={[
+          styles.bottomNavContainer,
+          { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }
+        ]}
+      >
+        <View style={[
+          styles.bottomNav, 
+          { 
+            backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+            borderTopColor: isDarkMode ? '#374151' : '#E5E7EB'
+          }
+        ]}>
+          {[
+            {
+              name: 'Dashboard',
+              icon: 'home',
+              route: '/(dashboard)/operator/',
+              active: true
+            },
+            {
+              name: 'Analytics',
+              icon: 'analytics-outline',
+              route: '/(dashboard)/analytics',
+              active: false
+            },
+            {
+              name: 'History',
+              icon: 'alarm-outline',
+              route: '/(dashboard)/alarms/history',
+              active: false
+            },
+            {
+              name: 'Reports',
+              icon: 'document-text-outline',
+              route: '/(dashboard)/reports',
+              active: false
+            },
+            {
+              name: 'Settings',
+              icon: 'settings-outline',
+              route: '/(dashboard)/profile',
+              active: false
+            }
+          ].map((item, index) => (
+            <TouchableOpacity 
+              key={item.name}
+              style={styles.navItem}
+              onPress={() => router.push(item.route as any)}
+              accessibilityRole="button"
+              accessibilityLabel={item.name}
+            >
+              <Ionicons 
+                name={item.icon as any}
+                size={22} 
+                color={item.active ? (isDarkMode ? '#60A5FA' : '#2563EB') : (isDarkMode ? '#9CA3AF' : '#6B7280')}
+              />
+              <Text 
+                style={[
+                  styles.navLabel, 
+                  { 
+                    color: item.active ? 
+                      (isDarkMode ? '#60A5FA' : '#2563EB') : 
+                      (isDarkMode ? '#9CA3AF' : '#6B7280')
+                  }
+                ]}
+                numberOfLines={1}
+              >
+                {item.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </SafeAreaView>
       
