@@ -121,11 +121,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, []);
   
   const handleNotification = (notification: Notifications.Notification) => {
-    // Increment badge count
-    setNotificationCount((prev) => prev + 1);
-    
-    // Handle notification data
-    console.log('Received notification:', notification);
+    console.log('Received notification:', {
+      ...notification,
+      request: {
+        ...notification.request,
+        content: {
+          ...notification.request.content,
+          data: notification.request.content.data || {}
+        }
+      }
+    });
+    setNotification(notification);
+    setNotificationCount(prev => prev + 1);
   };
 
   // Update token on server with retry mechanism

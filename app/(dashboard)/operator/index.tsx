@@ -32,6 +32,9 @@ import { getAuthHeader } from '../../api/auth';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+// Add this type after the SCREEN_WIDTH constant
+type AlarmSeverityFilter = AlarmSeverity | 'all';
+
 // Theme Colors
 const THEME = {
   dark: {
@@ -121,6 +124,9 @@ export default function OperatorDashboard() {
 
   // Add notification badge animation
   const [notificationBadgeScale] = useState(new Animated.Value(1));
+
+  // Add filter state
+  const [severityFilter, setSeverityFilter] = useState<AlarmSeverityFilter>('all');
 
   // Sample analog alarms data for when no real data is available
   const sampleAnalogAlarms = [
@@ -213,7 +219,7 @@ export default function OperatorDashboard() {
     {
       id: 'binary-1',
       description: 'OIL LEVEL (LOW/HIGH)',
-      severity: 'critical',
+      severity: 'info',
       status: 'active',
       type: 'level',
       value: 'Normal',
@@ -223,7 +229,7 @@ export default function OperatorDashboard() {
     {
       id: 'binary-2',
       description: 'HARDENING HEATER FAILURE (ZONE 1)',
-      severity: 'critical',
+      severity: 'info',
       status: 'active',
       type: 'heater',
       value: 'Normal',
@@ -556,14 +562,26 @@ export default function OperatorDashboard() {
     ].some(name => (alarm.description || '').toUpperCase().includes(name))
   ) || [];
 
-  // Rendering the summary status counts
+  // Add filter handling function after the checkAndTriggerNotifications function
+  const handleSeverityFilter = (severity: AlarmSeverityFilter) => {
+    setSeverityFilter(prev => prev === severity ? 'all' : severity);
+  };
+
+  // Modify the renderSummaryCards function
   const renderSummaryCards = () => {
     return (
       <View style={styles.summaryContainer}>
-        <View style={[
-          styles.summaryCardItem,
-          { backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg }
-        ]}>
+        <TouchableOpacity
+          onPress={() => handleSeverityFilter('critical')}
+          style={[
+            styles.summaryCardItem,
+            { 
+              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+              borderColor: severityFilter === 'critical' ? THEME.dark.status.critical : isDarkMode ? THEME.dark.border : THEME.light.border,
+              borderWidth: severityFilter === 'critical' ? 2 : 1,
+            }
+          ]}
+        >
           <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.critical }]}>
             <Ionicons name="alert-circle" size={16} color={THEME.dark.text.primary} />
           </View>
@@ -573,12 +591,19 @@ export default function OperatorDashboard() {
           <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
             Critical
           </Text>
-        </View>
+        </TouchableOpacity>
         
-        <View style={[
-          styles.summaryCardItem,
-          { backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg }
-        ]}>
+        <TouchableOpacity
+          onPress={() => handleSeverityFilter('warning')}
+          style={[
+            styles.summaryCardItem,
+            { 
+              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+              borderColor: severityFilter === 'warning' ? THEME.dark.status.warning : isDarkMode ? THEME.dark.border : THEME.light.border,
+              borderWidth: severityFilter === 'warning' ? 2 : 1,
+            }
+          ]}
+        >
           <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.warning }]}>
             <Ionicons name="warning" size={16} color={THEME.dark.text.primary} />
           </View>
@@ -588,12 +613,19 @@ export default function OperatorDashboard() {
           <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
             Warning
           </Text>
-        </View>
+        </TouchableOpacity>
         
-        <View style={[
-          styles.summaryCardItem,
-          { backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg }
-        ]}>
+        <TouchableOpacity
+          onPress={() => handleSeverityFilter('info')}
+          style={[
+            styles.summaryCardItem,
+            { 
+              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+              borderColor: severityFilter === 'info' ? THEME.dark.status.success : isDarkMode ? THEME.dark.border : THEME.light.border,
+              borderWidth: severityFilter === 'info' ? 2 : 1,
+            }
+          ]}
+        >
           <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.success }]}>
             <Ionicons name="information-circle" size={16} color={THEME.dark.text.primary} />
           </View>
@@ -603,27 +635,43 @@ export default function OperatorDashboard() {
           <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
             Info
           </Text>
-        </View>
+        </TouchableOpacity>
       </View>
     );
   };
 
-  // Rendering the alarm sections
+  // Add filtered alarm getters before renderAlarmSections
+  const getFilteredAnalogAlarms = useCallback(() => {
+    return severityFilter === 'all' 
+      ? sampleAnalogAlarms 
+      : sampleAnalogAlarms.filter(alarm => alarm.severity === severityFilter);
+  }, [severityFilter, sampleAnalogAlarms]);
+
+  const getFilteredBinaryAlarms = useCallback(() => {
+    return severityFilter === 'all'
+      ? sampleBinaryAlarms
+      : sampleBinaryAlarms.filter(alarm => alarm.severity === severityFilter);
+  }, [severityFilter, sampleBinaryAlarms]);
+
+// Modify the renderAlarmSections function to use filtered alarms
   const renderAlarmSections = () => {
+    const filteredAnalogAlarms = getFilteredAnalogAlarms();
+    const filteredBinaryAlarms = getFilteredBinaryAlarms();
+
     return (
       <View style={styles.alarmSections}>
         {/* Analog Alarms Section */}
         <View style={styles.alarmSection}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
-              Analog Alarms
+              Analog Alarms {severityFilter !== 'all' && `(${severityFilter})`}
             </Text>
             <Text style={[styles.sectionSubtitle, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
               Continuous values with thresholds
             </Text>
           </View>
           <View style={styles.alarmGrid}>
-            {sampleAnalogAlarms.map(alarm => (
+            {filteredAnalogAlarms.map(alarm => (
               <View key={alarm.id} style={styles.alarmCardWrapper}>
                 <View style={[
                   styles.alarmCard,
@@ -690,14 +738,14 @@ export default function OperatorDashboard() {
         <View style={styles.alarmSection}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
-              Binary Alarms
+              Binary Alarms {severityFilter !== 'all' && `(${severityFilter})`}
             </Text>
             <Text style={[styles.sectionSubtitle, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
               Status indicators (OK/Alarm)
             </Text>
           </View>
           <View style={styles.alarmGrid}>
-            {sampleBinaryAlarms.map(alarm => (
+            {filteredBinaryAlarms.map(alarm => (
               <View key={alarm.id} style={styles.alarmCardWrapper}>
                 <View style={[
                   styles.alarmCard,

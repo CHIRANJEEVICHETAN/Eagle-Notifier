@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { fetchNotifications } from '../api/notificationsApi';
 import { useTheme } from '../context/ThemeContext';
+import { useNotification } from '../NotificationProvider';
 
 interface NotificationBadgeProps {
   size?: 'small' | 'medium' | 'large';
@@ -10,7 +11,8 @@ interface NotificationBadgeProps {
 
 const NotificationBadge: React.FC<NotificationBadgeProps> = ({ size = 'medium' }) => {
   const { isDarkMode } = useTheme();
-  const [unreadCount, setUnreadCount] = useState(0);
+  const { notificationCount } = useNotification();
+  const [displayCount, setDisplayCount] = useState(0);
   
   // Query unread notifications count
   const { data, isLoading } = useQuery({
@@ -20,15 +22,17 @@ const NotificationBadge: React.FC<NotificationBadgeProps> = ({ size = 'medium' }
     refetchInterval: 60 * 1000, // Refetch every minute
   });
   
-  // Update unread count when data changes
+  // Update display count when either notificationCount or data changes
   useEffect(() => {
-    if (data && !isLoading) {
-      setUnreadCount(data.pagination.total);
+    if (data?.pagination?.total !== undefined) {
+      setDisplayCount(Math.max(data.pagination.total, notificationCount));
+    } else if (!isLoading) {
+      setDisplayCount(notificationCount);
     }
-  }, [data, isLoading]);
+  }, [data, notificationCount, isLoading]);
   
   // Don't render anything if there are no unread notifications
-  if (unreadCount === 0) return null;
+  if (displayCount === 0) return null;
   
   // Determine badge size
   const badgeSize = {
@@ -50,7 +54,7 @@ const NotificationBadge: React.FC<NotificationBadgeProps> = ({ size = 'medium' }
         styles.badgeText,
         { fontSize: badgeSize.fontSize }
       ]}>
-        {unreadCount > 99 ? '99+' : unreadCount}
+        {displayCount > 99 ? '99+' : displayCount}
       </Text>
     </View>
   );
