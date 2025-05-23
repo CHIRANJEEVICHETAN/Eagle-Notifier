@@ -117,6 +117,7 @@ model Alarm {
   acknowledgedBy  User?         @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])
   acknowledgedAt  DateTime?
   resolvedAt      DateTime?
+  resolutionMessage String?     @db.Text
   history         AlarmHistory[]
 }
 
@@ -134,4 +135,5 @@ model AlarmHistory {
   acknowledgedById String?
   acknowledgedAt  DateTime?
   resolvedAt      DateTime?
+  resolutionMessage String?     @db.Text
 } 

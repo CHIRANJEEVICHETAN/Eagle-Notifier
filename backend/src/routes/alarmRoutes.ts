@@ -135,7 +135,7 @@ router.post('/', authorize(['ADMIN']), async (req: Request, res: Response, next:
 router.patch('/:id/status', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, resolutionMessage } = req.body;
     
     if (!status || !['ACTIVE', 'ACKNOWLEDGED', 'RESOLVED'].includes(status)) {
       throw createError('Invalid status', 400);
@@ -149,6 +149,11 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
     if (!alarm) {
       throw createError('Alarm not found', 404);
     }
+
+    // Validate resolution message when resolving
+    if (status === 'RESOLVED' && !resolutionMessage?.trim()) {
+      throw createError('Resolution message is required when resolving an alarm', 400);
+    }
     
     // Update alarm status
     const updatedAlarm = await prisma.alarm.update({
@@ -161,6 +166,7 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
         }),
         ...(status === 'RESOLVED' && {
           resolvedAt: new Date(),
+          resolutionMessage: resolutionMessage?.trim(),
         }),
       },
     });
@@ -178,15 +184,18 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
         acknowledgedById: status === 'ACKNOWLEDGED' ? req.user?.id : null,
         acknowledgedAt: status === 'ACKNOWLEDGED' ? new Date() : null,
         resolvedAt: status === 'RESOLVED' ? new Date() : null,
+        resolutionMessage: status === 'RESOLVED' ? resolutionMessage?.trim() : null,
       },
     });
     
-    // Send notification
+    // Send notification with resolution message if provided
     await NotificationService.createNotification({
       title: status === 'RESOLVED' 
         ? `${alarm.description} - Resolved` 
         : `${alarm.severity} Alarm: ${alarm.description}`,
-      body: `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
+      body: status === 'RESOLVED' && resolutionMessage
+        ? `${alarm.description} resolved: ${resolutionMessage}`
+        : `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
       severity: alarm.severity,
       type: status === 'RESOLVED' ? 'INFO' : 'ALARM'
     });

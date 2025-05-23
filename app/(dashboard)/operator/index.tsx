@@ -29,11 +29,18 @@ import * as Notifications from 'expo-notifications';
 import axios from 'axios';
 import { apiConfig } from '../../api/config';
 import { getAuthHeader } from '../../api/auth';
+import { ResolutionModal } from '../../components/ResolutionModal';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Add this type after the SCREEN_WIDTH constant
 type AlarmSeverityFilter = AlarmSeverity | 'all';
+
+// Add admin navigation functions after SCREEN_WIDTH constant
+const ADMIN_ROUTES = {
+  userManagement: '(dashboard)/screens/admin/users',
+  systemSettings: '(dashboard)/screens/admin/setpoints'
+} as const;
 
 // Theme Colors
 const THEME = {
@@ -113,7 +120,9 @@ export default function OperatorDashboard() {
   const [selectedAlarm, setSelectedAlarm] = useState<Alarm | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [unreadNotifications, setUnreadNotifications] = useState(5); // Simulate unread notifications
+  const [unreadNotifications, setUnreadNotifications] = useState(5);
+  const [selectedAlarmForResolution, setSelectedAlarmForResolution] = useState<Alarm | null>(null);
+  const [resolutionModalVisible, setResolutionModalVisible] = useState(false);
   
   const updateAlarmStatus = useUpdateAlarmStatus();
 
@@ -574,7 +583,7 @@ export default function OperatorDashboard() {
         <TouchableOpacity
           onPress={() => handleSeverityFilter('critical')}
           style={[
-            styles.summaryCardItem,
+          styles.summaryCardItem,
             { 
               backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
               borderColor: severityFilter === 'critical' ? THEME.dark.status.critical : isDarkMode ? THEME.dark.border : THEME.light.border,
@@ -596,7 +605,7 @@ export default function OperatorDashboard() {
         <TouchableOpacity
           onPress={() => handleSeverityFilter('warning')}
           style={[
-            styles.summaryCardItem,
+          styles.summaryCardItem,
             { 
               backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
               borderColor: severityFilter === 'warning' ? THEME.dark.status.warning : isDarkMode ? THEME.dark.border : THEME.light.border,
@@ -618,7 +627,7 @@ export default function OperatorDashboard() {
         <TouchableOpacity
           onPress={() => handleSeverityFilter('info')}
           style={[
-            styles.summaryCardItem,
+          styles.summaryCardItem,
             { 
               backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
               borderColor: severityFilter === 'info' ? THEME.dark.status.success : isDarkMode ? THEME.dark.border : THEME.light.border,
@@ -657,6 +666,62 @@ export default function OperatorDashboard() {
   const renderAlarmSections = () => {
     const filteredAnalogAlarms = getFilteredAnalogAlarms();
     const filteredBinaryAlarms = getFilteredBinaryAlarms();
+
+    const renderActionButtons = (alarm: any) => (
+      <View style={styles.alarmCardActions}>
+        {alarm.status === 'active' && (
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              {
+                backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(37, 99, 235, 0.1)',
+                borderColor: isDarkMode ? '#3B82F6' : '#2563EB',
+                borderWidth: 1,
+              }
+            ]}
+            onPress={() => handleAcknowledge(alarm.id)}
+          >
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={16}
+              color={isDarkMode ? '#3B82F6' : '#2563EB'}
+            />
+            <Text style={[
+              styles.actionButtonText,
+              { color: isDarkMode ? '#3B82F6' : '#2563EB' }
+            ]}>
+              Acknowledge
+            </Text>
+          </TouchableOpacity>
+        )}
+        
+        {(alarm.status === 'active' || alarm.status === 'acknowledged') && (
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              {
+                backgroundColor: isDarkMode ? 'rgba(34, 197, 94, 0.1)' : 'rgba(22, 163, 74, 0.1)',
+                borderColor: isDarkMode ? '#22C55E' : '#16A34A',
+                borderWidth: 1,
+              }
+            ]}
+            onPress={() => openResolutionModal(alarm)}
+          >
+            <Ionicons
+              name="checkmark-done-circle-outline"
+              size={16}
+              color={isDarkMode ? '#22C55E' : '#16A34A'}
+            />
+            <Text style={[
+              styles.actionButtonText,
+              { color: isDarkMode ? '#22C55E' : '#16A34A' }
+            ]}>
+              Resolve
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
 
     return (
       <View style={styles.alarmSections}>
@@ -728,6 +793,7 @@ export default function OperatorDashboard() {
                       </Text>
                     )}
                   </View>
+                  {renderActionButtons(alarm)}
                 </View>
               </View>
             ))}
@@ -794,6 +860,7 @@ export default function OperatorDashboard() {
                       </View>
                     </View>
                   </View>
+                  {renderActionButtons(alarm)}
                 </View>
               </View>
             ))}
@@ -914,6 +981,80 @@ export default function OperatorDashboard() {
       }),
     ]).start();
   }, [unreadNotifications]);
+
+  // Add these functions after the existing handleResolve function
+  const handleResolutionSubmit = async (message: string) => {
+    if (selectedAlarmForResolution) {
+      try {
+        updateAlarmStatus.mutate({
+          id: selectedAlarmForResolution.id,
+          status: 'resolved',
+          resolutionMessage: message
+        });
+        setResolutionModalVisible(false);
+        setSelectedAlarmForResolution(null);
+      } catch (error) {
+        console.error('Error resolving alarm:', error);
+      }
+    }
+  };
+
+  const openResolutionModal = (alarm: Alarm) => {
+    setSelectedAlarmForResolution(alarm);
+    setResolutionModalVisible(true);
+  };
+
+  // Add admin navigation handlers
+  const navigateToUserManagement = () => {
+    if (authState?.user?.role === 'ADMIN') {
+      router.push(ADMIN_ROUTES.userManagement as any);
+    }
+  };
+
+  const navigateToSettings = () => {
+    if (authState?.user?.role === 'ADMIN') {
+      router.push(ADMIN_ROUTES.systemSettings as any);
+    }
+  };
+
+  // Add admin actions section to renderSummaryCards
+  const renderAdminActions = () => {
+    if (authState?.user?.role !== 'ADMIN') return null;
+
+    return (
+      <View style={styles.adminActions}>
+        <TouchableOpacity
+          style={[styles.adminActionButton, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}
+          onPress={navigateToUserManagement}
+        >
+          <Ionicons
+            name="people-outline"
+            size={22}
+            color={isDarkMode ? '#60A5FA' : '#2563EB'}
+            style={styles.actionIcon}
+          />
+          <Text style={[styles.actionText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+            Manage Users
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.adminActionButton, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}
+          onPress={navigateToSettings}
+        >
+          <Ionicons
+            name="settings-outline"
+            size={22}
+            color={isDarkMode ? '#60A5FA' : '#2563EB'}
+            style={styles.actionIcon}
+          />
+          <Text style={[styles.actionText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+            System Settings
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   // Define styles inside the component to access isDarkMode
   const styles = StyleSheet.create({
@@ -1254,28 +1395,59 @@ export default function OperatorDashboard() {
     },
     alarmCardActions: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent: 'flex-end',
+      gap: 8,
       marginTop: 12,
-      paddingTop: 10,
+      paddingTop: 12,
       borderTopWidth: 1,
-      borderTopColor: '#F3F4F6',
+      borderTopColor: isDarkMode ? 'rgba(71, 85, 105, 0.3)' : 'rgba(203, 213, 225, 0.8)',
     },
     actionButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 8,
+      paddingVertical: 6,
       paddingHorizontal: 12,
       borderRadius: 6,
-      backgroundColor: '#F3F4F6',
-      flex: 1,
-      marginHorizontal: 4,
+      gap: 4,
     },
     actionButtonText: {
       fontSize: 12,
       fontWeight: '600',
-      color: '#6B7280',
-      marginLeft: 4,
+    },
+    adminActions: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingHorizontal: 4,
+      marginBottom: 16,
+      marginTop: 8,
+      gap: 12,
+    },
+    adminActionButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: 'rgba(203, 213, 225, 0.3)',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 3,
+        },
+        android: {
+          elevation: 2,
+        },
+      }),
+    },
+    actionIcon: {
+      marginRight: 12,
+    },
+    actionText: {
+      fontSize: 14,
+      fontWeight: '500',
     },
   });
 
@@ -1319,7 +1491,7 @@ export default function OperatorDashboard() {
                 color: isDarkMode ? '#94A3B8' : '#64748B',
               }
             ]}>
-              Operator Dashboard
+              {authState?.user?.role === 'ADMIN' ? 'Admin Dashboard' : 'Operator Dashboard'}
             </Text>
           </View>
         </View>
@@ -1409,6 +1581,9 @@ export default function OperatorDashboard() {
           {/* Status Summary */}
           {renderSummaryCards()}
           
+          {/* Admin Actions */}
+          {renderAdminActions()}
+          
           {/* Alarm Sections */}
           {renderAlarmSections()}
           
@@ -1452,6 +1627,18 @@ export default function OperatorDashboard() {
             />
             <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Analytics</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.navItem}
+            onPress={() => router.push('/(dashboard)/alarms/history')}
+          >
+            <Ionicons 
+              name="alarm-outline" 
+              size={22} 
+              color={isDarkMode ? '#9CA3AF' : '#6B7280'} 
+            />
+            <Text style={[styles.navLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Alarms History</Text>
+          </TouchableOpacity>
           
           <TouchableOpacity 
             style={styles.navItem}
@@ -1487,6 +1674,17 @@ export default function OperatorDashboard() {
         onAcknowledge={selectedAlarm?.status === 'active' ? () => handleAcknowledge(selectedAlarm.id) : undefined}
         onResolve={selectedAlarm?.status === 'active' || selectedAlarm?.status === 'acknowledged' ? 
           () => handleResolve(selectedAlarm.id) : undefined}
+      />
+
+      {/* Add Resolution Modal */}
+      <ResolutionModal
+        visible={resolutionModalVisible}
+        onClose={() => {
+          setResolutionModalVisible(false);
+          setSelectedAlarmForResolution(null);
+        }}
+        onSubmit={handleResolutionSubmit}
+        alarmDescription={selectedAlarmForResolution?.description || ''}
       />
     </SafeAreaView>
   );

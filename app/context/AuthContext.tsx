@@ -406,20 +406,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Route user based on role
   const routeUserByRole = (role: string) => {
-    // Normalize the role to uppercase for consistent comparison
-    const normalizedRole = role?.toUpperCase();
-
-    switch (normalizedRole) {
-      case 'ADMIN':
-        navigateTo('/(dashboard)/admin/');
-        break;
-      case 'OPERATOR':
-        navigateTo('/(dashboard)/operator/');
-        break;
-      default:
-        navigateTo('/(dashboard)/operator/');
-        break;
-    }
+    // All roles navigate to operator dashboard
+    navigateTo('/(dashboard)/operator/');
   };
 
   const login = async (credentials: LoginCredentials) => {

@@ -2,6 +2,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { alarmService } from '../api/alarmService';
 import { Alarm, AlarmStatus } from '../types/alarm';
 import { useAlarmStore } from '../store/useAlarmStore';
+import axios from 'axios';
+import { getAuthHeader } from '../api/auth';
+import { apiConfig } from '../api/config';
 
 // Query keys
 const ALARM_KEYS = {
@@ -54,22 +57,26 @@ export const useAlarmHistory = (timeframe: number = 24) => {
   });
 };
 
-// Hook for updating alarm status
+interface UpdateAlarmStatusParams {
+  id: string;
+  status: AlarmStatus;
+  resolutionMessage?: string;
+}
+
 export const useUpdateAlarmStatus = () => {
   const queryClient = useQueryClient();
-  const { updateAlarmStatus: updateStore } = useAlarmStore();
   
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: AlarmStatus }) => 
-      alarmService.updateAlarmStatus(id, status),
-    onSuccess: (updatedAlarm) => {
-      // Update store
-      updateStore(updatedAlarm.id, updatedAlarm.status);
-      
-      // Update queries
-      queryClient.invalidateQueries({ queryKey: ALARM_KEYS.all });
-      queryClient.invalidateQueries({ queryKey: ALARM_KEYS.active() });
-      queryClient.invalidateQueries({ queryKey: ALARM_KEYS.detail(updatedAlarm.id) });
+    mutationFn: async ({ id, status, resolutionMessage }: UpdateAlarmStatusParams) => {
+      const headers = await getAuthHeader();
+      await axios.patch(
+        `${apiConfig.apiUrl}/api/alarms/${id}/status`,
+        { status, resolutionMessage },
+        { headers }
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alarms'] });
     },
   });
 }; 

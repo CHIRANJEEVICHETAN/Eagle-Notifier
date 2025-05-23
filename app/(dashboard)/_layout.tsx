@@ -19,19 +19,19 @@ export default function DashboardLayout() {
       }}
     >
       <Stack.Screen
-        name="admin/index"
+        name="screens/admin/index"
         options={{
           headerShown: false,
         }}
       />
       <Stack.Screen
-        name="admin/users/index"
+        name="screens/admin/users/index"
         options={{
           headerShown: false,
         }}
       />
       <Stack.Screen
-        name="admin/setpoints/index"
+        name="screens/admin/setpoints/index"
         options={{
           headerShown: false,
         }}
