@@ -180,11 +180,44 @@ export default function AlarmHistoryScreen() {
           </Text>
         </View>
         
+        {item.acknowledgedBy && (
+          <View style={styles.detailRow}>
+            <Text style={[styles.detailLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+              Ack by:
+            </Text>
+            <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+              {item.acknowledgedBy.name} • {formatDate(new Date(item.acknowledgedAt!), 'MMM d, HH:mm')}
+            </Text>
+          </View>
+        )}
+        
+        {item.resolvedBy && (
+          <>
         <View style={styles.detailRow}>
           <Text style={[styles.detailLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Time:
+                Resolved:
           </Text>
           <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+                {item.resolvedBy.name} • {formatDate(new Date(item.resolvedAt!), 'MMM d, HH:mm')}
+              </Text>
+            </View>
+            
+            {item.resolutionMessage && (
+              <View style={[styles.resolutionBox, { 
+                backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)',
+                borderColor: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)'
+              }]}>
+                <Text style={[styles.resolutionText, { color: isDarkMode ? '#93C5FD' : '#2563EB' }]}>
+                  {item.resolutionMessage}
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+        
+        <View style={styles.timeWrapper}>
+          <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
+          <Text style={[styles.timeText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
             {formatDate(new Date(item.timestamp), 'MMM d, yyyy HH:mm:ss')}
           </Text>
         </View>
@@ -535,5 +568,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
     textAlign: 'center',
+  },
+  resolutionBox: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  resolutionText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  timeWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  timeText: {
+    marginLeft: 4,
   },
 }); 

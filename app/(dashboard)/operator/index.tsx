@@ -690,7 +690,7 @@ export default function OperatorDashboard() {
               styles.actionButtonText,
               { color: isDarkMode ? '#3B82F6' : '#2563EB' }
             ]}>
-              Acknowledge
+              {alarm.acknowledgedBy ? 'Acknowledged' : 'Acknowledge'}
             </Text>
           </TouchableOpacity>
         )}
@@ -719,6 +719,14 @@ export default function OperatorDashboard() {
               Resolve
             </Text>
           </TouchableOpacity>
+        )}
+        
+        {alarm.acknowledgedBy && (
+          <View style={styles.acknowledgedByContainer}>
+            <Text style={[styles.acknowledgedByText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+              Acknowledged by {alarm.acknowledgedBy.name}
+            </Text>
+          </View>
         )}
       </View>
     );
@@ -1456,6 +1464,16 @@ export default function OperatorDashboard() {
       fontSize: 14,
       fontWeight: '500',
     },
+    acknowledgedByContainer: {
+      marginTop: 8,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: 'rgba(156, 163, 175, 0.1)',
+    },
+    acknowledgedByText: {
+      fontSize: 12,
+      fontStyle: 'italic',
+    },
   });
 
   return (
@@ -1615,8 +1633,8 @@ export default function OperatorDashboard() {
         <View style={[
           styles.bottomNav, 
           { 
-            backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
-            borderTopColor: isDarkMode ? '#374151' : '#E5E7EB'
+          backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+          borderTopColor: isDarkMode ? '#374151' : '#E5E7EB'
           }
         ]}>
           {[
@@ -1651,16 +1669,16 @@ export default function OperatorDashboard() {
               active: false
             }
           ].map((item, index) => (
-            <TouchableOpacity 
+          <TouchableOpacity 
               key={item.name}
-              style={styles.navItem}
+            style={styles.navItem}
               onPress={() => router.push(item.route as any)}
               accessibilityRole="button"
               accessibilityLabel={item.name}
-            >
-              <Ionicons 
+          >
+            <Ionicons 
                 name={item.icon as any}
-                size={22} 
+              size={22} 
                 color={item.active ? (isDarkMode ? '#60A5FA' : '#2563EB') : (isDarkMode ? '#9CA3AF' : '#6B7280')}
               />
               <Text 
@@ -1676,7 +1694,7 @@ export default function OperatorDashboard() {
               >
                 {item.name}
               </Text>
-            </TouchableOpacity>
+          </TouchableOpacity>
           ))}
         </View>
       </SafeAreaView>

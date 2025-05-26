@@ -1,3 +1,9 @@
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 export type AlarmSeverity = 'critical' | 'warning' | 'info';
 
 export type AlarmType = 
@@ -30,19 +36,23 @@ export interface AlarmThreshold {
 export interface Alarm {
   id: string;
   description: string;
-  type: AlarmType;
-  zone?: Zone;
+  type: string;
+  zone?: string;
   severity: AlarmSeverity;
-  status: AlarmStatus;
-  value: number | string;
-  setPoint: number | string;
+  status: string;
+  value: string;
+  setPoint: string;
   unit?: string;
   lowLimit?: number;
   highLimit?: number;
   timestamp: string;
-  acknowledgedBy?: string;
+  acknowledgedById?: string;
+  acknowledgedBy?: User;
   acknowledgedAt?: string;
+  resolvedById?: string;
+  resolvedBy?: User;
   resolvedAt?: string;
+  resolutionMessage?: string;
 }
 
 export interface AlarmHistory {

@@ -26,6 +26,9 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   acknowledgedAlarms Alarm[] @relation("AcknowledgedBy")
+  resolvedAlarms  Alarm[]   @relation("ResolvedBy")
+  acknowledgedHistoryAlarms AlarmHistory[] @relation("AcknowledgedBy")
+  resolvedHistoryAlarms AlarmHistory[] @relation("ResolvedBy")
   notifications   Notification[]
   pushToken       String?
   notificationSettings NotificationSettings?
@@ -116,6 +119,8 @@ model Alarm {
   acknowledgedById String?
   acknowledgedBy  User?         @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])
   acknowledgedAt  DateTime?
+  resolvedById    String?
+  resolvedBy      User?         @relation("ResolvedBy", fields: [resolvedById], references: [id])
   resolvedAt      DateTime?
   resolutionMessage String?     @db.Text
   history         AlarmHistory[]
@@ -133,7 +138,10 @@ model AlarmHistory {
   setPoint        String
   timestamp       DateTime      @default(now())
   acknowledgedById String?
+  acknowledgedBy  User?         @relation("AcknowledgedBy", fields: [acknowledgedById], references: [id])
   acknowledgedAt  DateTime?
+  resolvedById    String?
+  resolvedBy      User?         @relation("ResolvedBy", fields: [resolvedById], references: [id])
   resolvedAt      DateTime?
   resolutionMessage String?     @db.Text
 } 

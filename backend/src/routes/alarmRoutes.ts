@@ -12,7 +12,7 @@ router.use(authenticate);
 
 /**
  * @route   GET /api/alarms
- * @desc    Get all alarms
+ * @desc    Get all alarms with user details
  * @access  Private
  */
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
@@ -20,6 +20,22 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const alarms = await prisma.alarm.findMany({
       orderBy: {
         timestamp: 'desc',
+      },
+      include: {
+        acknowledgedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        resolvedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
       },
     });
     
@@ -31,7 +47,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 
 /**
  * @route   GET /api/alarms/active
- * @desc    Get all active alarms
+ * @desc    Get all active alarms with user details
  * @access  Private
  */
 router.get('/active', async (req: Request, res: Response, next: NextFunction) => {
@@ -42,6 +58,22 @@ router.get('/active', async (req: Request, res: Response, next: NextFunction) =>
       },
       orderBy: {
         timestamp: 'desc',
+      },
+      include: {
+        acknowledgedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        resolvedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
       },
     });
     
@@ -129,49 +161,75 @@ router.post('/', authorize(['ADMIN']), async (req: Request, res: Response, next:
 
 /**
  * @route   PATCH /api/alarms/:id/status
- * @desc    Update alarm status
+ * @desc    Update alarm status with user information
  * @access  Private
  */
 router.patch('/:id/status', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { status, resolutionMessage } = req.body;
+    const userId = req.user?.id;
     
     if (!status || !['ACTIVE', 'ACKNOWLEDGED', 'RESOLVED'].includes(status)) {
       throw createError('Invalid status', 400);
     }
     
+    if (!userId) {
+      throw createError('User not authenticated', 401);
+    }
+    
     // Get the alarm
     const alarm = await prisma.alarm.findUnique({
       where: { id },
+      include: {
+        acknowledgedBy: true,
+        resolvedBy: true,
+      },
     });
     
     if (!alarm) {
       throw createError('Alarm not found', 404);
     }
-
+    
     // Validate resolution message when resolving
     if (status === 'RESOLVED' && !resolutionMessage?.trim()) {
       throw createError('Resolution message is required when resolving an alarm', 400);
     }
     
-    // Update alarm status
+    // Update alarm status with user information
     const updatedAlarm = await prisma.alarm.update({
       where: { id },
       data: {
         status: status as any,
         ...(status === 'ACKNOWLEDGED' && {
-          acknowledgedById: req.user?.id,
+          acknowledgedById: userId,
           acknowledgedAt: new Date(),
         }),
         ...(status === 'RESOLVED' && {
+          resolvedById: userId,
           resolvedAt: new Date(),
           resolutionMessage: resolutionMessage?.trim(),
         }),
       },
+      include: {
+        acknowledgedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        resolvedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     });
     
-    // Create history entry
+    // Create history entry with user information
     await prisma.alarmHistory.create({
       data: {
         alarmId: id,
@@ -181,20 +239,23 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
         status: status as any,
         value: alarm.value,
         setPoint: alarm.setPoint,
-        acknowledgedById: status === 'ACKNOWLEDGED' ? req.user?.id : null,
-        acknowledgedAt: status === 'ACKNOWLEDGED' ? new Date() : null,
-        resolvedAt: status === 'RESOLVED' ? new Date() : null,
-        resolutionMessage: status === 'RESOLVED' ? resolutionMessage?.trim() : null,
+        acknowledgedById: status === 'ACKNOWLEDGED' ? userId : alarm.acknowledgedById,
+        acknowledgedAt: status === 'ACKNOWLEDGED' ? new Date() : alarm.acknowledgedAt,
+        resolvedById: status === 'RESOLVED' ? userId : alarm.resolvedById,
+        resolvedAt: status === 'RESOLVED' ? new Date() : alarm.resolvedAt,
+        resolutionMessage: status === 'RESOLVED' ? resolutionMessage?.trim() : alarm.resolutionMessage,
       },
     });
     
-    // Send notification with resolution message if provided
+    // Send notification with user information
     await NotificationService.createNotification({
       title: status === 'RESOLVED' 
-        ? `${alarm.description} - Resolved` 
+        ? `${alarm.description} - Resolved by ${updatedAlarm.resolvedBy?.name}` 
         : `${alarm.severity} Alarm: ${alarm.description}`,
       body: status === 'RESOLVED' && resolutionMessage
-        ? `${alarm.description} resolved: ${resolutionMessage}`
+        ? `${alarm.description} resolved by ${updatedAlarm.resolvedBy?.name}: ${resolutionMessage}`
+        : status === 'ACKNOWLEDGED'
+        ? `${alarm.description} acknowledged by ${updatedAlarm.acknowledgedBy?.name}`
         : `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
       severity: alarm.severity,
       type: status === 'RESOLVED' ? 'INFO' : 'ALARM'
