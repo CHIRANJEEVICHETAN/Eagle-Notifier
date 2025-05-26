@@ -3,16 +3,21 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 // import rateLimit from 'express-rate-limit';
 import { errorHandler } from './src/middleware/errorHandler';
+import alarmRoutes from './src/routes/alarmRoutes';
+import notificationRoutes from './src/routes/notifications';
+import adminRoutes from './src/routes/adminRoutes';
+import scadaRoutes from './src/routes/scadaRoutes';
+import { processAndFormatAlarms } from './src/services/scadaService';
+import { testScadaConnection } from './src/config/scadaDb';
+import { PrismaClient } from '@prisma/client';
+import authRoutes from './src/routes/authRoutes';
+import operatorRoutes from './src/routes/operatorRoutes';
 
 // Load environment variables
 dotenv.config();
 
-// Import routes
-import authRoutes from './src/routes/authRoutes';
-import alarmRoutes from './src/routes/alarmRoutes';
-import adminRoutes from './src/routes/adminRoutes';
-import operatorRoutes from './src/routes/operatorRoutes';
-import notificationRoutes from './src/routes/notifications';
+// Initialize Prisma Client
+const prisma = new PrismaClient();
 
 // Initialize Express app
 const app = express();
@@ -49,7 +54,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Debug middleware to log all requests
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+  console.log(`${new Date().toISOString()}  ${req.method}  ${req.url}`);
   console.log('Headers:', req.headers);
   next();
 });
@@ -65,6 +70,7 @@ app.use('/api/alarms', alarmRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/operator', operatorRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/scada', scadaRoutes);
 
 // Route not found handler
 app.use((req, res) => {
@@ -78,15 +84,67 @@ app.use((req, res) => {
 // Error handling middleware (must be after all other middleware and routes)
 app.use(errorHandler);
 
+// SCADA Data Polling
+const SCADA_POLL_INTERVAL = parseInt(process.env.SCADA_POLL_INTERVAL || '120000'); // Default 2 minutes
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Available routes:`);
-  console.log(`GET /api/notifications`);
-  console.log(`GET /api/notifications/:id`);
-  console.log(`PATCH /api/notifications/:id/read`);
-  console.log(`PATCH /api/notifications/mark-all-read`);
-  console.log(`DELETE /api/notifications/:id`);
-  console.log(`PUT /api/notifications/push-token`);
-}); 
+async function pollScadaData() {
+  try {
+    await processAndFormatAlarms();
+    console.log('SCADA data processed successfully');
+  } catch (error) {
+    console.error('Error polling SCADA data:', error);
+  }
+}
+
+// Initialize databases and start server
+async function startServer() {
+  try {
+    // Test database connections
+    await prisma.$connect();
+    console.log('Successfully connected to main database');
+
+    const scadaConnected = await testScadaConnection();
+    if (!scadaConnected) {
+      console.error('Failed to connect to SCADA database. Server will start but SCADA features may be limited.');
+    }
+
+    // Start server
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log('Available routes:');
+      console.log('GET /api/notifications');
+      console.log('GET /api/notifications/:id');
+      console.log('PATCH /api/notifications/:id/read');
+      console.log('PATCH /api/notifications/mark-all-read');
+      console.log('DELETE /api/notifications/:id');
+      console.log('PUT /api/notifications/push-token');
+      console.log(`SCADA polling interval: ${SCADA_POLL_INTERVAL}ms`);
+
+      // Start SCADA polling if connection was successful
+      if (scadaConnected) {
+        setInterval(pollScadaData, SCADA_POLL_INTERVAL);
+        // Initial poll
+        pollScadaData();
+      }
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Handle graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received. Closing connections...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received. Closing connections...');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+// Start the server
+startServer();

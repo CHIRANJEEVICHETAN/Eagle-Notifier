@@ -3,8 +3,9 @@ import prisma from '../config/db';
 import bcrypt from 'bcryptjs'; // Added for password hashing
 import { createError } from '../middleware/errorHandler';
 import { authenticate, authorize } from '../middleware/authMiddleware';
+import { Router } from 'express';
 
-const router = express.Router();
+const router = Router();
 
 // Apply authentication and admin-only authorization to all admin routes
 router.use(authenticate);
@@ -227,6 +228,61 @@ router.get('/dashboard', async (req: Request, res: Response, next: NextFunction)
     });
   } catch (error) {
     next(error);
+  }
+});
+
+// Get all setpoint configurations
+router.get('/setpoints', async (req, res) => {
+  try {
+    const setpoints = await prisma.setpoint.findMany();
+    res.json(setpoints);
+  } catch (error) {
+    console.error('Error fetching setpoints:', error);
+    res.status(500).json({ error: 'Failed to fetch setpoints' });
+  }
+});
+
+// Create a new setpoint configuration
+router.post('/setpoints', async (req, res) => {
+  try {
+    const { name, type, zone, scadaField, lowDeviation, highDeviation } = req.body;
+    
+    const setpoint = await prisma.setpoint.create({
+      data: {
+        name,
+        type,
+        zone,
+        scadaField,
+        lowDeviation: parseFloat(lowDeviation),
+        highDeviation: parseFloat(highDeviation)
+      }
+    });
+    
+    res.json(setpoint);
+  } catch (error) {
+    console.error('Error creating setpoint:', error);
+    res.status(500).json({ error: 'Failed to create setpoint' });
+  }
+});
+
+// Update a setpoint configuration
+router.put('/setpoints/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { lowDeviation, highDeviation } = req.body;
+    
+    const setpoint = await prisma.setpoint.update({
+      where: { id },
+      data: {
+        lowDeviation: parseFloat(lowDeviation),
+        highDeviation: parseFloat(highDeviation)
+      }
+    });
+    
+    res.json(setpoint);
+  } catch (error) {
+    console.error('Error updating setpoint:', error);
+    res.status(500).json({ error: 'Failed to update setpoint' });
   }
 });
 

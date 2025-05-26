@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,24 +17,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { AlarmCard } from '../../components/AlarmCard';
 import { AlarmDetails } from '../../components/AlarmDetails';
 import { useActiveAlarms, useUpdateAlarmStatus } from '../../hooks/useAlarms';
+import { useAlarmStore } from '../../store/useAlarmStore';
 import { Alarm, AlarmSeverity } from '../../types/alarm';
-import { useNotifications } from '../../hooks/useNotifications';
 import * as Notifications from 'expo-notifications';
-import axios from 'axios';
-import { apiConfig } from '../../api/config';
-import { getAuthHeader } from '../../api/auth';
 import { ResolutionModal } from '../../components/ResolutionModal';
+import { useSetpoints, useUpdateSetpoint, Setpoint } from '../../hooks/useSetpoints';
+import { SetpointConfigModal } from '../../components/SetpointConfigModal';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Add this type after the SCREEN_WIDTH constant
-type AlarmSeverityFilter = AlarmSeverity | 'all';
+type AlarmSeverityFilter = 'critical' | 'warning' | 'info' | 'all';
 
 // Add admin navigation functions after SCREEN_WIDTH constant
 const ADMIN_ROUTES = {
@@ -110,239 +108,95 @@ const SCREEN_PADDING = 16;
 const CARD_MARGIN = 8;
 const CARD_WIDTH = (SCREEN_WIDTH - (SCREEN_PADDING * 2) - (CARD_MARGIN * 2)) / 2;
 
+// Add these type definitions after the SCREEN_WIDTH constant
+type CardScales = Map<string, Animated.Value>;
+
+interface AlarmData {
+  id: string;
+  description: string;
+  severity: 'critical' | 'warning' | 'info';
+  status: 'active' | 'acknowledged' | 'resolved';
+  type: string;
+  value: string;
+  unit?: string;
+  setPoint: string;
+  lowLimit?: number;
+  highLimit?: number;
+  timestamp: string;
+  zone?: string;
+}
+
 export default function OperatorDashboard() {
+  // Theme and Auth Context
   const { isDarkMode, toggleTheme } = useTheme();
-  const { authState, logout } = useAuth();
+  const { authState } = useAuth();
   const router = useRouter();
   
-  const { data: activeAlarms, isLoading, isError, error, refetch } = useActiveAlarms();
-  
+  // Alarm Data and Mutations
+  const { data: alarmData, isLoading, isError, error, refetch } = useActiveAlarms();
+  // const { getAlarmsBySeverity } = useAlarmStore();
+  const updateAlarmStatus = useUpdateAlarmStatus();
+
+  // Setpoint Data and Mutations - Only for Admin
+  const isAdmin = authState?.user?.role === 'ADMIN';
+  const { data: setpoints } = useSetpoints();
+  const updateSetpointMutation = useUpdateSetpoint();
+
+  // UI State
   const [selectedAlarm, setSelectedAlarm] = useState<Alarm | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(5);
   const [selectedAlarmForResolution, setSelectedAlarmForResolution] = useState<Alarm | null>(null);
   const [resolutionModalVisible, setResolutionModalVisible] = useState(false);
+  const [severityFilter, setSeverityFilter] = useState<AlarmSeverityFilter>('all');
   
-  const updateAlarmStatus = useUpdateAlarmStatus();
+  // Admin-only state
+  const [selectedSetpoint, setSelectedSetpoint] = useState<Setpoint | null>(null);
+  const [setpointModalVisible, setSetpointModalVisible] = useState(false);
 
-  // For monitoring previous states of binary alarms
+  // Animation State
+  const [notificationBadgeScale] = useState(new Animated.Value(1));
+  const [cardScales] = useState<CardScales>(() => new Map());
+
+  // Monitoring State
   const [previousBinaryStates, setPreviousBinaryStates] = useState<Record<string, string>>({});
-  // For tracking if analog values are outside ranges
   const [alarmStates, setAlarmStates] = useState<Record<string, boolean>>({});
 
-  // Add notification badge animation
-  const [notificationBadgeScale] = useState(new Animated.Value(1));
+  // Memoized Values
+  const analogAlarms = useMemo(() => alarmData?.analogAlarms || [], [alarmData]);
+  const binaryAlarms = useMemo(() => alarmData?.binaryAlarms || [], [alarmData]);
 
-  // Add filter state
-  const [severityFilter, setSeverityFilter] = useState<AlarmSeverityFilter>('all');
+  const filteredAnalogAlarms = useMemo(() => {
+    if (!alarmData?.analogAlarms) return [];
+    return severityFilter === 'all' 
+      ? alarmData.analogAlarms 
+      : alarmData.analogAlarms.filter(alarm => alarm.severity === severityFilter);
+  }, [severityFilter, alarmData?.analogAlarms]);
 
-  // Sample analog alarms data for when no real data is available
-  const sampleAnalogAlarms = [
-    {
-      id: 'analog-1',
-      description: 'HARDENING ZONE 1 TEMPERATURE (LOW/HIGH)',
-      severity: 'warning',
-      status: 'active',
-      type: 'temperature',
-      value: '860',
-      unit: '°C',
-      setPoint: '870°C (-30/+10)',
-      lowLimit: '850°C',
-      highLimit: '880°C',
-      timestamp: new Date().toISOString(),
-      zone: 'zone1'
-    },
-    {
-      id: 'analog-2',
-      description: 'HARDENING ZONE 2 TEMPERATURE (LOW/HIGH)',
-      severity: 'critical',
-      status: 'active',
-      type: 'temperature',
-      value: '895',
-      unit: '°C',
-      setPoint: '880°C (-10/+10)',
-      lowLimit: '870°C',
-      highLimit: '890°C',
-      timestamp: new Date().toISOString(),
-      zone: 'zone2'
-    },
-    {
-      id: 'analog-3',
-      description: 'CARBON POTENTIAL (CP %)',
-      severity: 'info',
-      status: 'active',
-      type: 'carbon',
-      value: '0.42',
-      unit: '%',
-      setPoint: '0.40% (±0.05)',
-      lowLimit: '0.35%',
-      highLimit: '0.45%',
-      timestamp: new Date().toISOString()
-    },
-    {
-      id: 'analog-4',
-      description: 'OIL TEMPERATURE (LOW/HIGH)',
-      severity: 'warning',
-      status: 'active',
-      type: 'temperature',
-      value: '72',
-      unit: '°C',
-      setPoint: '60°C',
-      lowLimit: '-',
-      highLimit: '80°C',
-      timestamp: new Date().toISOString()
-    },
-    {
-      id: 'analog-5',
-      description: 'TEMPERING ZONE1 TEMPERATURE (LOW/HIGH)',
-      severity: 'warning',
-      status: 'active',
-      type: 'temperature',
-      value: '435',
-      unit: '°C',
-      setPoint: '450°C (-30/+10°C)',
-      lowLimit: '420°C',
-      highLimit: '460°C',
-      timestamp: new Date().toISOString(),
-      zone: 'zone1'
-    },
-    {
-      id: 'analog-6',
-      description: 'TEMPERING ZONE2 TEMPERATURE (LOW/HIGH)',
-      severity: 'info',
-      status: 'active',
-      type: 'temperature',
-      value: '455',
-      unit: '°C',
-      setPoint: '460°C (±10°C)',
-      lowLimit: '450°C',
-      highLimit: '470°C',
-      timestamp: new Date().toISOString(),
-      zone: 'zone2'
-    }
-  ];
+  const filteredBinaryAlarms = useMemo(() => {
+    if (!alarmData?.binaryAlarms) return [];
+    return severityFilter === 'all'
+      ? alarmData.binaryAlarms
+      : alarmData.binaryAlarms.filter(alarm => alarm.severity === severityFilter);
+  }, [severityFilter, alarmData?.binaryAlarms]);
 
-  // Sample binary alarms data for when no real data is available
-  const sampleBinaryAlarms = [
-    {
-      id: 'binary-1',
-      description: 'OIL LEVEL (LOW/HIGH)',
-      severity: 'info',
-      status: 'active',
-      type: 'level',
-      value: 'Normal',
-      setPoint: 'Normal',
-      timestamp: new Date().toISOString()
-    },
-    {
-      id: 'binary-2',
-      description: 'HARDENING HEATER FAILURE (ZONE 1)',
-      severity: 'info',
-      status: 'active',
-      type: 'heater',
-      value: 'Normal',
-      setPoint: 'Normal',
-      timestamp: new Date().toISOString(),
-      zone: 'zone1'
-    },
-    {
-      id: 'binary-3',
-      description: 'HARDENING HEATER FAILURE (ZONE 2)',
-      severity: 'critical',
-      status: 'active',
-      type: 'heater',
-      value: 'FAILURE',
-      setPoint: 'Normal',
-      timestamp: new Date().toISOString(),
-      zone: 'zone2'
-    },
-    {
-      id: 'binary-4',
-      description: 'HARDENING CONVEYOR (NOT ROTATING)',
-      severity: 'warning',
-      status: 'active',
-      type: 'conveyor',
-      value: 'NOT ROTATING',
-      setPoint: 'Rotating',
-      timestamp: new Date().toISOString()
-    },
-    {
-      id: 'binary-5',
-      description: 'OIL QUECH CONVEYOR (NOT ROTATING)',
-      severity: 'warning',
-      status: 'active',
-      type: 'conveyor',
-      value: 'NOT ROTATING',
-      setPoint: 'Rotating',
-      timestamp: new Date().toISOString()
-    },
-    {
-      id: 'binary-6',
-      description: 'HARDENING FAN MOTOR NOT RUNNING (ZONE 1)',
-      severity: 'warning',
-      status: 'active',
-      type: 'fan',
-      value: 'NOT RUNNING',
-      setPoint: 'Running',
-      timestamp: new Date().toISOString(),
-      zone: 'zone1'
-    },
-    {
-      id: 'binary-7',
-      description: 'HARDENING FAN MOTOR NOT RUNNING (ZONE 2)',
-      severity: 'warning',
-      status: 'active',
-      type: 'fan',
-      value: 'NOT RUNNING',
-      setPoint: 'Running',
-      timestamp: new Date().toISOString(),
-      zone: 'zone2'
-    },
-    {
-      id: 'binary-8',
-      description: 'TEMPERING CONVEYOR (NOT ROTATING)',
-      severity: 'warning',
-      status: 'active',
-      type: 'conveyor',
-      value: 'NOT ROTATING',
-      setPoint: 'Rotating',
-      timestamp: new Date().toISOString()
-    },
-    {
-      id: 'binary-9',
-      description: 'TEMPERING FAN MOTOR NOT RUNNING (ZONE 1)',
-      severity: 'warning',
-      status: 'active',
-      type: 'fan',
-      value: 'NOT RUNNING',
-      setPoint: 'Running',
-      timestamp: new Date().toISOString(),
-      zone: 'zone1'
-    },
-    {
-      id: 'binary-10',
-      description: 'TEMPERING FAN MOTOR NOT RUNNING (ZONE 2)',
-      severity: 'warning',
-      status: 'active',
-      type: 'fan',
-      value: 'NOT RUNNING',
-      setPoint: 'Running',
-      timestamp: new Date().toISOString(),
-      zone: 'zone2'
-    }
-  ];
+  const criticalCount = useMemo(() => (
+    (alarmData?.analogAlarms?.filter(a => a.severity === 'critical').length || 0) +
+    (alarmData?.binaryAlarms?.filter(a => a.severity === 'critical').length || 0)
+  ), [alarmData]);
 
-  // Add animation state AFTER sample data is defined
-  const [cardScales] = useState(() => 
-    new Map<string, Animated.Value>(
-      [...sampleAnalogAlarms, ...sampleBinaryAlarms].map(alarm => 
-        [alarm.id, new Animated.Value(1)]
-      )
-    )
-  );
+  const warningCount = useMemo(() => (
+    (alarmData?.analogAlarms?.filter(a => a.severity === 'warning').length || 0) +
+    (alarmData?.binaryAlarms?.filter(a => a.severity === 'warning').length || 0)
+  ), [alarmData]);
 
-  // Animation handlers
+  const infoCount = useMemo(() => (
+    (alarmData?.analogAlarms?.filter(a => a.severity === 'info').length || 0) +
+    (alarmData?.binaryAlarms?.filter(a => a.severity === 'info').length || 0)
+  ), [alarmData]);
+
+  // Callbacks
   const animateCard = useCallback((id: string, toValue: number) => {
     const scale = cardScales.get(id);
     if (scale) {
@@ -355,173 +209,6 @@ export default function OperatorDashboard() {
     }
   }, [cardScales]);
 
-  // Request notification permissions
-  useEffect(() => {
-    const requestPermissions = async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Notification Permission',
-          'Please enable notifications for this app to receive critical alarm alerts'
-        );
-      }
-    };
-    
-    requestPermissions();
-  }, []);
-
-  // Simulate periodic alarm data fetching (every 5 minutes)
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      console.log('Fetching fresh alarm data...');
-      refetch();
-      // Also check if we need to send notifications
-      checkAndTriggerNotifications();
-    }, 300000); // 5 minutes = 300000ms
-    
-    return () => clearInterval(intervalId);
-  }, [refetch]);
-  
-  // Set up more frequent monitoring (every 30 seconds)
-  useEffect(() => {
-    const monitoringInterval = setInterval(() => {
-      checkAndTriggerNotifications();
-    }, 30000); // 30 seconds for demo purposes
-    
-    return () => clearInterval(monitoringInterval);
-  }, [sampleAnalogAlarms, sampleBinaryAlarms, previousBinaryStates, alarmStates]);
-
-  // Function to check values and trigger notifications
-  const checkAndTriggerNotifications = useCallback(() => {
-    // Check analog alarms for threshold violations
-    sampleAnalogAlarms.forEach(alarm => {
-      const value = parseFloat(alarm.value);
-      const lowLimit = alarm.lowLimit ? parseFloat(alarm.lowLimit) : null;
-      const highLimit = alarm.highLimit ? parseFloat(alarm.highLimit) : null;
-      
-      // Check if value is outside limits
-      const isOutOfRange = (
-        (lowLimit !== null && value < lowLimit) || 
-        (highLimit !== null && value > highLimit)
-      );
-      
-      // Get previous state
-      const previouslyInAlarm = alarmStates[alarm.id] || false;
-      
-      // If state changed, trigger notification through backend
-      if (isOutOfRange && !previouslyInAlarm) {
-        // Value just went out of range, send to backend
-        triggerBackendNotification({
-          type: 'ANALOG_ALARM',
-          description: alarm.description,
-          value: alarm.value,
-          unit: alarm.unit,
-          severity: alarm.severity.toUpperCase(),
-          details: `Value ${value}${alarm.unit} is outside normal range (${alarm.lowLimit}-${alarm.highLimit})`,
-          alarmId: alarm.id
-        });
-        
-        // Update alarm state
-        setAlarmStates(prev => ({ ...prev, [alarm.id]: true }));
-      } else if (!isOutOfRange && previouslyInAlarm) {
-        // Value returned to normal range
-        triggerBackendNotification({
-          type: 'ANALOG_RESOLVED',
-          description: alarm.description,
-          value: alarm.value,
-          unit: alarm.unit,
-          severity: 'INFO',
-          details: `Value ${value}${alarm.unit} has returned to normal range`,
-          alarmId: alarm.id
-        });
-        
-        // Update alarm state
-        setAlarmStates(prev => ({ ...prev, [alarm.id]: false }));
-      }
-    });
-    
-    // Check binary alarms for state changes
-    sampleBinaryAlarms.forEach(alarm => {
-      const currentValue = alarm.value;
-      const previousValue = previousBinaryStates[alarm.id];
-      
-      // If this is first check, just store the value
-      if (!previousValue) {
-        setPreviousBinaryStates(prev => ({ ...prev, [alarm.id]: currentValue }));
-        return;
-      }
-      
-      // If value changed, trigger notification through backend
-      if (currentValue !== previousValue) {
-        // Status changed, send to backend
-        if (currentValue !== alarm.setPoint) {
-          // Alarm condition
-          triggerBackendNotification({
-            type: 'BINARY_ALARM',
-            description: alarm.description,
-            value: currentValue,
-            severity: alarm.severity.toUpperCase(),
-            details: `Status changed to ${currentValue} (Expected: ${alarm.setPoint})`,
-            alarmId: alarm.id
-          });
-        } else {
-          // Normal condition
-          triggerBackendNotification({
-            type: 'BINARY_RESOLVED',
-            description: alarm.description,
-            value: currentValue,
-            severity: 'INFO',
-            details: `Status returned to normal: ${currentValue}`,
-            alarmId: alarm.id
-          });
-        }
-        
-        // Update state
-        setPreviousBinaryStates(prev => ({ ...prev, [alarm.id]: currentValue }));
-      }
-    });
-  }, [sampleAnalogAlarms, sampleBinaryAlarms, previousBinaryStates, alarmStates]);
-
-  // Send notification through backend to all users
-  const triggerBackendNotification = async (alarmData: any) => {
-    try {
-      const headers = await getAuthHeader();
-      await axios.post(
-        `${apiConfig.apiUrl}/api/alarms/notification`,
-        alarmData,
-        { headers }
-      );
-      console.log(`Backend notification triggered for: ${alarmData.description}`);
-    } catch (error) {
-      console.error('Error triggering backend notification:', error);
-      
-      // Fallback to local notification if backend fails
-      triggerLocalNotification(
-        `${alarmData.description} ${alarmData.type.includes('RESOLVED') ? 'Resolved' : 'Alarm'}`,
-        alarmData.details
-      );
-    }
-  };
-
-  // Helper to trigger local notifications (as fallback only)
-  const triggerLocalNotification = async (title: string, body: string) => {
-    try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          sound: true,
-          priority: Notifications.AndroidNotificationPriority.HIGH,
-        },
-        trigger: null, // immediately
-      });
-      console.log(`Notification triggered: ${title} - ${body}`);
-    } catch (error) {
-      console.error('Error triggering notification:', error);
-    }
-  };
-
-  // Handle alarm actions
   const handleAcknowledge = useCallback((id: string) => {
     updateAlarmStatus.mutate({ id, status: 'acknowledged' });
     if (selectedAlarm?.id === id) {
@@ -540,134 +227,126 @@ export default function OperatorDashboard() {
     setDetailsVisible(false);
   }, []);
   
-  // Refresh data
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
   }, [refetch]);
   
-  // Filter alarms by type
-  const analogAlarms = activeAlarms?.filter(alarm => 
-    [
-      'HARDENING ZONE 1 TEMPERATURE',
-      'HARDENING ZONE 2 TEMPERATURE',
-      'CARBON POTENTIAL',
-      'OIL TEMPERATURE',
-      'TEMPERING ZONE1 TEMPERATURE',
-      'TEMPERING ZONE2 TEMPERATURE'
-    ].some(name => (alarm.description || '').toUpperCase().includes(name))
-  ) || [];
-  
-  const binaryAlarms = activeAlarms?.filter(alarm => 
-    [
-      'OIL LEVEL',
-      'HARDENING HEATER FAILURE',
-      'HARDENING CONVEYOR',
-      'OIL QUECH CONVEYOR',
-      'HARDENING FAN MOTOR',
-      'TEMPERING CONVEYOR',
-      'TEMPERING FAN MOTOR'
-    ].some(name => (alarm.description || '').toUpperCase().includes(name))
-  ) || [];
-
-  // Add filter handling function after the checkAndTriggerNotifications function
-  const handleSeverityFilter = (severity: AlarmSeverityFilter) => {
+  const handleSeverityFilter = useCallback((severity: AlarmSeverityFilter) => {
     setSeverityFilter(prev => prev === severity ? 'all' : severity);
-  };
+  }, []);
 
-  // Modify the renderSummaryCards function
-  const renderSummaryCards = () => {
-    return (
-      <View style={styles.summaryContainer}>
-        <TouchableOpacity
-          onPress={() => handleSeverityFilter('critical')}
-          style={[
-          styles.summaryCardItem,
-            { 
-              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
-              borderColor: severityFilter === 'critical' ? THEME.dark.status.critical : isDarkMode ? THEME.dark.border : THEME.light.border,
-              borderWidth: severityFilter === 'critical' ? 2 : 1,
-            }
-          ]}
-        >
-          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.critical }]}>
-            <Ionicons name="alert-circle" size={16} color={THEME.dark.text.primary} />
-          </View>
-          <Text style={[styles.summaryCount, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
-            {activeAlarms?.filter(a => a.status === 'active' && a.severity === 'critical').length || 2}
-          </Text>
-          <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
-            Critical
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          onPress={() => handleSeverityFilter('warning')}
-          style={[
-          styles.summaryCardItem,
-            { 
-              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
-              borderColor: severityFilter === 'warning' ? THEME.dark.status.warning : isDarkMode ? THEME.dark.border : THEME.light.border,
-              borderWidth: severityFilter === 'warning' ? 2 : 1,
-            }
-          ]}
-        >
-          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.warning }]}>
-            <Ionicons name="warning" size={16} color={THEME.dark.text.primary} />
-          </View>
-          <Text style={[styles.summaryCount, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
-            {activeAlarms?.filter(a => a.status === 'active' && a.severity === 'warning').length || 3}
-          </Text>
-          <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
-            Warning
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          onPress={() => handleSeverityFilter('info')}
-          style={[
-          styles.summaryCardItem,
-            { 
-              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
-              borderColor: severityFilter === 'info' ? THEME.dark.status.success : isDarkMode ? THEME.dark.border : THEME.light.border,
-              borderWidth: severityFilter === 'info' ? 2 : 1,
-            }
-          ]}
-        >
-          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.success }]}>
-            <Ionicons name="information-circle" size={16} color={THEME.dark.text.primary} />
-          </View>
-          <Text style={[styles.summaryCount, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
-            {activeAlarms?.filter(a => a.status === 'active' && a.severity === 'info').length || 0}
-          </Text>
-          <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
-            Info
-          </Text>
-        </TouchableOpacity>
-      </View>
+  const handleConfigureSetpoint = useCallback((alarm: Alarm) => {
+    if (!isAdmin) return;
+    
+    const matchingSetpoint = setpoints?.find(sp => 
+      sp.type === alarm.type && 
+      (!alarm.zone || sp.zone === alarm.zone?.toLowerCase())
     );
-  };
+    
+    if (matchingSetpoint) {
+      setSelectedSetpoint(matchingSetpoint);
+      setSetpointModalVisible(true);
+    }
+  }, [setpoints, authState?.user?.role]);
 
-  // Add filtered alarm getters before renderAlarmSections
-  const getFilteredAnalogAlarms = useCallback(() => {
-    return severityFilter === 'all' 
-      ? sampleAnalogAlarms 
-      : sampleAnalogAlarms.filter(alarm => alarm.severity === severityFilter);
-  }, [severityFilter, sampleAnalogAlarms]);
+  const handleSetpointUpdate = useCallback(async (lowDeviation: number, highDeviation: number) => {
+    if (!selectedSetpoint || !isAdmin) return;
+    
+    try {
+      await updateSetpointMutation.mutateAsync({
+        id: selectedSetpoint.id,
+        lowDeviation,
+        highDeviation,
+      });
+      setSetpointModalVisible(false);
+      setSelectedSetpoint(null);
+    } catch (error) {
+      console.error('Error updating setpoint:', error);
+      Alert.alert(
+        'Update Failed',
+        'Failed to update setpoint configuration. Please try again.'
+      );
+    }
+  }, [selectedSetpoint, updateSetpointMutation, authState?.user?.role]);
 
-  const getFilteredBinaryAlarms = useCallback(() => {
-    return severityFilter === 'all'
-      ? sampleBinaryAlarms
-      : sampleBinaryAlarms.filter(alarm => alarm.severity === severityFilter);
-  }, [severityFilter, sampleBinaryAlarms]);
+  const handleResolutionSubmit = useCallback(async (message: string) => {
+    if (selectedAlarmForResolution) {
+      try {
+        updateAlarmStatus.mutate({
+          id: selectedAlarmForResolution.id,
+          status: 'resolved',
+          resolutionMessage: message
+        });
+        setResolutionModalVisible(false);
+        setSelectedAlarmForResolution(null);
+      } catch (error) {
+        console.error('Error resolving alarm:', error);
+      }
+    }
+  }, [selectedAlarmForResolution, updateAlarmStatus]);
 
-// Modify the renderAlarmSections function to use filtered alarms
-  const renderAlarmSections = () => {
-    const filteredAnalogAlarms = getFilteredAnalogAlarms();
-    const filteredBinaryAlarms = getFilteredBinaryAlarms();
+  const openResolutionModal = useCallback((alarm: Alarm) => {
+    setSelectedAlarmForResolution(alarm);
+    setResolutionModalVisible(true);
+  }, []);
 
-    const renderActionButtons = (alarm: any) => (
+  const navigateToUserManagement = useCallback(() => {
+    if (isAdmin) {
+      router.push(ADMIN_ROUTES.userManagement as any);
+    }
+  }, [authState?.user?.role, router]);
+
+  const navigateToSettings = useCallback(() => {
+    if (isAdmin) {
+      router.push(ADMIN_ROUTES.systemSettings as any);
+    }
+  }, [authState?.user?.role, router]);
+
+  // Effects
+  useEffect(() => {
+    const requestPermissions = async () => {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Notification Permission',
+          'Please enable notifications for this app to receive critical alarm alerts'
+        );
+      }
+    };
+    
+    requestPermissions();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      console.log('Fetching fresh alarm data...');
+      refetch();
+    }, 120000);
+    
+    return () => clearInterval(intervalId);
+  }, [refetch]);
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.spring(notificationBadgeScale, {
+        toValue: 1.2,
+        useNativeDriver: true,
+        tension: 400,
+        friction: 20,
+      }),
+      Animated.spring(notificationBadgeScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 400,
+        friction: 20,
+      }),
+    ]).start();
+  }, [unreadNotifications, notificationBadgeScale]);
+
+  // Render Functions
+  const renderActionButtons = useCallback((alarm: Alarm) => (
       <View style={styles.alarmCardActions}>
         {alarm.status === 'active' && (
           <TouchableOpacity
@@ -720,6 +399,33 @@ export default function OperatorDashboard() {
             </Text>
           </TouchableOpacity>
         )}
+
+        {/* Add Configure button for admins */}
+      {isAdmin && (
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              {
+                backgroundColor: isDarkMode ? 'rgba(79, 70, 229, 0.1)' : 'rgba(99, 102, 241, 0.1)',
+                borderColor: isDarkMode ? '#4F46E5' : '#6366F1',
+                borderWidth: 1,
+              }
+            ]}
+            onPress={() => handleConfigureSetpoint(alarm)}
+          >
+            <Ionicons
+              name="settings-outline"
+              size={16}
+              color={isDarkMode ? '#4F46E5' : '#6366F1'}
+            />
+            <Text style={[
+              styles.actionButtonText,
+              { color: isDarkMode ? '#4F46E5' : '#6366F1' }
+            ]}>
+              Configure
+            </Text>
+          </TouchableOpacity>
+        )}
         
         {alarm.acknowledgedBy && (
           <View style={styles.acknowledgedByContainer}>
@@ -728,9 +434,84 @@ export default function OperatorDashboard() {
             </Text>
           </View>
         )}
+    </View>
+  ), [isDarkMode, authState?.user?.role, handleAcknowledge, openResolutionModal, handleConfigureSetpoint]);
+
+  // Modify the renderSummaryCards function
+  const renderSummaryCards = () => {
+    return (
+      <View style={styles.summaryContainer}>
+        <TouchableOpacity
+          onPress={() => handleSeverityFilter('critical')}
+          style={[
+          styles.summaryCardItem,
+            { 
+              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+              borderColor: severityFilter === 'critical' ? THEME.dark.status.critical : isDarkMode ? THEME.dark.border : THEME.light.border,
+              borderWidth: severityFilter === 'critical' ? 2 : 1,
+            }
+          ]}
+        >
+          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.critical }]}>
+            <Ionicons name="alert-circle" size={16} color={THEME.dark.text.primary} />
+          </View>
+          <Text style={[styles.summaryCount, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
+            {criticalCount}
+          </Text>
+          <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+            Critical
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          onPress={() => handleSeverityFilter('warning')}
+          style={[
+          styles.summaryCardItem,
+            { 
+              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+              borderColor: severityFilter === 'warning' ? THEME.dark.status.warning : isDarkMode ? THEME.dark.border : THEME.light.border,
+              borderWidth: severityFilter === 'warning' ? 2 : 1,
+            }
+          ]}
+        >
+          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.warning }]}>
+            <Ionicons name="warning" size={16} color={THEME.dark.text.primary} />
+          </View>
+          <Text style={[styles.summaryCount, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
+            {warningCount}
+          </Text>
+          <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+            Warning
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          onPress={() => handleSeverityFilter('info')}
+          style={[
+          styles.summaryCardItem,
+            { 
+              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+              borderColor: severityFilter === 'info' ? THEME.dark.status.success : isDarkMode ? THEME.dark.border : THEME.light.border,
+              borderWidth: severityFilter === 'info' ? 2 : 1,
+            }
+          ]}
+        >
+          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.success }]}>
+            <Ionicons name="information-circle" size={16} color={THEME.dark.text.primary} />
+          </View>
+          <Text style={[styles.summaryCount, { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary }]}>
+            {infoCount}
+          </Text>
+          <Text style={[styles.summaryLabel, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
+            Info
+          </Text>
+        </TouchableOpacity>
       </View>
     );
+  };
 
+  // Modify the renderAlarmSections function to use filtered alarms
+  const renderAlarmSections = () => {
     return (
       <View style={styles.alarmSections}>
         {/* Analog Alarms Section */}
@@ -744,7 +525,7 @@ export default function OperatorDashboard() {
             </Text>
           </View>
           <View style={styles.alarmGrid}>
-            {filteredAnalogAlarms.map(alarm => (
+            {filteredAnalogAlarms.map((alarm: Alarm) => (
               <View key={alarm.id} style={styles.alarmCardWrapper}>
                 <View style={[
                   styles.alarmCard,
@@ -772,7 +553,7 @@ export default function OperatorDashboard() {
                     />
                     <View style={styles.alarmCardValues}>
                       <Text style={[styles.valueText, { color: getValueTextColor(alarm, isDarkMode) }]}>
-                        Value: {alarm.value}{alarm.unit}
+                        Value: {alarm.value}
                       </Text>
                       <Text style={[styles.setValue, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
                         (Set: {alarm.setPoint})
@@ -819,7 +600,7 @@ export default function OperatorDashboard() {
             </Text>
           </View>
           <View style={styles.alarmGrid}>
-            {filteredBinaryAlarms.map(alarm => (
+            {filteredBinaryAlarms.map((alarm: Alarm) => (
               <View key={alarm.id} style={styles.alarmCardWrapper}>
                 <View style={[
                   styles.alarmCard,
@@ -879,17 +660,10 @@ export default function OperatorDashboard() {
   };
   
   // Helper functions for dynamic alarm colors
-  interface AlarmData {
-    value: string;
-    lowLimit?: string;
-    highLimit?: string;
-    setPoint: string;
-  }
-
-  const getAnalogAlarmBackground = (alarm: AlarmData): string => {
+  const getAnalogAlarmBackground = (alarm: Alarm): string => {
     const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit && alarm.lowLimit !== '-' ? parseFloat(alarm.lowLimit) : null;
-    const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
+    const lowLimit = alarm.lowLimit ? parseFloat(alarm.lowLimit.toString()) : null;
+    const highLimit = alarm.highLimit ? parseFloat(alarm.highLimit.toString()) : null;
     
     if ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit)) {
       return isDarkMode ? 
@@ -901,21 +675,10 @@ export default function OperatorDashboard() {
       'rgba(220, 252, 231, 0.6)'; // Light green with more opacity
   };
 
-  const getAnalogAlarmBackgroundDark = (alarm: AlarmData): string => {
+  const getAnalogAlarmBorder = (alarm: Alarm): string => {
     const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit && alarm.lowLimit !== '-' ? parseFloat(alarm.lowLimit) : null;
-    const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
-    
-    if ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit)) {
-      return 'rgba(136, 19, 55, 0.3)'; // Softer dark red
-    }
-    return 'rgba(6, 95, 70, 0.2)'; // Softer dark green
-  };
-
-  const getAnalogAlarmBorder = (alarm: AlarmData): string => {
-    const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit && alarm.lowLimit !== '-' ? parseFloat(alarm.lowLimit) : null;
-    const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
+    const lowLimit = alarm.lowLimit ? parseFloat(alarm.lowLimit.toString()) : null;
+    const highLimit = alarm.highLimit ? parseFloat(alarm.highLimit.toString()) : null;
     
     if ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit)) {
       return isDarkMode ? THEME.dark.status.critical : THEME.light.status.critical;
@@ -923,22 +686,22 @@ export default function OperatorDashboard() {
     return isDarkMode ? THEME.dark.status.success : THEME.light.status.success;
   };
 
-  const getBinaryAlarmBackground = (alarm: AlarmData): string => {
+  const getBinaryAlarmBackground = (alarm: Alarm): string => {
     return alarm.value === alarm.setPoint ? 
       (isDarkMode ? 'rgba(6, 95, 70, 0.2)' : 'rgba(220, 252, 231, 0.6)') :
       (isDarkMode ? 'rgba(136, 19, 55, 0.3)' : 'rgba(254, 226, 226, 0.6)');
   };
 
-  const getBinaryAlarmBorder = (alarm: AlarmData): string => {
+  const getBinaryAlarmBorder = (alarm: Alarm): string => {
     return alarm.value === alarm.setPoint ? 
       (isDarkMode ? THEME.dark.status.success : THEME.light.status.success) :
       (isDarkMode ? THEME.dark.status.critical : THEME.light.status.critical);
   };
 
-  const getAlarmTitleColor = (alarm: AlarmData, isDark: boolean): string => {
+  const getAlarmTitleColor = (alarm: Alarm, isDark: boolean): string => {
     const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit && alarm.lowLimit !== '-' ? parseFloat(alarm.lowLimit) : null;
-    const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
+    const lowLimit = alarm.lowLimit ? parseFloat(alarm.lowLimit.toString()) : null;
+    const highLimit = alarm.highLimit ? parseFloat(alarm.highLimit.toString()) : null;
     const isOutOfRange = ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit));
     
     return isDark ? 
@@ -946,17 +709,17 @@ export default function OperatorDashboard() {
       (isOutOfRange ? '#991B1B' : '#065F46'); // More readable in light mode
   };
 
-  const getBinaryTitleColor = (alarm: AlarmData, isDark: boolean): string => {
+  const getBinaryTitleColor = (alarm: Alarm, isDark: boolean): string => {
     const isNormal = alarm.value === alarm.setPoint;
     return isDark ? 
       (isNormal ? '#6EE7B7' : '#FCA5A5') : // More visible in dark mode
       (isNormal ? '#065F46' : '#991B1B'); // More readable in light mode
   };
 
-  const getValueTextColor = (alarm: AlarmData, isDark: boolean): string => {
+  const getValueTextColor = (alarm: Alarm, isDark: boolean): string => {
     const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit && alarm.lowLimit !== '-' ? parseFloat(alarm.lowLimit) : null;
-    const highLimit = alarm.highLimit && alarm.highLimit !== '-' ? parseFloat(alarm.highLimit) : null;
+    const lowLimit = alarm.lowLimit ? parseFloat(alarm.lowLimit.toString()) : null;
+    const highLimit = alarm.highLimit ? parseFloat(alarm.highLimit.toString()) : null;
     const isOutOfRange = ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit));
     
     return isDark ? 
@@ -964,7 +727,7 @@ export default function OperatorDashboard() {
       (isOutOfRange ? '#991B1B' : '#065F46'); // More readable in light mode
   };
 
-  const getBinaryValueColor = (alarm: AlarmData, isDark: boolean): string => {
+  const getBinaryValueColor = (alarm: Alarm, isDark: boolean): string => {
     const isNormal = alarm.value === alarm.setPoint;
     return isDark ? 
       (isNormal ? '#6EE7B7' : '#FCA5A5') : // More visible in dark mode
@@ -990,40 +753,7 @@ export default function OperatorDashboard() {
     ]).start();
   }, [unreadNotifications]);
 
-  // Add these functions after the existing handleResolve function
-  const handleResolutionSubmit = async (message: string) => {
-    if (selectedAlarmForResolution) {
-      try {
-        updateAlarmStatus.mutate({
-          id: selectedAlarmForResolution.id,
-          status: 'resolved',
-          resolutionMessage: message
-        });
-        setResolutionModalVisible(false);
-        setSelectedAlarmForResolution(null);
-      } catch (error) {
-        console.error('Error resolving alarm:', error);
-      }
-    }
-  };
-
-  const openResolutionModal = (alarm: Alarm) => {
-    setSelectedAlarmForResolution(alarm);
-    setResolutionModalVisible(true);
-  };
-
-  // Add admin navigation handlers
-  const navigateToUserManagement = () => {
-    if (authState?.user?.role === 'ADMIN') {
-      router.push(ADMIN_ROUTES.userManagement as any);
-    }
-  };
-
-  const navigateToSettings = () => {
-    if (authState?.user?.role === 'ADMIN') {
-      router.push(ADMIN_ROUTES.systemSettings as any);
-    }
-  };
+  // Functions are now declared at the top of the component using useCallback
 
   // Add admin actions section to renderSummaryCards
   const renderAdminActions = () => {
@@ -1063,6 +793,8 @@ export default function OperatorDashboard() {
       </View>
     );
   };
+
+  // Handlers are now declared at the top of the component using useCallback
 
   // Define styles inside the component to access isDarkMode
   const styles = StyleSheet.create({
@@ -1516,7 +1248,7 @@ export default function OperatorDashboard() {
                 color: isDarkMode ? '#94A3B8' : '#64748B',
               }
             ]}>
-              {authState?.user?.role === 'ADMIN' ? 'Admin Dashboard' : 'Operator Dashboard'}
+              {isAdmin ? 'Admin Dashboard' : 'Operator Dashboard'}
             </Text>
           </View>
         </View>
@@ -1617,7 +1349,7 @@ export default function OperatorDashboard() {
             Last updated: {new Date().toLocaleTimeString()}
           </Text>
           <Text style={[styles.updateInfoText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Data refreshes every 5 minutes
+            Data refreshes every 2 minutes
           </Text>
         </ScrollView>
       )}
@@ -1719,6 +1451,20 @@ export default function OperatorDashboard() {
         onSubmit={handleResolutionSubmit}
         alarmDescription={selectedAlarmForResolution?.description || ''}
       />
+
+      {/* Setpoint Config Modal - Only render for admin */}
+      {isAdmin && (
+      <SetpointConfigModal
+        visible={setpointModalVisible}
+        onClose={() => {
+          setSetpointModalVisible(false);
+          setSelectedSetpoint(null);
+        }}
+        onSubmit={handleSetpointUpdate}
+        setpoint={selectedSetpoint}
+        isSubmitting={updateSetpointMutation.isPending}
+      />
+      )}
     </SafeAreaView>
   );
 } 

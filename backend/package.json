@@ -26,9 +26,11 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "cron": "^4.3.0",
+    "date-fns": "^4.1.0",
     "dotenv": "^16.5.0",
     "exceljs": "^4.4.0",
     "expo-server-sdk": "^3.15.0",
+    "exponential-backoff": "^3.1.2",
     "express": "^5.1.0",
     "express-async-handler": "^1.2.0",
     "express-fileupload": "^1.5.1",
@@ -40,7 +42,7 @@
     "node-schedule": "^2.1.1",
     "pdfkit": "^0.17.1",
     "pdfkit-table": "^0.1.99",
-    "pg": "^8.15.6"
+    "pg": "^8.16.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -49,10 +51,13 @@
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.15.17",
     "@types/node-schedule": "^2.1.7",
-    "@types/pg": "^8.15.0",
+    "@types/pg": "^8.15.2",
     "nodemon": "^3.1.10",
     "prisma": "^6.8.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   }
 }

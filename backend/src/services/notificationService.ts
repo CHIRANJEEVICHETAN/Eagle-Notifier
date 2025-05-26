@@ -26,6 +26,14 @@ type UserWithSettings = {
   } | null;
 };
 
+interface CreateNotificationParams {
+  title: string;
+  body: string;
+  severity?: 'CRITICAL' | 'WARNING' | 'INFO';
+  type?: 'ALARM' | 'SYSTEM' | 'MAINTENANCE' | 'INFO';
+  metadata?: Record<string, unknown>;
+}
+
 /**
  * Service for handling notifications
  */
@@ -33,18 +41,14 @@ export class NotificationService {
   /**
    * Create and send notifications to all eligible users
    */
-  static async createNotification(data: {
-    title: string;
-    body: string;
-    severity?: 'CRITICAL' | 'WARNING' | 'INFO';
-    type?: 'ALARM' | 'INFO' | 'SYSTEM' | 'MAINTENANCE';
-  }): Promise<void> {
+  static async createNotification(data: CreateNotificationParams): Promise<void> {
     try {
       console.log('🔔 Creating notification:', {
         title: data.title,
         body: data.body,
         severity: data.severity || 'INFO',
-        type: data.type || 'INFO'
+        type: data.type || 'INFO',
+        metadata: data.metadata
       });
       
       // Get all users with notification settings and push tokens

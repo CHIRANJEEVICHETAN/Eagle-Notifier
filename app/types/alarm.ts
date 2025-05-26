@@ -38,21 +38,26 @@ export interface Alarm {
   description: string;
   type: string;
   zone?: string;
-  severity: AlarmSeverity;
-  status: string;
+  severity: 'critical' | 'warning' | 'info';
+  status: AlarmStatus;
   value: string;
   setPoint: string;
   unit?: string;
-  lowLimit?: number;
-  highLimit?: number;
+  lowLimit?: string;
+  highLimit?: string;
   timestamp: string;
-  acknowledgedById?: string;
-  acknowledgedBy?: User;
+  acknowledgedBy?: {
+    id: string;
+    name: string;
+  };
   acknowledgedAt?: string;
-  resolvedById?: string;
-  resolvedBy?: User;
+  resolvedBy?: {
+    id: string;
+    name: string;
+  };
   resolvedAt?: string;
   resolutionMessage?: string;
+  alarmType?: 'analog' | 'binary';
 }
 
 export interface AlarmHistory {
