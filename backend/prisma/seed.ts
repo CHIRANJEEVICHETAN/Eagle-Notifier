@@ -53,7 +53,7 @@ async function main() {
       name: 'OIL TEMPERATURE',
       type: 'temperature',
       scadaField: 'oilpv',
-      lowDeviation: 0,
+      lowDeviation: -10,
       highDeviation: 20.0,
       setPoint: 60
     }

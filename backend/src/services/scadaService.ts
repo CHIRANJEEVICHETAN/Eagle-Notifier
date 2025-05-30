@@ -82,12 +82,22 @@ const formatTimestamp = (date: Date): string => {
 const calculateAnalogSeverity = (value: number, setpoint: number, lowDeviation: number, highDeviation: number): 'critical' | 'warning' | 'info' => {
     const lowLimit = setpoint + lowDeviation; // lowDeviation is already negative
     const highLimit = setpoint + highDeviation;
+    const warningOffset = 10;
 
-    if (value < lowLimit - 10 || value > highLimit + 10) {
+    // Critical: Beyond deviation band by >10 units
+    if (value < lowLimit - warningOffset || value > highLimit + warningOffset) {
         return 'critical';
-    } else if (value < lowLimit || value > highLimit) {
+    }
+    
+    // Warning: Outside deviation band but within 10 units
+    // (setpoint + lowDeviation - 10) <= value < setpoint + lowDeviation
+    // OR
+    // setpoint + highDeviation < value <= (setpoint + highDeviation + 10)
+    if (value < lowLimit || value > highLimit) {
         return 'warning';
     }
+    
+    // Info: Within deviation band
     return 'info';
 };
 

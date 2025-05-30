@@ -661,70 +661,83 @@ export default function OperatorDashboard() {
   
   // Helper functions for dynamic alarm colors
   const getAnalogAlarmBackground = (alarm: Alarm): string => {
-    const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit ? parseFloat(alarm.lowLimit.toString()) : null;
-    const highLimit = alarm.highLimit ? parseFloat(alarm.highLimit.toString()) : null;
-    
-    if ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit)) {
-      return isDarkMode ? 
-        'rgba(136, 19, 55, 0.3)' : // Softer dark red background
-        'rgba(254, 226, 226, 0.6)'; // Light red with more opacity
+    switch (alarm.severity) {
+      case 'critical':
+        return isDarkMode ? 
+          'rgba(136, 19, 55, 0.3)' : // Softer dark red background
+          'rgba(254, 226, 226, 0.6)'; // Light red with more opacity
+      case 'warning':
+        return isDarkMode ? 
+          'rgba(234, 179, 8, 0.3)' : // Softer dark yellow background
+          'rgba(254, 243, 199, 0.6)'; // Light yellow with more opacity
+      case 'info':
+      default:
+        return isDarkMode ? 
+          'rgba(6, 95, 70, 0.2)' : // Softer dark green background
+          'rgba(220, 252, 231, 0.6)'; // Light green with more opacity
     }
-    return isDarkMode ? 
-      'rgba(6, 95, 70, 0.2)' : // Softer dark green background
-      'rgba(220, 252, 231, 0.6)'; // Light green with more opacity
   };
 
   const getAnalogAlarmBorder = (alarm: Alarm): string => {
-    const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit ? parseFloat(alarm.lowLimit.toString()) : null;
-    const highLimit = alarm.highLimit ? parseFloat(alarm.highLimit.toString()) : null;
-    
-    if ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit)) {
-      return isDarkMode ? THEME.dark.status.critical : THEME.light.status.critical;
+    switch (alarm.severity) {
+      case 'critical':
+        return isDarkMode ? THEME.dark.status.critical : THEME.light.status.critical;
+      case 'warning':
+        return isDarkMode ? THEME.dark.status.warning : THEME.light.status.warning;
+      case 'info':
+      default:
+        return isDarkMode ? THEME.dark.status.success : THEME.light.status.success;
     }
-    return isDarkMode ? THEME.dark.status.success : THEME.light.status.success;
   };
 
   const getBinaryAlarmBackground = (alarm: Alarm): string => {
-    return alarm.value === alarm.setPoint ? 
-      (isDarkMode ? 'rgba(6, 95, 70, 0.2)' : 'rgba(220, 252, 231, 0.6)') :
-      (isDarkMode ? 'rgba(136, 19, 55, 0.3)' : 'rgba(254, 226, 226, 0.6)');
+    switch (alarm.severity) {
+      case 'critical':
+        return isDarkMode ? 'rgba(136, 19, 55, 0.3)' : 'rgba(254, 226, 226, 0.6)';
+      case 'info':
+      default:
+        return isDarkMode ? 'rgba(6, 95, 70, 0.2)' : 'rgba(220, 252, 231, 0.6)';
+    }
   };
 
   const getBinaryAlarmBorder = (alarm: Alarm): string => {
-    return alarm.value === alarm.setPoint ? 
-      (isDarkMode ? THEME.dark.status.success : THEME.light.status.success) :
-      (isDarkMode ? THEME.dark.status.critical : THEME.light.status.critical);
+    switch (alarm.severity) {
+      case 'critical':
+        return isDarkMode ? THEME.dark.status.critical : THEME.light.status.critical;
+      case 'info':
+      default:
+        return isDarkMode ? THEME.dark.status.success : THEME.light.status.success;
+    }
   };
 
   const getAlarmTitleColor = (alarm: Alarm, isDark: boolean): string => {
-    const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit ? parseFloat(alarm.lowLimit.toString()) : null;
-    const highLimit = alarm.highLimit ? parseFloat(alarm.highLimit.toString()) : null;
-    const isOutOfRange = ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit));
-    
-    return isDark ? 
-      (isOutOfRange ? '#FCA5A5' : '#6EE7B7') : // More visible in dark mode
-      (isOutOfRange ? '#991B1B' : '#065F46'); // More readable in light mode
+    switch (alarm.severity) {
+      case 'critical':
+        return isDark ? '#FCA5A5' : '#991B1B'; // Red
+      case 'warning':
+        return isDark ? '#FCD34D' : '#92400E'; // Yellow
+      case 'info':
+      default:
+        return isDark ? '#6EE7B7' : '#065F46'; // Green
+    }
   };
 
   const getBinaryTitleColor = (alarm: Alarm, isDark: boolean): string => {
-    const isNormal = alarm.value === alarm.setPoint;
-    return isDark ? 
-      (isNormal ? '#6EE7B7' : '#FCA5A5') : // More visible in dark mode
-      (isNormal ? '#065F46' : '#991B1B'); // More readable in light mode
+    return alarm.severity === 'critical' ? 
+      (isDark ? '#FCA5A5' : '#991B1B') : // Red for critical
+      (isDark ? '#6EE7B7' : '#065F46'); // Green for info
   };
 
   const getValueTextColor = (alarm: Alarm, isDark: boolean): string => {
-    const value = parseFloat(alarm.value);
-    const lowLimit = alarm.lowLimit ? parseFloat(alarm.lowLimit.toString()) : null;
-    const highLimit = alarm.highLimit ? parseFloat(alarm.highLimit.toString()) : null;
-    const isOutOfRange = ((lowLimit !== null && value < lowLimit) || (highLimit !== null && value > highLimit));
-    
-    return isDark ? 
-      (isOutOfRange ? '#FCA5A5' : '#6EE7B7') : // More visible in dark mode
-      (isOutOfRange ? '#991B1B' : '#065F46'); // More readable in light mode
+    switch (alarm.severity) {
+      case 'critical':
+        return isDark ? '#FCA5A5' : '#991B1B'; // Red
+      case 'warning':
+        return isDark ? '#FCD34D' : '#92400E'; // Yellow
+      case 'info':
+      default:
+        return isDark ? '#6EE7B7' : '#065F46'; // Green
+    }
   };
 
   const getBinaryValueColor = (alarm: Alarm, isDark: boolean): string => {
