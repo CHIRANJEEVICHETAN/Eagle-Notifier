@@ -22,6 +22,9 @@ constants/
 .env
 
 cursorUpdates/
+.cursor/
+.cursorignore
+.cursorrules
 
 ios
 android
