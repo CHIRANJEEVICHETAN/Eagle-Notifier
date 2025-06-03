@@ -27,6 +27,7 @@ import { getAuthHeader } from '../../api/auth';
 import { UserRole } from '../../types/auth';
 import { NotificationSettings } from '../../types/notification';
 import { BlurView } from 'expo-blur';
+import { useMaintenance } from '../../context/MaintenanceContext';
 
 // Types for profile API responses
 interface ProfileResponse {
@@ -51,249 +52,14 @@ const convertApiUserToUserType = (apiUser: ProfileResponse['user']) => {
   };
 };
 
-// Add this component before the main ProfileScreen component
-const MaintenanceModeCard = ({ isDarkMode }: { isDarkMode: boolean }) => {
-  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<'enable' | 'disable'>('enable');
-  const { authState } = useAuth();
-
-  const handleToggleMaintenance = () => {
-    setConfirmAction('enable');
-    setShowConfirmModal(true);
-  };
-
-  const handleDisableMaintenance = () => {
-    setConfirmAction('disable');
-    setShowConfirmModal(true);
-  };
-
-  const handleConfirmAction = () => {
-    setIsMaintenanceMode(confirmAction === 'enable');
-    setShowConfirmModal(false);
-  };
-
-  return (
-    <>
-      <View style={[
-        styles.maintenanceCard,
-        { 
-          backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
-          borderColor: isDarkMode ? '#374151' : '#E5E7EB'
-        }
-      ]}>
-        <View style={styles.maintenanceCardHeader}>
-          <View style={[
-            styles.maintenanceIconContainer,
-            { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)' }
-          ]}>
-            <Ionicons
-              name="construct-outline"
-              size={24}
-              color={isDarkMode ? '#F87171' : '#EF4444'}
-            />
-          </View>
-          <View style={styles.maintenanceCardContent}>
-            <Text style={[
-              styles.maintenanceCardTitle,
-              { color: isDarkMode ? '#FFFFFF' : '#1F2937' }
-            ]}>
-              Maintenance Mode
-            </Text>
-            <Text style={[
-              styles.maintenanceCardDescription,
-              { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
-            ]}>
-              {isMaintenanceMode 
-                ? 'Maintenance mode is currently active. Users will see a maintenance screen.'
-                : 'Enable maintenance mode to temporarily disable the app for all users'}
-            </Text>
-          </View>
-        </View>
-
-        {isMaintenanceMode ? (
-          <TouchableOpacity
-            style={[
-              styles.maintenanceButton,
-              { 
-                backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
-                borderWidth: 1,
-                borderColor: isDarkMode ? '#4B5563' : '#E5E7EB'
-              }
-            ]}
-            onPress={handleDisableMaintenance}
-          >
-            <Text style={[
-              styles.maintenanceButtonText,
-              { color: isDarkMode ? '#E5E7EB' : '#4B5563' }
-            ]}>
-              Disable Maintenance Mode
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[
-              styles.maintenanceButton,
-              { 
-                backgroundColor: isDarkMode ? '#EF4444' : '#F87171',
-                shadowColor: '#EF4444',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.1,
-                shadowRadius: 4,
-                elevation: 2
-              }
-            ]}
-            onPress={handleToggleMaintenance}
-          >
-            <Text style={[
-              styles.maintenanceButtonText,
-              { color: '#FFFFFF' }
-            ]}>
-              Enable Maintenance Mode
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <Modal
-        visible={showConfirmModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowConfirmModal(false)}
-      >
-        <BlurView
-          intensity={30}
-          style={StyleSheet.absoluteFill}
-          tint={isDarkMode ? 'dark' : 'light'}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[
-              styles.confirmModalContent,
-              { 
-                backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
-                borderColor: isDarkMode ? '#374151' : '#E5E7EB'
-              }
-            ]}>
-              <Text style={[
-                styles.confirmModalTitle,
-                { color: isDarkMode ? '#FFFFFF' : '#1F2937' }
-              ]}>
-                {confirmAction === 'enable' ? 'Enable' : 'Disable'} Maintenance Mode?
-              </Text>
-              
-              <Text style={[
-                styles.confirmModalDescription,
-                { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
-              ]}>
-                {confirmAction === 'enable' 
-                  ? 'This will temporarily disable the app for all users. They will see a maintenance screen until you disable this mode.'
-                  : 'This will restore access to the app for all users. Are you sure you want to disable maintenance mode?'}
-              </Text>
-
-              <View style={styles.confirmModalButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.confirmModalButton,
-                    styles.confirmModalButtonSecondary,
-                    { 
-                      backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
-                      borderColor: isDarkMode ? '#4B5563' : '#E5E7EB'
-                    }
-                  ]}
-                  onPress={() => setShowConfirmModal(false)}
-                >
-                  <Text style={[
-                    styles.confirmModalButtonText,
-                    { color: isDarkMode ? '#E5E7EB' : '#4B5563' }
-                  ]}>
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.confirmModalButton,
-                    styles.confirmModalButtonPrimary,
-                    { backgroundColor: isDarkMode ? '#EF4444' : '#F87171' }
-                  ]}
-                  onPress={handleConfirmAction}
-                >
-                  <Text style={styles.confirmModalButtonText}>
-                    {confirmAction === 'enable' ? 'Enable' : 'Disable'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </BlurView>
-      </Modal>
-
-      {/* Maintenance Mode Overlay - Only show for non-admin users */}
-      {isMaintenanceMode && authState.user?.role !== 'ADMIN' && (
-        <Modal
-          visible={true}
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-        >
-          <View style={[
-            styles.maintenanceOverlay,
-            { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }
-          ]}>
-            <View style={[
-              styles.maintenanceOverlayContent,
-              {
-                backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-                borderColor: isDarkMode ? '#374151' : '#E5E7EB'
-              }
-            ]}>
-              <View style={[
-                styles.maintenanceOverlayIconContainer,
-                { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)' }
-              ]}>
-                <Ionicons
-                  name="construct-outline"
-                  size={80}
-                  color={isDarkMode ? '#F87171' : '#EF4444'}
-                />
-              </View>
-              
-              <Text style={[
-                styles.maintenanceOverlayTitle,
-                { color: isDarkMode ? '#FFFFFF' : '#1F2937' }
-              ]}>
-                Under Maintenance
-              </Text>
-              
-              <Text style={[
-                styles.maintenanceOverlayDescription,
-                { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
-              ]}>
-                We're currently performing scheduled maintenance to improve your experience. Please check back later.
-              </Text>
-              
-              <View style={styles.maintenanceOverlayProgress}>
-                <ActivityIndicator size="large" color={isDarkMode ? '#F87171' : '#EF4444'} />
-                <Text style={[
-                  styles.maintenanceOverlayProgressText,
-                  { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
-                ]}>
-                  Please wait...
-                </Text>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-    </>
-  );
-};
-
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme } = useTheme();
   const { authState, updateUser, logout, refreshAuthToken } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isMaintenanceMode, toggleMaintenanceMode } = useMaintenance();
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'enable' | 'disable'>('enable');
   
   // Profile form state
   const [name, setName] = useState(authState.user?.name || '');
@@ -881,9 +647,160 @@ export default function ProfileScreen() {
   const renderMaintenanceModeCard = () => {
     if (authState.user?.role !== 'ADMIN') return null;
     
-    return <MaintenanceModeCard isDarkMode={isDarkMode} />;
+    return (
+      <View style={[
+        styles.card,
+        {
+          backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+          borderColor: isDarkMode ? '#374151' : '#E5E7EB'
+        }
+      ]}>
+        <View style={styles.cardHeader}>
+          <Text style={[
+            styles.cardTitle,
+            { color: isDarkMode ? '#FFFFFF' : '#1F2937' }
+          ]}>
+            Maintenance Mode
+          </Text>
+          <View style={[
+            styles.statusBadge,
+            {
+              backgroundColor: isMaintenanceMode
+                ? isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)'
+                : isDarkMode ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)'
+            }
+          ]}>
+            <Text style={[
+              styles.statusText,
+              {
+                color: isMaintenanceMode
+                  ? isDarkMode ? '#F87171' : '#EF4444'
+                  : isDarkMode ? '#34D399' : '#10B981'
+              }
+            ]}>
+              {isMaintenanceMode ? 'Active' : 'Inactive'}
+            </Text>
+          </View>
+        </View>
+        
+        <Text style={[
+          styles.cardDescription,
+          { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
+        ]}>
+          {isMaintenanceMode
+            ? 'Maintenance mode is currently active. Non-admin users will see a maintenance screen.'
+            : 'Maintenance mode is currently inactive. All users have normal access.'}
+        </Text>
+        
+        <TouchableOpacity
+          style={[
+            styles.toggleButton,
+            {
+              backgroundColor: isMaintenanceMode
+                ? isDarkMode ? '#10B981' : '#059669'
+                : isDarkMode ? '#EF4444' : '#DC2626'
+            }
+          ]}
+          onPress={() => handleToggleMaintenance(isMaintenanceMode ? 'disable' : 'enable')}
+        >
+          <Text style={styles.toggleButtonText}>
+            {isMaintenanceMode ? 'Disable Maintenance Mode' : 'Enable Maintenance Mode'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
-  
+
+  const handleToggleMaintenance = (action: 'enable' | 'disable') => {
+    setConfirmAction(action);
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmMaintenance = async () => {
+    try {
+      await toggleMaintenanceMode();
+      setShowConfirmModal(false);
+    } catch (error) {
+      console.error('Failed to toggle maintenance mode:', error);
+    }
+  };
+
+  // Add confirmation modal component
+  const ConfirmationModal = () => (
+    <Modal
+      visible={showConfirmModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowConfirmModal(false)}
+    >
+      <View style={[
+        styles.modalOverlay,
+        { backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.5)' }
+      ]}>
+        <View style={[
+          styles.modalContent,
+          {
+            backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+            borderColor: isDarkMode ? '#374151' : '#E5E7EB'
+          }
+        ]}>
+          <Text style={[
+            styles.modalTitle,
+            { color: isDarkMode ? '#FFFFFF' : '#1F2937' }
+          ]}>
+            {confirmAction === 'enable' ? 'Enable Maintenance Mode' : 'Disable Maintenance Mode'}
+          </Text>
+          
+          <Text style={[
+            styles.modalDescription,
+            { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
+          ]}>
+            {confirmAction === 'enable'
+              ? 'Are you sure you want to enable maintenance mode? This will restrict access for all non-admin users.'
+              : 'Are you sure you want to disable maintenance mode? This will restore access for all users.'}
+          </Text>
+          
+          <View style={styles.modalButtons}>
+            <TouchableOpacity
+              style={[
+                styles.modalButton,
+                styles.cancelButton,
+                { borderColor: isDarkMode ? '#374151' : '#E5E7EB' }
+              ]}
+              onPress={() => setShowConfirmModal(false)}
+            >
+              <Text style={[
+                styles.modalButtonText,
+                { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
+              ]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.modalButton,
+                styles.confirmButton,
+                {
+                  backgroundColor: confirmAction === 'enable' ? '#EF4444' : '#10B981',
+                  borderColor: confirmAction === 'enable' ? '#DC2626' : '#059669'
+                }
+              ]}
+              onPress={handleConfirmMaintenance}
+            >
+              <Text style={[
+                styles.modalButtonText,
+                { color: '#FFFFFF' }
+              ]}>
+                {confirmAction === 'enable' ? 'Enable' : 'Disable'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
@@ -1314,6 +1231,7 @@ export default function ProfileScreen() {
         visible={avatarOptionsVisible}
         onClose={() => setAvatarOptionsVisible(false)}
       />
+      <ConfirmationModal />
     </SafeAreaView>
   );
 }
@@ -1341,7 +1259,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    marginLeft: 12,
   },
   headerSubtitle: {
     fontSize: 14,
@@ -1354,11 +1273,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1369,6 +1283,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
+    marginBottom: 16,
   },
   editButton: {
     flexDirection: 'row',
@@ -1552,23 +1467,88 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    padding: 20,
   },
   modalContent: {
     width: '100%',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    maxWidth: 400,
+    padding: 24,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  modalDescription: {
+    fontSize: 14,
+    marginBottom: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  cancelButton: {
+    backgroundColor: 'transparent',
+  },
+  confirmButton: {
+    borderWidth: 0,
+  },
+  modalButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  card: {
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardTitle: {
     fontSize: 18,
     fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 20,
   },
+  statusBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  cardDescription: {
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  toggleButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  toggleButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Avatar options modal styles
   optionsList: {
     marginBottom: 12,
     borderRadius: 12,
@@ -1593,162 +1573,8 @@ const styles = StyleSheet.create({
   destructiveText: {
     color: '#EF4444',
   },
-  cancelButton: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
   cancelText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  maintenanceCard: {
-    marginTop: 16,
-    marginBottom: 32,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  maintenanceCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  maintenanceIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  maintenanceCardContent: {
-    flex: 1,
-  },
-  maintenanceCardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  maintenanceCardDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  maintenanceButton: {
-    height: 44,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  maintenanceButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  confirmModalContent: {
-    width: '90%',
-    maxWidth: 400,
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  confirmModalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  confirmModalDescription: {
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
-  },
-  confirmModalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  confirmModalButton: {
-    flex: 1,
-    height: 44,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  confirmModalButtonSecondary: {
-    backgroundColor: '#F3F4F6',
-  },
-  confirmModalButtonPrimary: {
-    backgroundColor: '#EF4444',
-  },
-  confirmModalButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  maintenanceOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-  },
-  maintenanceOverlayContent: {
-    width: '90%',
-    maxWidth: 400,
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  maintenanceOverlayIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  maintenanceOverlayTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  maintenanceOverlayDescription: {
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
-  },
-  maintenanceOverlayProgress: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
-  maintenanceOverlayProgressText: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
   },
 } as const); 

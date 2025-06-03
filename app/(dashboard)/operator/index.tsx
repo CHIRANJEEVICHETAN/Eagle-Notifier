@@ -28,6 +28,7 @@ import * as Notifications from 'expo-notifications';
 import { ResolutionModal } from '../../components/ResolutionModal';
 import { useSetpoints, useUpdateSetpoint, Setpoint } from '../../hooks/useSetpoints';
 import { SetpointConfigModal } from '../../components/SetpointConfigModal';
+import { useMaintenance } from '../../context/MaintenanceContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -1219,7 +1220,103 @@ export default function OperatorDashboard() {
       fontSize: 12,
       fontStyle: 'italic',
     },
+    maintenanceOverlay: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    maintenanceOverlayContent: {
+      padding: 24,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: 'rgba(203, 213, 225, 0.8)',
+    },
+    maintenanceOverlayIconContainer: {
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 16,
+    },
+    maintenanceOverlayTitle: {
+      fontSize: 20,
+      fontWeight: '600',
+      marginBottom: 8,
+    },
+    maintenanceOverlayDescription: {
+      fontSize: 14,
+      textAlign: 'center',
+    },
+    maintenanceOverlayProgress: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 16,
+    },
+    maintenanceOverlayProgressText: {
+      marginLeft: 8,
+    },
   });
+
+  const { isMaintenanceMode } = useMaintenance();
+
+  // Add maintenance screen component
+  const MaintenanceScreen = () => (
+    <View style={[
+      styles.maintenanceOverlay,
+      { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }
+    ]}>
+      <View style={[
+        styles.maintenanceOverlayContent,
+        {
+          backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+          borderColor: isDarkMode ? '#374151' : '#E5E7EB'
+        }
+      ]}>
+        <View style={[
+          styles.maintenanceOverlayIconContainer,
+          { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)' }
+        ]}>
+          <Ionicons
+            name="construct-outline"
+            size={80}
+            color={isDarkMode ? '#F87171' : '#EF4444'}
+          />
+        </View>
+        
+        <Text style={[
+          styles.maintenanceOverlayTitle,
+          { color: isDarkMode ? '#FFFFFF' : '#1F2937' }
+        ]}>
+          Under Maintenance
+        </Text>
+        
+        <Text style={[
+          styles.maintenanceOverlayDescription,
+          { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
+        ]}>
+          The system is currently under maintenance. Please check back later.
+        </Text>
+        
+        <View style={styles.maintenanceOverlayProgress}>
+          <ActivityIndicator size="large" color={isDarkMode ? '#F87171' : '#EF4444'} />
+          <Text style={[
+            styles.maintenanceOverlayProgressText,
+            { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
+          ]}>
+            Please wait...
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  // Show maintenance screen for non-admin users when maintenance mode is active
+  if (isMaintenanceMode && !isAdmin) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
+        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+        <MaintenanceScreen />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#0F172A' : '#F8FAFC' }]}>

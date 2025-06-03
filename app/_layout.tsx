@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 import { NotificationProvider } from './NotificationProvider';
+import { MaintenanceProvider } from './context/MaintenanceContext';
 
 const queryClient = new QueryClient();
 
@@ -45,11 +46,13 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
-            <NotificationProvider>
-              <AuthRouteChecker>
-                <RootLayoutNav />
-              </AuthRouteChecker>
-            </NotificationProvider>
+            <MaintenanceProvider>
+              <NotificationProvider>
+                <AuthRouteChecker>
+                  <RootLayoutNav />
+                </AuthRouteChecker>
+              </NotificationProvider>
+            </MaintenanceProvider>
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>

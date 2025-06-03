@@ -157,4 +157,13 @@ model Setpoint {
   highDeviation Float
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model SystemSettings {
+  id              String    @id @default(uuid())
+  maintenanceMode Boolean   @default(false)
+  enabledBy       String?
+  enabledAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 } 
