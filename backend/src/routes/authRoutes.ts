@@ -1,14 +1,12 @@
 import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { PrismaClient } from '../generated/prisma-client';
+import prisma from '../config/db';
 import { createError } from '../middleware/errorHandler';
 import { authenticate } from '../middleware/authMiddleware';
 import multer from 'multer';
-import { Router } from 'express';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();

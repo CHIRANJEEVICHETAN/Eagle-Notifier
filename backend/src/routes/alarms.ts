@@ -1,11 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/authMiddleware';
-import { PrismaClient } from '../generated/prisma-client';
+import prisma from '../config/db';
 import { NotificationService } from '../services/notificationService';
 import asyncHandler from 'express-async-handler';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 /**
  * Endpoint to trigger alarm notification to all users

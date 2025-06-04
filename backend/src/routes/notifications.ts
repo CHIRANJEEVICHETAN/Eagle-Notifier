@@ -1,11 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '../generated/prisma-client';
 import { authenticate } from '../middleware/authMiddleware';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { NotificationService } from '../services/notificationService';
+import prisma from '../config/db';
 
 const router = Router();
-const prisma = new PrismaClient();
 const expo = new Expo();
 
 // Helper to handle Express route handler type issues

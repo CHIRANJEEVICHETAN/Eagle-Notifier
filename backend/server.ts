@@ -10,15 +10,15 @@ import scadaRoutes from './src/routes/scadaRoutes';
 import maintenanceRoutes from './src/routes/maintenanceRoutes';
 import { processAndFormatAlarms } from './src/services/scadaService';
 import { testScadaConnection } from './src/config/scadaDb';
-import { PrismaClient } from '@prisma/client';
+import prisma from './src/config/db';
 import authRoutes from './src/routes/authRoutes';
 import operatorRoutes from './src/routes/operatorRoutes';
 
 // Load environment variables
 dotenv.config();
 
-// Initialize Prisma Client
-const prisma = new PrismaClient();
+// Remove direct instantiation, already imported from config/db
+// const prisma = new PrismaClient();
 
 // Initialize Express app
 const app = express();
@@ -101,9 +101,21 @@ async function pollScadaData() {
 // Initialize databases and start server
 async function startServer() {
   try {
-    // Test database connections
-    await prisma.$connect();
-    console.log('Successfully connected to main database');
+    // Test database connections with timeout and retry logic
+    try {
+      await Promise.race([
+        prisma.$connect(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Prisma connection timeout')), 5000)
+        )
+      ]);
+      console.log('Successfully connected to main database');
+    } catch (dbError) {
+      console.error('Database connection error:', dbError);
+      console.log('Retrying database connection in 3 seconds...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      await prisma.$connect();
+    }
 
     const scadaConnected = await testScadaConnection();
     if (!scadaConnected) {
@@ -124,9 +136,28 @@ async function startServer() {
 
       // Start SCADA polling if connection was successful
       if (scadaConnected) {
-        setInterval(pollScadaData, SCADA_POLL_INTERVAL);
-        // Initial poll
-        pollScadaData();
+        // Use reference to allow clearing interval on shutdown
+        const pollingInterval = setInterval(() => {
+          try {
+            pollScadaData().catch(error => {
+              console.error('Error in SCADA polling:', error);
+            });
+          } catch (error) {
+            console.error('Error in SCADA polling:', error);
+          }
+        }, SCADA_POLL_INTERVAL);
+        
+        // Add to tracked intervals for clean shutdown
+        trackedIntervals.push(pollingInterval);
+        
+        // Initial poll with error handling
+        try {
+          pollScadaData().catch(error => {
+            console.error('Error in initial SCADA poll:', error);
+          });
+        } catch (error) {
+          console.error('Error in initial SCADA poll:', error);
+        }
       }
     });
   } catch (error) {
@@ -135,15 +166,24 @@ async function startServer() {
   }
 }
 
+// Track intervals for clean shutdown
+const trackedIntervals: NodeJS.Timeout[] = [];
+
 // Handle graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received. Closing connections...');
+  // Clear all intervals
+  trackedIntervals.forEach(interval => clearInterval(interval));
+  // Disconnect Prisma client
   await prisma.$disconnect();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received. Closing connections...');
+  // Clear all intervals
+  trackedIntervals.forEach(interval => clearInterval(interval));
+  // Disconnect Prisma client
   await prisma.$disconnect();
   process.exit(0);
 });

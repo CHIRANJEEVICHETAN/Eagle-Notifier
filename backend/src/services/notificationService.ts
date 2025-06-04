@@ -1,7 +1,6 @@
-import { PrismaClient } from '../generated/prisma-client';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
+import prisma from '../config/db';
 
-const prisma = new PrismaClient();
 const expo = new Expo();
 
 // Define NotificationPriority type to match what Prisma expects
@@ -34,6 +33,33 @@ interface CreateNotificationParams {
   metadata?: Record<string, unknown>;
 }
 
+// Helper function for database operations with retry
+async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3): Promise<T> {
+  let lastError: unknown;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      lastError = error;
+      console.error(`Database operation failed (attempt ${attempt}/${maxRetries}):`, error);
+      
+      // If this is a connection error, wait before retrying
+      if (error instanceof Error && 
+          (error.message?.includes('connection') || 
+           error.message?.includes('Too many database connections'))) {
+        const delay = Math.min(100 * Math.pow(2, attempt), 1000); // Exponential backoff capped at 1 second
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        // Non-connection error, don't retry
+        break;
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
 /**
  * Service for handling notifications
  */
@@ -51,15 +77,15 @@ export class NotificationService {
         metadata: data.metadata
       });
       
-      // Get all users with notification settings and push tokens
-      const users = await prisma.user.findMany({
+      // Get all users with notification settings and push tokens with retry logic
+      const users = await withRetry(() => prisma.user.findMany({
         where: {
           pushToken: { not: null } // Only get users with push tokens
         },
         include: {
           notificationSettings: true
         }
-      });
+      }));
       
       console.log(`📱 Found ${users.length} users with push tokens`);
       
@@ -109,8 +135,8 @@ export class NotificationService {
       // For each eligible user, create a notification and prepare push message
       for (const user of eligibleUsers) {
         try {
-          // Create notification in database
-          const notification = await prisma.notification.create({
+          // Create notification in database with retry logic
+          const notification = await withRetry(() => prisma.notification.create({
             data: {
               userId: user.id,
               title: data.title,
@@ -118,7 +144,7 @@ export class NotificationService {
               type: data.type || 'INFO',
               priority: PRIORITY_MAP[data.severity || 'INFO']
             }
-          });
+          }));
           
           console.log(`📝 Created notification in database for user ${user.id}`);
           
@@ -173,12 +199,12 @@ export class NotificationService {
    */
   static async getUnreadCount(userId: string): Promise<number> {
     try {
-      return await prisma.notification.count({
+      return await withRetry(() => prisma.notification.count({
         where: {
           userId,
           isRead: false
         }
-      });
+      }));
     } catch (error) {
       console.error('Error getting unread notification count:', error);
       return 0;

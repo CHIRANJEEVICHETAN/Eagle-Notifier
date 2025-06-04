@@ -1,9 +1,7 @@
 import scadaPool from '../config/scadaDb';
 import { NotificationService } from './notificationService';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../config/db';
 import { format } from 'date-fns';
-
-const prisma = new PrismaClient();
 
 const DEBUG = process.env.NODE_ENV === 'development';
 

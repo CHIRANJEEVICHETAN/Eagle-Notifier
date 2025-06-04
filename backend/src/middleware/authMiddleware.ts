@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { createError } from './errorHandler';
-import prisma from '../config/db';
 
 // Extend Express Request to include user information
 declare global {
