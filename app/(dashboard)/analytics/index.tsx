@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { LineChart, BarChart } from 'react-native-gifted-charts';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { format as formatDate, subDays, subHours, startOfDay, endOfDay } from 'date-fns';
+import { format as formatDate, subDays, subHours, startOfDay, endOfDay, parseISO, addHours, addDays } from 'date-fns';
 import { useAlarmHistory } from '../../hooks/useAlarms';
 import { useRouter } from 'expo-router';
 
@@ -35,7 +35,7 @@ interface BaseAlarm {
 
 interface AnalogAlarm extends BaseAlarm {
   type: 'temperature' | 'carbon' | 'pressure';
-  value: number;
+  value: string;
   unit: string;
   setPoint: string;
   lowLimit: string;
@@ -60,6 +60,10 @@ interface LineDataItem {
   dataPointText: string;
   customDataPoint?: Function;
   color?: string;
+  date?: Date;
+  alarmId?: string;
+  alarmDescription?: string;
+  showTooltip?: boolean;
 }
 
 interface BinaryDataPoint {
@@ -67,12 +71,21 @@ interface BinaryDataPoint {
   label: string;
   frontColor: string;
   topLabelComponent: () => React.ReactNode;
+  date?: Date;
+  alarmId?: string;
+  alarmDescription?: string;
 }
 
 interface LineDataSet {
   data: LineDataItem[];
   color: string;
+  dataPointsColor: string;
+  thickness: number;
   legendLabel: string;
+  hideDataPoints?: boolean;
+  dataPointsRadius?: number;
+  textColor?: string;
+  curved?: boolean;
 }
 
 // Constants
@@ -85,6 +98,34 @@ const GRAPH_COLORS = {
   conveyor: '#FF9F40',   // Orange
   fan: '#4CAF50',        // Green
 } as const;
+
+// Colors for individual alarms - matching the image more closely
+const ALARM_SPECIFIC_COLORS = {
+  'analog-1': '#FFC107', // Golden yellow - HARDENING ZONE 1 TEMPERATURE
+  'analog-2': '#FF9800', // Orange - HARDENING ZONE 2 TEMPERATURE
+  'analog-3': '#F44336', // Red - CARBON POTENTIAL
+  'analog-4': '#E91E63', // Pink - OIL TEMPERATURE
+  'analog-5': '#2196F3', // Light blue - TEMPERING ZONE1 TEMPERATURE
+  'analog-6': '#009688', // Teal - TEMPERING ZONE2 TEMPERATURE
+} as const;
+
+// Additional colors for multiple alarms of the same type
+const EXTENDED_COLORS = [
+  '#FF6384', // Red
+  '#36A2EB', // Blue
+  '#4BC0C0', // Teal
+  '#FFCE56', // Yellow
+  '#9966FF', // Purple
+  '#FF9F40', // Orange
+  '#4CAF50', // Green
+  '#E91E63', // Pink
+  '#2196F3', // Light Blue
+  '#00BCD4', // Cyan
+  '#FFC107', // Amber
+  '#795548', // Brown
+  '#607D8B', // Blue Grey
+  '#9C27B0', // Deep Purple
+] as const;
 
 // Mock data for analog alarms
 const sampleAnalogAlarms = [
@@ -297,6 +338,8 @@ export default function AnalyticsScreen() {
   const [customEndDate, setCustomEndDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<'start' | 'end'>('start');
+  const [selectedDataPoint, setSelectedDataPoint] = useState<string | null>(null);
+  const [selectedAlarmIndex, setSelectedAlarmIndex] = useState<number | null>(null);
 
   // Theme colors
   const theme = useMemo(() => ({
@@ -307,6 +350,62 @@ export default function AnalyticsScreen() {
     border: isDarkMode ? 'rgba(75, 85, 99, 0.4)' : 'rgba(229, 231, 235, 0.4)',
     primary: isDarkMode ? '#3B82F6' : '#2563EB',
   }), [isDarkMode]);
+
+  // Get time range based on selected filter
+  const getTimeRange = useCallback(() => {
+    const now = new Date();
+    let startDate;
+    let endDate = now;
+    
+    switch(timeRange) {
+      case '1h':
+        startDate = subHours(now, 1);
+        break;
+      case '12h':
+        startDate = subHours(now, 12);
+        break;
+      case '24h':
+        startDate = subHours(now, 24);
+        break;
+      case '7d':
+        startDate = subDays(now, 7);
+        break;
+      case 'custom':
+        startDate = customStartDate;
+        endDate = customEndDate;
+        break;
+      default:
+        startDate = subHours(now, 24);
+    }
+    
+    return { startDate, endDate };
+  }, [timeRange, customStartDate, customEndDate]);
+
+  // Generate mock timestamps within the selected time range
+  const generateTimestamps = useCallback((count: number) => {
+    const { startDate, endDate } = getTimeRange();
+    const timestamps = [];
+    const totalMs = endDate.getTime() - startDate.getTime();
+    
+    for (let i = 0; i < count; i++) {
+      // Distribute timestamps evenly across the range
+      const time = new Date(startDate.getTime() + (totalMs * i / (count - 1)));
+      timestamps.push(time);
+    }
+    
+    return timestamps;
+  }, [getTimeRange]);
+
+  // Format timestamp for x-axis based on the selected time range
+  const formatTimestamp = useCallback((date: Date) => {
+    if (timeRange === '1h' || timeRange === '12h') {
+      return formatDate(date, 'HH:mm');
+    } else if (timeRange === '24h') {
+      return formatDate(date, 'HH:mm');
+    } else {
+      return formatDate(date, 'MM/dd');
+    }
+  }, [timeRange]);
 
   // Toggle between graph types
   const toggleGraph = useCallback(() => {
@@ -452,58 +551,110 @@ export default function AnalyticsScreen() {
 
   // Prepare graph data
   const prepareAnalogData = useCallback(() => {
-    // Group alarms by type
-    const groupedAlarms = sampleAnalogAlarms.reduce((acc, alarm) => {
-      const key = alarm.type as AlarmType;
-      if (!acc[key]) {
-        acc[key] = [];
-      }
-      acc[key].push(alarm);
-      return acc;
-    }, {} as Record<AlarmType, typeof sampleAnalogAlarms>);
-
-    // Create separate datasets for each type
-    const datasets = Object.entries(groupedAlarms).map(([type, alarms]) => ({
-      data: alarms.map(alarm => ({
-        value: parseFloat(alarm.value),
-        label: alarm.zone || type,
-        dataPointText: `${alarm.value}${alarm.unit}`,
-      })),
-      color: GRAPH_COLORS[type as AlarmType],
-      dataPointsColor: GRAPH_COLORS[type as AlarmType],
-      textColor: GRAPH_COLORS[type as AlarmType],
-      thickness: 2,
-      hideDataPoints: false,
-      dataPointsRadius: 6,
-      curved: true,
-    }));
-
-    return {
-      mainLine: datasets[0], // First dataset (usually temperature)
-      lines: datasets.slice(1), // Other datasets (carbon, pressure)
-    };
-  }, []);
-
-  const prepareBinaryData = useCallback((): BinaryDataPoint[] => {
-    return sampleBinaryAlarms.map(alarm => {
-      const type = alarm.type as AlarmType;
-      const isNormal = alarm.value === alarm.setPoint;
-      const label = alarm.zone 
-        ? `${type.charAt(0).toUpperCase()}${alarm.zone.slice(-1)}`
-        : type.charAt(0).toUpperCase();
-
+    // Generate timestamps for the selected time range
+    const timestamps = generateTimestamps(10);
+    
+    // Create datasets for each individual analog alarm
+    const datasets: LineDataSet[] = sampleAnalogAlarms.map((alarm, index) => {
+      // Create data points with timestamps
+      const dataPoints = timestamps.map((timestamp, i) => {
+        // Simulate values with some variation based on the original value
+        const baseValue = parseFloat(alarm.value);
+        // Use smaller variation to keep lines more stable like in the image
+        const variation = baseValue * 0.02 * (Math.random() - 0.5);
+        const simulatedValue = baseValue + variation;
+        
+        return {
+          value: simulatedValue,
+          label: formatTimestamp(timestamp),
+          dataPointText: `${simulatedValue.toFixed(1)}${alarm.unit}`,
+          date: new Date(timestamp),
+          alarmId: alarm.id,
+          alarmDescription: alarm.description,
+          showTooltip: selectedDataPoint === `${alarm.id}-${i}`,
+        };
+      });
+      
+      // Use the specific color for this alarm ID, or fall back to extended colors
+      const alarmColor = ALARM_SPECIFIC_COLORS[alarm.id as keyof typeof ALARM_SPECIFIC_COLORS] || 
+                         EXTENDED_COLORS[index % EXTENDED_COLORS.length];
+      
       return {
-        value: isNormal ? 1 : 0,
-        label,
-        frontColor: GRAPH_COLORS[type],
-        topLabelComponent: () => (
-          <Text style={[styles.graphLabel, { color: theme.subtext }]}>
-            {label}
-          </Text>
-        ),
+        data: dataPoints,
+        color: alarmColor,
+        dataPointsColor: alarmColor,
+        textColor: alarmColor,
+        thickness: 2,
+        hideDataPoints: index !== selectedAlarmIndex, // Show data points only for selected alarm
+        dataPointsRadius: 5,
+        curved: true,
+        legendLabel: alarm.description,
       };
     });
-  }, [theme.subtext]);
+
+    return datasets;
+  }, [formatTimestamp, generateTimestamps, selectedDataPoint, selectedAlarmIndex]);
+
+  const prepareBinaryData = useCallback(() => {
+    // Generate timestamps for the selected time range
+    const timestamps = generateTimestamps(10);
+    
+    // Create datasets for each binary alarm
+    const datasets = sampleBinaryAlarms.map((alarm, index) => {
+      // Create data points with timestamps
+      const dataPoints = timestamps.map((timestamp, i) => {
+        // Simulate binary values with occasional changes
+        const isNormal = alarm.value === alarm.setPoint; 
+        const randomChange = Math.random() > 0.8;
+        const simulatedValue = (isNormal !== randomChange) ? 1 : 0;
+        
+        return {
+          value: simulatedValue,
+          label: formatTimestamp(timestamp),
+          date: new Date(timestamp),
+          alarmId: alarm.id,
+          alarmDescription: alarm.description,
+          frontColor: EXTENDED_COLORS[index % EXTENDED_COLORS.length],
+          topLabelComponent: () => (
+            <View>
+              <Text style={[styles.graphLabel, { color: theme.subtext }]}>
+                {alarm.type.charAt(0).toUpperCase()}
+              </Text>
+              {selectedDataPoint === `${alarm.id}-${i}` && (
+                <View style={[styles.dataPointTooltip, { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.tooltipText, { color: theme.text }]}>
+                    {alarm.description}
+                  </Text>
+                  <Text style={[styles.tooltipText, { color: theme.subtext }]}>
+                    {simulatedValue === 1 ? 'Normal' : 'Failure'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )
+        };
+      });
+      
+      return {
+        data: dataPoints,
+        color: EXTENDED_COLORS[index % EXTENDED_COLORS.length],
+        legendLabel: alarm.description,
+      };
+    });
+
+    return datasets;
+  }, [formatTimestamp, generateTimestamps, selectedDataPoint, theme.subtext, theme.surface, theme.text]);
+
+  // Handle data point press
+  const handleDataPointPress = useCallback((item: any, index: number) => {
+    if (item.alarmId) {
+      setSelectedDataPoint(`${item.alarmId}-${index}`);
+      
+      // Find the alarm index to highlight its data points
+      const alarmIndex = sampleAnalogAlarms.findIndex(alarm => alarm.id === item.alarmId);
+      setSelectedAlarmIndex(alarmIndex >= 0 ? alarmIndex : null);
+    }
+  }, []);
 
   // Render active graph
   const renderGraph = () => {
@@ -519,6 +670,37 @@ export default function AnalyticsScreen() {
     }
 
     const chartWidth = Dimensions.get('window').width - 64;
+    const analogData = prepareAnalogData();
+
+    // Make sure we have data to display
+    if (analogData.length === 0 && activeGraph === 'analog') {
+      return (
+        <View style={[styles.graphContainer, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.loadingText, { color: theme.subtext }]}>
+            No data available
+          </Text>
+        </View>
+      );
+    }
+
+    // Prepare data for LineChart
+    const primaryData = activeGraph === 'analog' && analogData.length > 0 
+      ? analogData[0].data 
+      : [];
+      
+    // Prepare secondary datasets for multiple lines
+    const secondaryData = activeGraph === 'analog' 
+      ? analogData.slice(1).map(dataset => ({
+          data: dataset.data,
+          color: dataset.color,
+          dataPointsColor: dataset.color,
+          textColor: dataset.color,
+          thickness: 2,
+          hideDataPoints: selectedAlarmIndex !== null && selectedAlarmIndex !== analogData.indexOf(dataset),
+          dataPointsRadius: 5,
+          curved: true
+        }))
+      : [];
 
     return (
       <View style={[styles.graphContainer, { backgroundColor: theme.surface }]}>
@@ -528,72 +710,96 @@ export default function AnalyticsScreen() {
         
         <View style={styles.chartWrapper}>
           {activeGraph === 'analog' ? (
-            <LineChart
-              data={prepareAnalogData().mainLine.data}
-              height={300}
-              width={chartWidth}
-              spacing={40}
-              initialSpacing={20}
-              noOfSections={6}
-              yAxisThickness={1}
-              xAxisThickness={1}
-              yAxisTextStyle={styles.axisText}
-              xAxisLabelTextStyle={{
-                ...styles.axisText,
-                transform: [{ rotate: '-45deg' }],
-                width: 100,
-              }}
-              yAxisColor={theme.border}
-              xAxisColor={theme.border}
-              rulesType="solid"
-              rulesColor={theme.border}
-              showValuesAsDataPointsText
-              textFontSize={10}
-              textShiftY={-8}
-              textShiftX={8}
-              textColor={prepareAnalogData().mainLine.textColor}
-              hideDataPoints={false}
-              dataPointsRadius={6}
-              dataPointsColor={prepareAnalogData().mainLine.dataPointsColor}
-              curved
-              color={prepareAnalogData().mainLine.color}
-              thickness={2}
-              areaChart
-              startFillColor="rgba(128, 128, 128, 0.1)"
-              endFillColor="rgba(255, 255, 255, 0.05)"
-              gradientDirection="vertical"
-              yAxisLabelWidth={50}
-              yAxisTextNumberOfLines={1}
-              formatYLabel={(label: string) => {
-                const value = parseFloat(label);
-                return Number.isNaN(value) ? label : Math.round(value).toString();
-              }}
-              maxValue={1000}
-              stepValue={180}
-              isAnimated
-              animationDuration={500}
-              data2={prepareAnalogData().lines}
-            />
+            <>
+              <LineChart
+                areaChart={false}
+                data={primaryData}
+                height={300}
+                width={chartWidth}
+                spacing={40}
+                initialSpacing={20}
+                noOfSections={6}
+                yAxisThickness={1}
+                xAxisThickness={1}
+                yAxisTextStyle={styles.axisText}
+                xAxisLabelTextStyle={{
+                  ...styles.axisText,
+                  transform: [{ rotate: '-45deg' }],
+                  width: 100,
+                }}
+                yAxisColor={theme.border}
+                xAxisColor={theme.border}
+                rulesType="dashed"
+                rulesColor="lightgray"
+                showValuesAsDataPointsText={false}
+                hideDataPoints={selectedAlarmIndex !== null && selectedAlarmIndex !== 0}
+                dataPointsRadius={5}
+                dataPointsColor={analogData.length > 0 ? analogData[0].color : theme.primary}
+                onPress={handleDataPointPress}
+                curved
+                color={analogData.length > 0 ? analogData[0].color : theme.primary}
+                thickness={2}
+                hideRules={false}
+                yAxisLabelWidth={50}
+                yAxisTextNumberOfLines={1}
+                formatYLabel={(label: string) => {
+                  const value = parseFloat(label);
+                  return Number.isNaN(value) ? label : Math.round(value).toString();
+                }}
+                isAnimated
+                animationDuration={500}
+                data2={secondaryData}
+                endSpacing={20}
+                maxValue={1000}
+                stepValue={200}
+                stepHeight={50}
+                pointerConfig={{
+                  pointerStripHeight: 160,
+                  pointerStripColor: 'lightgray',
+                  pointerStripWidth: 1,
+                  pointerColor: 'lightgray',
+                  radius: 6,
+                  pointerLabelWidth: 140,
+                  pointerLabelHeight: 90,
+                  activatePointersOnLongPress: true,
+                  autoAdjustPointerLabelPosition: true,
+                  pointerLabelComponent: (item: any) => {
+                    return (
+                      <View style={[styles.dataPointTooltip, { backgroundColor: theme.surface }]}>
+                        <Text style={[styles.tooltipText, { color: theme.text, fontWeight: '600' }]}>{item.alarmDescription}</Text>
+                        <Text style={[styles.tooltipText, { color: theme.subtext }]}>{item.dataPointText}</Text>
+                      </View>
+                    );
+                  },
+                }}
+              />
+            </>
           ) : (
-            <BarChart
-              data={prepareBinaryData()}
-              height={300}
-              width={chartWidth}
-              spacing={40}
-              initialSpacing={20}
-              barWidth={24}
-              noOfSections={1}
-              maxValue={1}
-              yAxisThickness={1}
-              xAxisThickness={1}
-              yAxisTextStyle={styles.axisText}
-              xAxisLabelTextStyle={styles.axisText}
-              yAxisColor={theme.border}
-              xAxisColor={theme.border}
-              showLine
-              hideRules
-              showFractionalValues
-            />
+            <View>
+              {prepareBinaryData().map((dataset, index) => (
+                <BarChart
+                  key={`binary-chart-${index}`}
+                  data={dataset.data}
+                  height={50}
+                  width={chartWidth}
+                  spacing={40}
+                  initialSpacing={20}
+                  barWidth={24}
+                  noOfSections={1}
+                  maxValue={1}
+                  yAxisThickness={index === 0 ? 1 : 0}
+                  xAxisThickness={index === prepareBinaryData().length - 1 ? 1 : 0}
+                  yAxisTextStyle={styles.axisText}
+                  xAxisLabelTextStyle={index === prepareBinaryData().length - 1 ? styles.axisText : { height: 0 }}
+                  yAxisColor={theme.border}
+                  xAxisColor={theme.border}
+                  showLine
+                  hideRules
+                  showFractionalValues
+                  onPress={handleDataPointPress}
+                />
+              ))}
+            </View>
           )}
         </View>
 
@@ -602,32 +808,47 @@ export default function AnalyticsScreen() {
           <Text style={[styles.legendTitle, { color: theme.text }]}>Legend</Text>
           <View style={styles.legendItems}>
             {activeGraph === 'analog' ? (
-              // Analog alarm types
-              ['temperature', 'carbon', 'pressure'].map((type) => (
-                <View key={type} style={styles.legendItem}>
+              // Analog alarms legend
+              prepareAnalogData().map((dataset, index) => (
+                <TouchableOpacity 
+                  key={`legend-${index}`} 
+                  style={styles.legendItem}
+                  onPress={() => {
+                    setSelectedAlarmIndex(selectedAlarmIndex === index ? null : index);
+                  }}
+                >
                   <View
                     style={[
                       styles.legendColor,
-                      { backgroundColor: GRAPH_COLORS[type as keyof typeof GRAPH_COLORS] }
+                      { backgroundColor: dataset.color }
                     ]}
                   />
-                  <Text style={[styles.legendText, { color: theme.text }]}>
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  <Text 
+                    style={[
+                      styles.legendText, 
+                      { 
+                        color: theme.text,
+                        fontWeight: selectedAlarmIndex === index ? '700' : '400'
+                      }
+                    ]} 
+                    numberOfLines={1}
+                  >
+                    {dataset.legendLabel}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))
             ) : (
-              // Binary alarm types
-              ['level', 'heater', 'conveyor', 'fan'].map((type) => (
-                <View key={type} style={styles.legendItem}>
+              // Binary alarms legend
+              prepareBinaryData().map((dataset, index) => (
+                <View key={`legend-${index}`} style={styles.legendItem}>
                   <View
                     style={[
                       styles.legendColor,
-                      { backgroundColor: GRAPH_COLORS[type as keyof typeof GRAPH_COLORS] }
+                      { backgroundColor: dataset.color }
                     ]}
                   />
-                  <Text style={[styles.legendText, { color: theme.text }]}>
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  <Text style={[styles.legendText, { color: theme.text }]} numberOfLines={1}>
+                    {dataset.legendLabel}
                   </Text>
                 </View>
               ))
@@ -835,6 +1056,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#4B5563',
+    flex: 1,
   },
   graphLabel: {
     fontSize: 10,
@@ -846,5 +1068,29 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 12,
     fontWeight: '500',
+  },
+  dataPointTooltip: {
+    position: 'absolute',
+    top: -80,
+    left: -60,
+    width: 150,
+    padding: 8,
+    borderRadius: 8,
+    zIndex: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
+  },
+  tooltipText: {
+    fontSize: 12,
+    marginBottom: 4,
   },
 }); 
