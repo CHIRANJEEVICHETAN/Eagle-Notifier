@@ -1,108 +1,146 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { Alert } from 'react-native';
 import { ReportFormat, ReportTimeRange } from '../components/ReportGenerator';
-import { ReportFilters } from '../api/reportsApi';
-import { reportService } from '../utils/reportService';
+import { AlarmReportFilters, useAlarmReportData } from './useAlarmReportData';
+import { ColumnGrouping, ExcelReportService } from '../services/ExcelReportService';
 
-interface ReportGeneratorState {
-  isGenerating: boolean;
-  generatedFilePath: string | null;
+type ReportGeneratorReturnType = [
+  {
+    isGenerating: boolean;
+    generatedFilePath: string | null;
+  },
+  {
+    generateReport: (format: ReportFormat, timeRange: ReportTimeRange, options?: ReportGeneratorOptions) => Promise<string>;
+    openReport: (filePath: string) => Promise<void>;
+    shareReport: (filePath: string) => Promise<void>;
+  }
+];
+
+interface ReportGeneratorOptions {
+  title?: string;
+  alarmTypes?: string[];
+  severityLevels?: string[];
+  zones?: string[];
+  includeThresholds?: boolean;
+  includeStatusFields?: boolean;
+  grouping?: ColumnGrouping;
 }
 
-interface ReportGeneratorActions {
-  generateReport: (reportFormat: ReportFormat, timeRange: ReportTimeRange, filters?: Partial<ReportFilters>) => Promise<string | null>;
-  openReport: (filePath?: string) => Promise<void>;
-  shareReport: (filePath?: string) => Promise<void>;
-}
-
-/**
- * Custom hook for report generation
- */
-export function useReportGenerator(): [ReportGeneratorState, ReportGeneratorActions] {
+export function useReportGenerator(): ReportGeneratorReturnType {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedFilePath, setGeneratedFilePath] = useState<string | null>(null);
   
-  /**
-   * Generate a report
-   */
-  const generateReport = useCallback(
-    async (
-      reportFormat: ReportFormat,
-      timeRange: ReportTimeRange,
-      filters?: Partial<ReportFilters>
-    ): Promise<string | null> => {
-      try {
-        setIsGenerating(true);
-        
-        const filePath = await reportService.generateReport(reportFormat, timeRange, filters);
-        
-        setGeneratedFilePath(filePath);
-        return filePath;
-      } catch (error) {
-        Alert.alert(
-          'Report Generation Failed',
-          error instanceof Error ? error.message : 'An unexpected error occurred'
-        );
-        return null;
-      } finally {
-        setIsGenerating(false);
-      }
-    },
-    []
-  );
+  // Create a wrapper hook with the needed filters
+  const { refetch } = useAlarmReportData({}, false);
   
-  /**
-   * Open a report file
-   */
-  const openReport = useCallback(
-    async (filePath?: string): Promise<void> => {
-      try {
-        // Use the provided filePath or the last generated file
-        const fileToOpen = filePath || generatedFilePath;
+  // Generate a report based on parameters
+  const generateReport = async (
+    format: ReportFormat, 
+    timeRange: ReportTimeRange,
+    options: ReportGeneratorOptions = {}
+  ): Promise<string> => {
+    try {
+      setIsGenerating(true);
+      
+      // Build a random filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.-]/g, '_');
+      const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      const title = options.title || 'Eagle_Notifier_Report';
+      const sanitizedTitle = title.replace(/\s+/g, '_');
+      
+      let filePath = '';
+      
+      if (format === 'excel') {
+        // Create a new instance of the hook with the specific filters
+        const alarmReportHook = useAlarmReportData({
+          startDate: timeRange.startDate,
+          endDate: timeRange.endDate,
+          alarmTypes: options.alarmTypes,
+          severityLevels: options.severityLevels,
+          zones: options.zones
+        }, true); // Enable this instance
         
-        if (!fileToOpen) {
-          Alert.alert('Error', 'No report file to open. Please generate a report first.');
-          return;
+        // Fetch the data
+        const result = await alarmReportHook.refetch();
+        
+        if (!result.data || !result.data.data || result.data.data.length === 0) {
+          throw new Error('No data found for the selected filters');
         }
         
-        await reportService.openReport(fileToOpen);
-      } catch (error) {
-        Alert.alert(
-          'Error Opening Report',
-          error instanceof Error ? error.message : 'An unexpected error occurred'
+        // Use the ExcelReportService
+        filePath = await ExcelReportService.generateExcelReport({
+          alarmData: result.data.data,
+          title: sanitizedTitle,
+          grouping: options.grouping || ColumnGrouping.CHRONOLOGICAL,
+          includeThresholds: options.includeThresholds ?? true,
+          includeStatusFields: options.includeStatusFields ?? true
+        });
+      } else if (format === 'pdf') {
+        // Placeholder for PDF generation (future feature)
+        filePath = await FileSystem.documentDirectory + `${sanitizedTitle}_${timestamp}_${randomSuffix}.pdf`;
+        
+        // Create a dummy PDF file for now
+        await FileSystem.writeAsStringAsync(
+          filePath,
+          'PDF generation not implemented yet',
+          { encoding: FileSystem.EncodingType.UTF8 }
         );
+      } else {
+        throw new Error(`Unsupported format: ${format}`);
       }
-    },
-    [generatedFilePath]
-  );
+      
+      // Save the generated file path
+      setGeneratedFilePath(filePath);
+      return filePath;
+    } catch (error) {
+      console.error('Error generating report:', error);
+      throw error;
+    } finally {
+      setIsGenerating(false);
+    }
+  };
   
-  /**
-   * Share a report file
-   */
-  const shareReport = useCallback(
-    async (filePath?: string): Promise<void> => {
-      try {
-        // Use the provided filePath or the last generated file
-        const fileToShare = filePath || generatedFilePath;
-        
-        if (!fileToShare) {
-          Alert.alert('Error', 'No report file to share. Please generate a report first.');
-          return;
-        }
-        
-        await reportService.shareReport(fileToShare);
-      } catch (error) {
-        Alert.alert(
-          'Error Sharing Report',
-          error instanceof Error ? error.message : 'An unexpected error occurred'
-        );
+  // Open a generated report
+  const openReport = async (filePath: string): Promise<void> => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      if (!fileInfo.exists) {
+        throw new Error('File does not exist');
       }
-    },
-    [generatedFilePath]
-  );
+      
+      await Sharing.shareAsync(filePath);
+    } catch (error) {
+      console.error('Error opening report:', error);
+      Alert.alert('Error', 'Failed to open report');
+      throw error;
+    }
+  };
+  
+  // Share a generated report
+  const shareReport = async (filePath: string): Promise<void> => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      if (!fileInfo.exists) {
+        throw new Error('File does not exist');
+      }
+      
+      await Sharing.shareAsync(filePath, {
+        mimeType: filePath.endsWith('.xlsx') 
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/pdf',
+        dialogTitle: 'Share Report',
+      });
+    } catch (error) {
+      console.error('Error sharing report:', error);
+      Alert.alert('Error', 'Failed to share report');
+      throw error;
+    }
+  };
   
   return [
     { isGenerating, generatedFilePath },
-    { generateReport, openReport, shareReport },
+    { generateReport, openReport, shareReport }
   ];
 } 

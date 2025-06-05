@@ -1,26 +1,28 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   Modal,
   StyleSheet,
+  TouchableOpacity,
   ActivityIndicator,
-  Alert,
   ScrollView,
+  Switch,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { format as formatDate } from 'date-fns';
-import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
 import { useTheme } from '../context/ThemeContext';
+import { ColumnGrouping, ExcelReportService } from '../services/ExcelReportService';
+import { AlarmReportFilters, useAlarmReportData } from '../hooks/useAlarmReportData';
 
-// Report types
-export type ReportFormat = 'pdf' | 'excel';
-export type ReportTimeRange = {
+export interface ReportTimeRange {
   startDate: Date;
   endDate: Date;
-};
+}
+
+export type ReportFormat = 'excel' | 'pdf';
 
 interface ReportGeneratorProps {
   visible: boolean;
@@ -29,288 +31,590 @@ interface ReportGeneratorProps {
   defaultTimeRange?: ReportTimeRange;
 }
 
-export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
+export function ReportGenerator({
   visible,
   onClose,
   onGenerate,
   defaultTimeRange,
-}) => {
+}: ReportGeneratorProps) {
   const { isDarkMode } = useTheme();
   
-  // State for report options
-  const [reportFormat, setReportFormat] = useState<ReportFormat>('pdf');
-  const [timeRange, setTimeRange] = useState<ReportTimeRange>(
-    defaultTimeRange || {
-      startDate: new Date(new Date().setHours(0, 0, 0, 0)),
-      endDate: new Date(),
-    }
-  );
+  // State for report generation
   const [isGenerating, setIsGenerating] = useState(false);
+  const [format, setFormat] = useState<ReportFormat>('excel');
   
-  // Predefined time ranges
-  const timeRanges = [
-    { label: 'Today', value: 'today' },
-    { label: 'Yesterday', value: 'yesterday' },
-    { label: 'Last 7 Days', value: 'week' },
-    { label: 'Last 30 Days', value: 'month' },
-    { label: 'Custom', value: 'custom' },
-  ];
-  
-  // Handle time range selection
-  const handleTimeRangeSelect = useCallback((value: string) => {
-    const now = new Date();
-    const today = new Date(now.setHours(0, 0, 0, 0));
-    
-    switch (value) {
-      case 'today':
-        setTimeRange({
-          startDate: today,
-          endDate: new Date(),
-        });
-        break;
-      case 'yesterday':
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        setTimeRange({
-          startDate: yesterday,
-          endDate: new Date(today.getTime() - 1),
-        });
-        break;
-      case 'week':
-        const weekAgo = new Date(today);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        setTimeRange({
-          startDate: weekAgo,
-          endDate: new Date(),
-        });
-        break;
-      case 'month':
-        const monthAgo = new Date(today);
-        monthAgo.setDate(monthAgo.getDate() - 30);
-        setTimeRange({
-          startDate: monthAgo,
-          endDate: new Date(),
-        });
-        break;
-      case 'custom':
-        // Custom would typically open a date picker
-        // For now, we'll just use a 14-day range as an example
-        const twoWeeksAgo = new Date(today);
-        twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-        setTimeRange({
-          startDate: twoWeeksAgo,
-          endDate: new Date(),
-        });
-        break;
+  // Time range state
+  const [startDate, setStartDate] = useState<Date>(
+    defaultTimeRange?.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  );
+  const [endDate, setEndDate] = useState<Date>(
+    defaultTimeRange?.endDate || new Date()
+  );
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+
+  // Alarm filters state
+  const [alarmTypes, setAlarmTypes] = useState<string[]>([]);
+  const [severityLevels, setSeverityLevels] = useState<string[]>([]);
+  const [zones, setZones] = useState<string[]>([]);
+  const [includeThresholds, setIncludeThresholds] = useState(true);
+  const [includeStatusFields, setIncludeStatusFields] = useState(true);
+  const [grouping, setGrouping] = useState<ColumnGrouping>(ColumnGrouping.CHRONOLOGICAL);
+
+  // Report title
+  const [reportTitle, setReportTitle] = useState('Alarm Report');
+
+  // Use the hook to fetch report data
+  const { refetch: fetchReportData, isLoading, isFetching } = useAlarmReportData({
+    startDate,
+    endDate,
+    alarmTypes: alarmTypes.length > 0 ? alarmTypes : undefined,
+    severityLevels: severityLevels.length > 0 ? severityLevels : undefined,
+    zones: zones.length > 0 ? zones : undefined
+  }, false);
+
+  // Handle date change
+  const handleStartDateChange = (event: any, selectedDate?: Date) => {
+    setShowStartPicker(false);
+    if (selectedDate) {
+      setStartDate(selectedDate);
     }
-  }, []);
-  
-  // Handle generate report
-  const handleGenerateReport = useCallback(async () => {
+  };
+
+  const handleEndDateChange = (event: any, selectedDate?: Date) => {
+    setShowEndPicker(false);
+    if (selectedDate) {
+      setEndDate(selectedDate);
+    }
+  };
+
+  // Toggle filter items
+  const toggleAlarmType = (type: string) => {
+    setAlarmTypes(prev => 
+      prev.includes(type) 
+        ? prev.filter(t => t !== type) 
+        : [...prev, type]
+    );
+  };
+
+  const toggleSeverity = (severity: string) => {
+    setSeverityLevels(prev => 
+      prev.includes(severity) 
+        ? prev.filter(s => s !== severity) 
+        : [...prev, severity]
+    );
+  };
+
+  const toggleZone = (zone: string) => {
+    setZones(prev => 
+      prev.includes(zone) 
+        ? prev.filter(z => z !== zone) 
+        : [...prev, zone]
+    );
+  };
+
+  // Set grouping
+  const setReportGrouping = (selectedGrouping: ColumnGrouping) => {
+    setGrouping(selectedGrouping);
+  };
+
+  // Handle report generation
+  const handleGenerateReport = async () => {
+    if (endDate < startDate) {
+      Alert.alert('Invalid Date Range', 'End date must be after start date.');
+      return;
+    }
+
     try {
       setIsGenerating(true);
-      
-      // Call the onGenerate function passed as props
-      const fileUrl = await onGenerate(reportFormat, timeRange);
-      
-      // Check if sharing is available
-      const isSharingAvailable = await Sharing.isAvailableAsync();
-      
-      if (isSharingAvailable) {
-        // Share the file
-        await Sharing.shareAsync(fileUrl);
-      } else {
-        // Copy file to downloads directory if sharing is not available
-        const downloadDir = FileSystem.documentDirectory + 'downloads/';
-        const dirInfo = await FileSystem.getInfoAsync(downloadDir);
+
+      if (format === 'excel') {
+        // Fetch report data
+        const result = await fetchReportData();
         
-        if (!dirInfo.exists) {
-          await FileSystem.makeDirectoryAsync(downloadDir, { intermediates: true });
+        if (!result.data || !result.data.data || result.data.data.length === 0) {
+          Alert.alert('No Data', 'No data found for the specified filters.');
+          setIsGenerating(false);
+          return;
         }
-        
-        const fileName = `alarm-report-${reportFormat}-${formatDate(new Date(), 'yyyy-MM-dd-HH-mm')}`;
-        const newFileUri = `${downloadDir}${fileName}.${reportFormat}`;
-        
-        await FileSystem.copyAsync({
-          from: fileUrl,
-          to: newFileUri,
+
+        // Generate Excel report
+        const filePath = await ExcelReportService.generateExcelReport({
+          alarmData: result.data.data,
+          title: reportTitle,
+          grouping,
+          includeThresholds,
+          includeStatusFields
         });
-        
-        Alert.alert(
-          'Report Generated',
-          `Report has been saved to your downloads folder as ${fileName}.${reportFormat}`
-        );
+
+        // Share the file
+        await ExcelReportService.shareExcelFile(filePath);
+      } else if (format === 'pdf') {
+        // Use the existing onGenerate for PDF (if implemented)
+        await onGenerate(format, { startDate, endDate });
       }
-      
-      // Close the modal
-      onClose();
     } catch (error) {
-      Alert.alert(
-        'Error',
-        error instanceof Error ? error.message : 'Failed to generate report'
-      );
+      console.error('Error generating report:', error);
+      Alert.alert('Error', 'Failed to generate report. Please try again.');
     } finally {
       setIsGenerating(false);
     }
-  }, [reportFormat, timeRange, onGenerate, onClose]);
-  
+  };
+
+  const renderFilterButton = (
+    label: string,
+    isSelected: boolean,
+    onPress: () => void
+  ) => {
+    return (
+      <TouchableOpacity
+        style={[
+          styles.filterButton,
+          {
+            backgroundColor: isSelected
+              ? isDarkMode
+                ? '#3B82F6'
+                : '#2563EB'
+              : isDarkMode
+              ? '#374151'
+              : '#F3F4F6',
+          },
+        ]}
+        onPress={onPress}
+      >
+        <Text
+          style={[
+            styles.filterButtonText,
+            {
+              color: isSelected
+                ? '#FFFFFF'
+                : isDarkMode
+                ? '#D1D5DB'
+                : '#4B5563',
+            },
+          ]}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalContainer}>
-        <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View
+          style={[
+            styles.modalContent,
+            { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' },
+          ]}
+        >
+          <View style={styles.header}>
+            <Text
+              style={[
+                styles.title,
+                { color: isDarkMode ? '#F9FAFB' : '#111827' },
+              ]}
+            >
               Generate Report
             </Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity
+              style={[
+                styles.closeButton,
+                { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' },
+              ]}
+              onPress={onClose}
+            >
               <Ionicons
                 name="close"
-                size={24}
-                color={isDarkMode ? '#E5E7EB' : '#4B5563'}
+                size={20}
+                color={isDarkMode ? '#9CA3AF' : '#6B7280'}
               />
             </TouchableOpacity>
           </View>
-          
-          <ScrollView style={styles.modalBody}>
+
+          <ScrollView style={styles.content}>
             {/* Format Selection */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                Format
-              </Text>
-              <View style={styles.formatOptions}>
-                <TouchableOpacity
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+              ]}
+            >
+              Report Format
+            </Text>
+            <View style={styles.formatButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.formatButton,
+                  {
+                    backgroundColor:
+                      format === 'excel'
+                        ? isDarkMode
+                          ? '#3B82F6'
+                          : '#2563EB'
+                        : isDarkMode
+                        ? '#374151'
+                        : '#F3F4F6',
+                  },
+                ]}
+                onPress={() => setFormat('excel')}
+              >
+                <Ionicons
+                  name="grid-outline"
+                  size={24}
+                  color={
+                    format === 'excel'
+                      ? '#FFFFFF'
+                      : isDarkMode
+                      ? '#9CA3AF'
+                      : '#6B7280'
+                  }
+                  style={styles.formatButtonIcon}
+                />
+                <Text
                   style={[
-                    styles.formatOption,
-                    reportFormat === 'pdf' && styles.formatOptionActive,
+                    styles.formatButtonText,
                     {
-                      backgroundColor: reportFormat === 'pdf'
-                        ? (isDarkMode ? '#3B82F6' : '#2563EB')
-                        : (isDarkMode ? '#374151' : '#F3F4F6'),
-                    }
-                  ]}
-                  onPress={() => setReportFormat('pdf')}
-                >
-                  <Ionicons
-                    name="document-text-outline"
-                    size={24}
-                    color={reportFormat === 'pdf' ? '#FFFFFF' : (isDarkMode ? '#E5E7EB' : '#4B5563')}
-                    style={styles.formatIcon}
-                  />
-                  <Text
-                    style={[
-                      styles.formatText,
-                      {
-                        color: reportFormat === 'pdf'
+                      color:
+                        format === 'excel'
                           ? '#FFFFFF'
-                          : (isDarkMode ? '#E5E7EB' : '#4B5563'),
-                      }
-                    ]}
-                  >
-                    PDF
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
+                          : isDarkMode
+                          ? '#D1D5DB'
+                          : '#4B5563',
+                    },
+                  ]}
+                >
+                  Excel (.xlsx)
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.formatButton,
+                  {
+                    backgroundColor:
+                      format === 'pdf'
+                        ? isDarkMode
+                          ? '#EF4444'
+                          : '#DC2626'
+                        : isDarkMode
+                        ? '#374151'
+                        : '#F3F4F6',
+                    opacity: 0.5, // Disabled for now
+                  },
+                ]}
+                onPress={() => Alert.alert('Coming Soon', 'PDF generation will be available in a future update.')}
+                // onPress={() => setFormat('pdf')}
+                disabled={true}
+              >
+                <Ionicons
+                  name="document-text-outline"
+                  size={24}
+                  color={
+                    format === 'pdf'
+                      ? '#FFFFFF'
+                      : isDarkMode
+                      ? '#9CA3AF'
+                      : '#6B7280'
+                  }
+                  style={styles.formatButtonIcon}
+                />
+                <Text
                   style={[
-                    styles.formatOption,
-                    reportFormat === 'excel' && styles.formatOptionActive,
+                    styles.formatButtonText,
                     {
-                      backgroundColor: reportFormat === 'excel'
-                        ? (isDarkMode ? '#3B82F6' : '#2563EB')
-                        : (isDarkMode ? '#374151' : '#F3F4F6'),
-                    }
-                  ]}
-                  onPress={() => setReportFormat('excel')}
-                >
-                  <Ionicons
-                    name="grid-outline"
-                    size={24}
-                    color={reportFormat === 'excel' ? '#FFFFFF' : (isDarkMode ? '#E5E7EB' : '#4B5563')}
-                    style={styles.formatIcon}
-                  />
-                  <Text
-                    style={[
-                      styles.formatText,
-                      {
-                        color: reportFormat === 'excel'
+                      color:
+                        format === 'pdf'
                           ? '#FFFFFF'
-                          : (isDarkMode ? '#E5E7EB' : '#4B5563'),
-                      }
-                    ]}
-                  >
-                    Excel
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                          : isDarkMode
+                          ? '#D1D5DB'
+                          : '#4B5563',
+                    },
+                  ]}
+                >
+                  PDF (Coming Soon)
+                </Text>
+              </TouchableOpacity>
             </View>
-            
-            {/* Time Range Selection */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                Time Range
-              </Text>
-              <View style={styles.timeRangeOptions}>
-                {timeRanges.map((range) => (
-                  <TouchableOpacity
-                    key={range.value}
-                    style={[
-                      styles.timeRangeOption,
-                      {
-                        backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
-                      }
-                    ]}
-                    onPress={() => handleTimeRangeSelect(range.value)}
-                  >
+
+            {/* Date Range */}
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+              ]}
+            >
+              Date Range
+            </Text>
+            <View style={styles.dateRangeContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.dateButton,
+                  { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
+                ]}
+                onPress={() => setShowStartPicker(true)}
+              >
+                <Text
+                  style={[
+                    styles.dateButtonLabel,
+                    { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                  ]}
+                >
+                  Start Date:
+                </Text>
+                <Text
+                  style={[
+                    styles.dateButtonText,
+                    { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                  ]}
+                >
+                  {formatDate(startDate, 'PPP')}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.dateButton,
+                  { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
+                ]}
+                onPress={() => setShowEndPicker(true)}
+              >
+                <Text
+                  style={[
+                    styles.dateButtonLabel,
+                    { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                  ]}
+                >
+                  End Date:
+                </Text>
+                <Text
+                  style={[
+                    styles.dateButtonText,
+                    { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                  ]}
+                >
+                  {formatDate(endDate, 'PPP')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Date Pickers (Visible conditionally) */}
+            {showStartPicker && (
+              <DateTimePicker
+                value={startDate}
+                mode="date"
+                display="default"
+                onChange={handleStartDateChange}
+              />
+            )}
+            {showEndPicker && (
+              <DateTimePicker
+                value={endDate}
+                mode="date"
+                display="default"
+                onChange={handleEndDateChange}
+              />
+            )}
+
+            {/* Alarm Types Filter */}
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+              ]}
+            >
+              Alarm Types
+            </Text>
+            <View style={styles.filterContainer}>
+              {renderFilterButton(
+                'Temperature', 
+                alarmTypes.includes('temperature'), 
+                () => toggleAlarmType('temperature')
+              )}
+              {renderFilterButton(
+                'Carbon', 
+                alarmTypes.includes('carbon'), 
+                () => toggleAlarmType('carbon')
+              )}
+              {renderFilterButton(
+                'Oil', 
+                alarmTypes.includes('oil'), 
+                () => toggleAlarmType('oil')
+              )}
+              {renderFilterButton(
+                'Fan', 
+                alarmTypes.includes('fan'), 
+                () => toggleAlarmType('fan')
+              )}
+              {renderFilterButton(
+                'Conveyor', 
+                alarmTypes.includes('conveyor'), 
+                () => toggleAlarmType('conveyor')
+              )}
+            </View>
+
+            {/* Severity Filter */}
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+              ]}
+            >
+              Severity
+            </Text>
+            <View style={styles.filterContainer}>
+              {renderFilterButton(
+                'Critical', 
+                severityLevels.includes('critical'), 
+                () => toggleSeverity('critical')
+              )}
+              {renderFilterButton(
+                'Warning', 
+                severityLevels.includes('warning'), 
+                () => toggleSeverity('warning')
+              )}
+            </View>
+
+            {/* Zone Filter */}
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+              ]}
+            >
+              Zones
+            </Text>
+            <View style={styles.filterContainer}>
+              {renderFilterButton(
+                'Zone 1', 
+                zones.includes('zone1'), 
+                () => toggleZone('zone1')
+              )}
+              {renderFilterButton(
+                'Zone 2', 
+                zones.includes('zone2'), 
+                () => toggleZone('zone2')
+              )}
+            </View>
+
+            {/* Excel Report Options */}
+            {format === 'excel' && (
+              <>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                  ]}
+                >
+                  Data Grouping
+                </Text>
+                <View style={styles.filterContainer}>
+                  {renderFilterButton(
+                    'Chronological', 
+                    grouping === ColumnGrouping.CHRONOLOGICAL, 
+                    () => setReportGrouping(ColumnGrouping.CHRONOLOGICAL)
+                  )}
+                  {renderFilterButton(
+                    'By Type', 
+                    grouping === ColumnGrouping.BY_TYPE, 
+                    () => setReportGrouping(ColumnGrouping.BY_TYPE)
+                  )}
+                  {renderFilterButton(
+                    'By Zone', 
+                    grouping === ColumnGrouping.BY_ZONE, 
+                    () => setReportGrouping(ColumnGrouping.BY_ZONE)
+                  )}
+                </View>
+
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                  ]}
+                >
+                  Additional Options
+                </Text>
+                <View style={styles.optionsContainer}>
+                  <View style={styles.optionRow}>
                     <Text
                       style={[
-                        styles.timeRangeText,
-                        { color: isDarkMode ? '#E5E7EB' : '#4B5563' }
+                        styles.optionText,
+                        { color: isDarkMode ? '#D1D5DB' : '#4B5563' },
                       ]}
                     >
-                      {range.label}
+                      Include Threshold Values
                     </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              
-              {/* Show selected time range */}
-              <View style={styles.selectedTimeRange}>
-                <View style={[styles.selectedRange, { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }]}>
-                  <Text style={[styles.rangeText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                    From: {formatDate(timeRange.startDate, 'MMM d, yyyy HH:mm')}
-                  </Text>
-                  <Text style={[styles.rangeText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                    To: {formatDate(timeRange.endDate, 'MMM d, yyyy HH:mm')}
-                  </Text>
+                    <Switch
+                      value={includeThresholds}
+                      onValueChange={setIncludeThresholds}
+                      trackColor={{
+                        false: isDarkMode ? '#4B5563' : '#D1D5DB',
+                        true: isDarkMode ? '#3B82F6' : '#2563EB',
+                      }}
+                      thumbColor={isDarkMode ? '#E5E7EB' : '#FFFFFF'}
+                    />
+                  </View>
+
+                  <View style={styles.optionRow}>
+                    <Text
+                      style={[
+                        styles.optionText,
+                        { color: isDarkMode ? '#D1D5DB' : '#4B5563' },
+                      ]}
+                    >
+                      Include Status Fields
+                    </Text>
+                    <Switch
+                      value={includeStatusFields}
+                      onValueChange={setIncludeStatusFields}
+                      trackColor={{
+                        false: isDarkMode ? '#4B5563' : '#D1D5DB',
+                        true: isDarkMode ? '#3B82F6' : '#2563EB',
+                      }}
+                      thumbColor={isDarkMode ? '#E5E7EB' : '#FFFFFF'}
+                    />
+                  </View>
                 </View>
-              </View>
-            </View>
+              </>
+            )}
           </ScrollView>
-          
-          <View style={styles.modalFooter}>
+
+          <View style={styles.footer}>
             <TouchableOpacity
               style={[
                 styles.cancelButton,
-                { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' }
+                {
+                  backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
+                },
               ]}
               onPress={onClose}
               disabled={isGenerating}
             >
-              <Text style={[styles.cancelButtonText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+              <Text
+                style={[
+                  styles.cancelButtonText,
+                  { color: isDarkMode ? '#E5E7EB' : '#4B5563' },
+                ]}
+              >
                 Cancel
               </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[
                 styles.generateButton,
-                { backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB' },
-                isGenerating && { opacity: 0.7 }
+                {
+                  backgroundColor:
+                    format === 'excel'
+                      ? isDarkMode
+                        ? '#3B82F6'
+                        : '#2563EB'
+                      : isDarkMode
+                      ? '#EF4444'
+                      : '#DC2626',
+                  opacity: isGenerating ? 0.7 : 1,
+                },
               ]}
               onPress={handleGenerateReport}
               disabled={isGenerating}
@@ -319,7 +623,7 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text style={styles.generateButtonText}>
-                  Generate
+                  {`Generate ${format === 'excel' ? 'Excel' : 'PDF'}`}
                 </Text>
               )}
             </TouchableOpacity>
@@ -328,123 +632,148 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
       </View>
     </Modal>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  modalContainer: {
+  overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    padding: 16,
   },
   modalContent: {
-    width: '100%',
+    width: '90%',
     maxWidth: 500,
+    maxHeight: '90%',
     borderRadius: 12,
     overflow: 'hidden',
-    maxHeight: '80%',
   },
-  modalHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: 'rgba(107, 114, 128, 0.1)',
   },
-  modalTitle: {
+  title: {
     fontSize: 18,
     fontWeight: '600',
   },
-  modalBody: {
-    padding: 16,
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  section: {
-    marginBottom: 20,
+  content: {
+    padding: 16,
+    maxHeight: 500,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 12,
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 16,
   },
-  formatOptions: {
+  formatButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  formatOption: {
-    flex: 1,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderRadius: 8,
-    marginHorizontal: 6,
-  },
-  formatOptionActive: {
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  formatIcon: {
+    justifyContent: 'space-between',
     marginBottom: 8,
   },
-  formatText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  timeRangeOptions: {
+  formatButton: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -4,
-  },
-  timeRangeOption: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
     borderRadius: 8,
-    margin: 4,
+    flex: 1,
+    marginHorizontal: 4,
   },
-  timeRangeText: {
+  formatButtonIcon: {
+    marginRight: 8,
+  },
+  formatButtonText: {
     fontSize: 14,
     fontWeight: '500',
   },
-  selectedTimeRange: {
-    marginTop: 12,
+  dateRangeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  selectedRange: {
-    padding: 12,
+  dateButton: {
+    flex: 1,
+    borderWidth: 1,
     borderRadius: 8,
+    padding: 12,
+    marginHorizontal: 4,
   },
-  rangeText: {
-    fontSize: 14,
+  dateButtonLabel: {
+    fontSize: 12,
     marginBottom: 4,
   },
-  modalFooter: {
+  dateButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  filterButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    margin: 4,
+  },
+  filterButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  optionsContainer: {
+    marginVertical: 8,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(107, 114, 128, 0.1)',
+  },
+  optionText: {
+    fontSize: 14,
+  },
+  footer: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: 'rgba(107, 114, 128, 0.1)',
   },
   cancelButton: {
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
     marginRight: 12,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
   },
   cancelButtonText: {
     fontSize: 14,
     fontWeight: '500',
   },
   generateButton: {
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
     minWidth: 120,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   generateButtonText: {
-    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
 }); 

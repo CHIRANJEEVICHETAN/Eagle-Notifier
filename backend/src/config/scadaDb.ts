@@ -1,5 +1,6 @@
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { backOff } from 'exponential-backoff';
+import { logError } from './../utils/logger';
 
 const DEBUG = process.env.NODE_ENV === 'development';
 
@@ -29,10 +30,13 @@ const createScadaPool = () => {
       ssl: {
         rejectUnauthorized: false
       },
-      // Add connection pool settings
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      // Enhanced connection pool settings to prevent timeouts
+      max: 20,               // Maximum number of clients in the pool
+      min: 2,  // Keep at least 2 connections ready
+      idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
+      connectionTimeoutMillis: 2000, // How long to wait for a connection
+      maxUses: 7500,        // Close and replace after this many uses
+      allowExitOnIdle: false // Don't exit on idle
     });
 
     // Add event listeners for connection issues
@@ -41,7 +45,7 @@ const createScadaPool = () => {
     });
 
     pool.on('error', (err, client) => {
-      console.error('🔴 Unexpected error on idle SCADA DB client:', err);
+      logError('Unexpected error on idle client', err);
       if (client) {
         client.release(true);
       }
@@ -62,65 +66,105 @@ const createScadaPool = () => {
   }
 };
 
-const scadaPool = createScadaPool();
+// Use a singleton pattern for connection pool with auto-reconnect capabilities
+let scadaPool: Pool;
 
-// Enhanced connection test with retries and better logging
-export const testScadaConnection = async () => {
-  const retryOptions = {
-    numOfAttempts: 5,
-    startingDelay: 1000,
-    timeMultiple: 2,
-    maxDelay: 10000,
-  };
-
-  try {
-    await backOff(async () => {
-      const client = await scadaPool.connect();
-      try {
-        const result = await client.query('SELECT NOW()');
-        if (DEBUG) {
-          console.log('🟢 Successfully connected to SCADA database');
-          console.log('📊 Connection test result:', result.rows[0]);
-        }
-        return true;
-      } finally {
-        client.release();
-      }
-    }, retryOptions);
-    return true;
-  } catch (error) {
-    console.error('🔴 Failed to connect to SCADA database after retries:', error);
-    return false;
+const getScadaPool = () => {
+  if (!scadaPool) {
+    scadaPool = createScadaPool();
   }
+  return scadaPool;
 };
 
-// Add a health check function with detailed diagnostics
-export const checkScadaHealth = async () => {
+// Helper function to get a client with retry logic
+export async function getClientWithRetry(retries = 3, delay = 500): Promise<PoolClient> {
   try {
-    const client = await scadaPool.connect();
+    if (DEBUG) console.log('🔵 Client acquired from pool');
+    const client = await getScadaPool().connect();
+    
+    // Ensure client is properly released when it's no longer needed
+    const originalRelease = client.release;
+    client.release = (err?: Error) => {
+      if (DEBUG) console.log('🟡 Client released back to pool');
+      client.release = originalRelease;
+      return originalRelease.call(client, err);
+    };
+    
+    return client;
+  } catch (error) {
+    if (retries > 0) {
+      if (DEBUG) console.warn(`⚠️ Failed to get client, retrying... (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return getClientWithRetry(retries - 1, delay * 2);
+    } else {
+      console.error('🔴 Failed to get SCADA DB client after retries:', error);
+      throw error;
+    }
+  }
+}
+
+// Check database health
+export async function checkScadaHealth() {
+  try {
+    const client = await getClientWithRetry();
     try {
       const result = await client.query('SELECT NOW()');
-      const health = {
+      return {
         status: 'healthy',
-        timestamp: result.rows[0].now,
-        poolSize: scadaPool.totalCount,
-        idleConnections: scadaPool.idleCount,
-        waitingCount: scadaPool.waitingCount
+        timestamp: new Date().toISOString(),
+        details: {
+          connected: true,
+          databaseTime: result.rows[0].now,
+          poolStats: {
+            totalCount: getScadaPool().totalCount,
+            idleCount: getScadaPool().idleCount,
+            waitingCount: getScadaPool().waitingCount,
+          }
+        }
       };
-      if (DEBUG) console.log('🏥 SCADA DB Health Check:', health);
-      return health;
     } finally {
-      client.release();
+      client.release(true); // Force release the client
     }
   } catch (error) {
-    const errorStatus = {
+    return {
       status: 'unhealthy',
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-      timestamp: new Date()
+      timestamp: new Date().toISOString(),
+      details: {
+        error: error instanceof Error ? error.message : String(error),
+        connected: false
+      }
     };
-    console.error('🔴 SCADA DB Health Check Failed:', errorStatus);
-    return errorStatus;
   }
-};
+}
 
-export default scadaPool;
+// Test the connection and output status
+export async function testScadaConnection() {
+  try {
+    const client = await getClientWithRetry();
+    try {
+      const result = await client.query('SELECT NOW()');
+      if (DEBUG) console.log('🟢 Successfully connected to SCADA database');
+      if (DEBUG) console.log('📊 Connection test result:', result.rows[0]);
+      return true;
+    } finally {
+      client.release(true); // Force release
+    }
+  } catch (error) {
+    console.error('🔴 Error connecting to SCADA database:', error);
+    return false;
+  }
+}
+
+// Close all database connections
+export async function closeScadaConnections() {
+  try {
+    await getScadaPool().end();
+    if (DEBUG) console.log('✅ All SCADA database connections closed');
+    return true;
+  } catch (error) {
+    console.error('❌ Error closing SCADA database connections:', error);
+    return false;
+  }
+}
+
+export default getScadaPool();

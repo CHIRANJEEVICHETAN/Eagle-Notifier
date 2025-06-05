@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { getAuthHeader } from '../api/auth';
 import { apiConfig } from '../api/config';
+import { useAuth } from '../context/AuthContext';
 
 export interface Setpoint {
   id: string;
@@ -23,9 +24,17 @@ export const SETPOINT_KEYS = {
 
 // Hook for fetching all setpoints
 export const useSetpoints = () => {
+  const { authState } = useAuth();
+  const isAdmin = authState?.user?.role === 'ADMIN';
+  
   return useQuery({
     queryKey: SETPOINT_KEYS.all,
     queryFn: async () => {
+      // Only make API call if user is admin
+      if (!isAdmin) {
+        return [];
+      }
+      
       const headers = await getAuthHeader();
       const { data } = await axios.get<Setpoint[]>(
         `${apiConfig.apiUrl}/api/admin/setpoints`,
@@ -34,6 +43,7 @@ export const useSetpoints = () => {
       return data;
     },
     staleTime: 30000, // Consider data fresh for 30 seconds
+    enabled: isAdmin, // Only run the query if the user is an admin
   });
 };
 
@@ -46,9 +56,16 @@ interface UpdateSetpointParams {
 // Hook for updating setpoint deviations
 export const useUpdateSetpoint = () => {
   const queryClient = useQueryClient();
+  const { authState } = useAuth();
+  const isAdmin = authState?.user?.role === 'ADMIN';
 
   return useMutation({
     mutationFn: async ({ id, lowDeviation, highDeviation }: UpdateSetpointParams) => {
+      // Extra safety check
+      if (!isAdmin) {
+        throw new Error("Unauthorized: Only admins can update setpoints");
+      }
+      
       const headers = await getAuthHeader();
       const { data } = await axios.put(
         `${apiConfig.apiUrl}/api/admin/setpoints/${id}`,

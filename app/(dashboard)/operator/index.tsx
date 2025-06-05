@@ -140,6 +140,7 @@ export default function OperatorDashboard() {
 
   // Setpoint Data and Mutations - Only for Admin
   const isAdmin = authState?.user?.role === 'ADMIN';
+  // Only fetch setpoints if user is admin
   const { data: setpoints } = useSetpoints();
   const updateSetpointMutation = useUpdateSetpoint();
 
@@ -238,10 +239,11 @@ export default function OperatorDashboard() {
     setSeverityFilter(prev => prev === severity ? 'all' : severity);
   }, []);
 
+  // This function will now be even safer with additional checks
   const handleConfigureSetpoint = useCallback((alarm: Alarm) => {
-    if (!isAdmin) return;
+    if (!isAdmin || !setpoints) return;
     
-    const matchingSetpoint = setpoints?.find(sp => 
+    const matchingSetpoint = setpoints.find(sp => 
       sp.type === alarm.type && 
       (!alarm.zone || sp.zone === alarm.zone?.toLowerCase())
     );
@@ -250,7 +252,7 @@ export default function OperatorDashboard() {
       setSelectedSetpoint(matchingSetpoint);
       setSetpointModalVisible(true);
     }
-  }, [setpoints, authState?.user?.role]);
+  }, [setpoints, isAdmin]);
 
   const handleSetpointUpdate = useCallback(async (lowDeviation: number, highDeviation: number) => {
     if (!selectedSetpoint || !isAdmin) return;
@@ -270,7 +272,7 @@ export default function OperatorDashboard() {
         'Failed to update setpoint configuration. Please try again.'
       );
     }
-  }, [selectedSetpoint, updateSetpointMutation, authState?.user?.role]);
+  }, [selectedSetpoint, updateSetpointMutation, isAdmin]);
 
   const handleResolutionSubmit = useCallback(async (message: string) => {
     if (selectedAlarmForResolution) {

@@ -1,119 +1,176 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
   StyleSheet,
   ActivityIndicator,
-  TextInput,
   RefreshControl,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { format as formatDate, subDays } from 'date-fns';
+import { format as formatDate, parseISO } from 'date-fns';
+import { FlashList } from '@shopify/flash-list';
 import { useTheme } from '../../context/ThemeContext';
 import { AlarmDetails } from '../../components/AlarmDetails';
 import { useAlarmHistory } from '../../hooks/useAlarms';
 import { Alarm } from '../../types/alarm';
 
-// Filter types for alarm history
-type AlarmFilter = 'all' | 'active' | 'acknowledged' | 'resolved';
-type TimeFilter = '24h' | '3d' | '7d' | '30d' | 'all';
+// Define the shape of alarm history records
+interface AlarmHistoryRecord {
+  analogAlarms: Alarm[];
+  binaryAlarms: Alarm[];
+  timestamp: string;
+  id: string;
+}
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+// List of specific alarm descriptions we want to display
+const ANALOG_ALARM_DESCRIPTIONS = [
+  'HARDENING ZONE 1 TEMPERATURE',
+  'HARDENING ZONE 2 TEMPERATURE',
+  'CARBON POTENTIAL',
+  'TEMPERING ZONE1 TEMPERATURE',
+  'TEMPERING ZONE2 TEMPERATURE',
+  'OIL TEMPERATURE'
+];
+
+const BINARY_ALARM_DESCRIPTIONS = [
+  'OIL TEMPERATURE HIGH',
+  'OIL LEVEL HIGH',
+  'OIL LEVEL LOW',
+  'HARDENING ZONE 1 HEATER FAILURE',
+  'HARDENING ZONE 2 HEATER FAILURE',
+  'HARDENING ZONE 1 FAN FAILURE',
+  'HARDENING ZONE 2 FAN FAILURE',
+  'TEMPERING ZONE 1 FAN FAILURE',
+  'TEMPERING ZONE 2 FAN FAILURE'
+];
 
 export default function AlarmHistoryScreen() {
   const { isDarkMode } = useTheme();
   const router = useRouter();
   
-  // State for filters and search
-  const [statusFilter, setStatusFilter] = useState<AlarmFilter>('all');
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('7d');
-  const [searchQuery, setSearchQuery] = useState('');
+  // UI State
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedAlarm, setSelectedAlarm] = useState<Alarm | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
+  const [selectedAlarm, setSelectedAlarm] = useState<Alarm | null>(null);
   
-  // Get time range based on filter
-  const timeRange = useMemo(() => {
-    const endDate = new Date();
-    let startDate = new Date();
-    
-    switch (timeFilter) {
-      case '24h':
-        startDate = subDays(endDate, 1);
-        break;
-      case '3d':
-        startDate = subDays(endDate, 3);
-        break;
-      case '7d':
-        startDate = subDays(endDate, 7);
-        break;
-      case '30d':
-        startDate = subDays(endDate, 30);
-        break;
-      case 'all':
-        startDate = new Date(0); // Beginning of time
-        break;
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [limit] = useState(50); // Increased limit to fetch more alarms at once
+
+  // Fetch alarm history
+  const { 
+    data: alarmHistoryData, 
+    isLoading, 
+    refetch, 
+    isFetching,
+  } = useAlarmHistory({
+    page: currentPage,
+    limit,
+    status: 'all',
+    hours: 168, // Default to 7 days
+    sortBy: 'timestamp',
+    sortOrder: 'desc'
+  });
+  
+  // Extract and filter analog and binary alarms
+  const { filteredAnalogAlarms, filteredBinaryAlarms } = useMemo(() => {
+    if (!alarmHistoryData?.alarms) {
+      return { filteredAnalogAlarms: [], filteredBinaryAlarms: [] };
     }
     
-    return { startDate, endDate };
-  }, [timeFilter]);
-  
-  // Calculate hours difference for API parameter
-  const hoursDiff = useMemo(() => {
-    if (timeFilter === 'all') return undefined;
-    const diffMs = timeRange.endDate.getTime() - timeRange.startDate.getTime();
-    return Math.ceil(diffMs / (1000 * 60 * 60));
-  }, [timeRange, timeFilter]);
-  
-  // Fetch alarm history
-  const { data: alarmHistory, isLoading, isError, error, refetch } = useAlarmHistory(hoursDiff);
-  
-  // Filter and search alarms
-  const filteredAlarms = useMemo(() => {
-    if (!alarmHistory) return [];
+    const analog: Alarm[] = [];
+    const binary: Alarm[] = [];
     
-    return alarmHistory.filter(alarm => {
-      // Apply status filter
-      if (statusFilter !== 'all' && alarm.status !== statusFilter) {
-        return false;
+    alarmHistoryData.alarms.forEach((record: AlarmHistoryRecord) => {
+      if (record.analogAlarms) {
+        analog.push(...record.analogAlarms);
       }
-      
-      // Apply time filter
-      const alarmDate = new Date(alarm.timestamp);
-      if (timeFilter !== 'all' && alarmDate < timeRange.startDate) {
-        return false;
+      if (record.binaryAlarms) {
+        binary.push(...record.binaryAlarms);
       }
-      
-      // Apply search filter
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        return (
-          alarm.description.toLowerCase().includes(query) ||
-          alarm.zone?.toLowerCase().includes(query) ||
-          alarm.type.toLowerCase().includes(query) ||
-          alarm.value.toString().toLowerCase().includes(query)
-        );
-      }
-      
-      return true;
     });
-  }, [alarmHistory, statusFilter, searchQuery, timeFilter, timeRange]);
+    
+    // Filter to show only the specified alarms
+    // For each description, find the most recent alarm (avoid duplicates)
+    const filteredAnalogAlarms = ANALOG_ALARM_DESCRIPTIONS.map(description => {
+      const matches = analog.filter(alarm => alarm.description === description);
+      // Return the most recent one
+      return matches.sort((a, b) => 
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )[0];
+    }).filter(Boolean); // Remove undefined entries
+    
+    const filteredBinaryAlarms = BINARY_ALARM_DESCRIPTIONS.map(description => {
+      const matches = binary.filter(alarm => alarm.description === description);
+      // Return the most recent one
+      return matches.sort((a, b) => 
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )[0];
+    }).filter(Boolean); // Remove undefined entries
+    
+    return { filteredAnalogAlarms, filteredBinaryAlarms };
+  }, [alarmHistoryData]);
+  
+  // Combine both alarm types for a single list view with sections
+  const combinedAlarms = useMemo(() => {
+    // Create a combined list with section headers
+    const combined = [];
+    
+    // Add analog alarms section header
+    if (filteredAnalogAlarms.length > 0) {
+      combined.push({
+        id: 'analog-header',
+        isHeader: true,
+        title: 'Analog',
+        count: filteredAnalogAlarms.length
+      });
+      
+      // Add analog alarms
+      combined.push(...filteredAnalogAlarms.map(alarm => ({
+        ...alarm,
+        isHeader: false
+      })));
+    }
+    
+    // Add binary alarms section header
+    if (filteredBinaryAlarms.length > 0) {
+      combined.push({
+        id: 'binary-header',
+        isHeader: true,
+        title: 'Binary',
+        count: filteredBinaryAlarms.length
+    });
+    
+      // Add binary alarms
+      combined.push(...filteredBinaryAlarms.map(alarm => ({
+        ...alarm,
+        isHeader: false
+      })));
+    }
+    
+    return combined;
+  }, [filteredAnalogAlarms, filteredBinaryAlarms]);
   
   // Handle refresh
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetch();
+      await refetch();
     setRefreshing(false);
   }, [refetch]);
   
   // Handle view alarm details
   const handleViewAlarm = useCallback((alarm: Alarm) => {
-    setSelectedAlarm(alarm);
-    setDetailsVisible(true);
-  }, []);
+    // Navigate to the detail page with the alarm id
+    const baseId = alarm.id.split('-')[0]; // Get the base part of the ID
+    router.push(`/(dashboard)/alarms/${baseId}` as any);
+  }, [router]);
   
   // Handle close details
   const handleCloseDetails = useCallback(() => {
@@ -148,8 +205,23 @@ export default function AlarmHistoryScreen() {
     );
   }, [isDarkMode]);
   
-  // Render alarm item
-  const renderAlarmItem = useCallback(({ item }: { item: Alarm }) => (
+  // Render list item - either header or alarm item
+  const renderItem = useCallback(({ item }: { item: any }) => {
+    if (item.isHeader) {
+      return (
+        <View style={[styles.sectionHeader, {
+          backgroundColor: isDarkMode ? '#111827' : '#F1F5F9',
+        }]}>
+          <Text style={[styles.sectionTitle, {
+            color: isDarkMode ? '#E5E7EB' : '#1F2937',
+          }]}>
+            {item.title} Alarms ({item.count})
+          </Text>
+        </View>
+      );
+    }
+    
+    return (
     <TouchableOpacity
       style={[styles.alarmItem, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}
       onPress={() => handleViewAlarm(item)}
@@ -180,137 +252,16 @@ export default function AlarmHistoryScreen() {
           </Text>
         </View>
         
-        {item.acknowledgedBy && (
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-              Ack by:
-            </Text>
-            <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-              {item.acknowledgedBy.name} • {formatDate(new Date(item.acknowledgedAt!), 'MMM d, HH:mm')}
-            </Text>
-          </View>
-        )}
-        
-        {item.resolvedBy && (
-          <>
-        <View style={styles.detailRow}>
-          <Text style={[styles.detailLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-                Resolved:
-          </Text>
-          <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                {item.resolvedBy.name} • {formatDate(new Date(item.resolvedAt!), 'MMM d, HH:mm')}
-              </Text>
-            </View>
-            
-            {item.resolutionMessage && (
-              <View style={[styles.resolutionBox, { 
-                backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)',
-                borderColor: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)'
-              }]}>
-                <Text style={[styles.resolutionText, { color: isDarkMode ? '#93C5FD' : '#2563EB' }]}>
-                  {item.resolutionMessage}
-                </Text>
-              </View>
-            )}
-          </>
-        )}
-        
         <View style={styles.timeWrapper}>
           <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
           <Text style={[styles.timeText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            {formatDate(new Date(item.timestamp), 'MMM d, yyyy HH:mm:ss')}
+            {formatDate(parseISO(item.timestamp), 'MMM d, yyyy HH:mm:ss')}
           </Text>
         </View>
       </View>
     </TouchableOpacity>
-  ), [isDarkMode, handleViewAlarm, renderStatusBadge]);
-  
-  // Render status filter buttons
-  const renderStatusFilters = () => {
-    const filters: { label: string; value: AlarmFilter }[] = [
-      { label: 'All', value: 'all' },
-      { label: 'Active', value: 'active' },
-      { label: 'Acknowledged', value: 'acknowledged' },
-      { label: 'Resolved', value: 'resolved' },
-    ];
-    
-    return (
-      <View style={styles.filtersRow}>
-        {filters.map((filter) => (
-          <TouchableOpacity
-            key={filter.value}
-            style={[
-              styles.filterButton,
-              statusFilter === filter.value && styles.filterButtonActive,
-              { 
-                backgroundColor: isDarkMode 
-                  ? statusFilter === filter.value ? '#3B82F6' : '#374151'
-                  : statusFilter === filter.value ? '#2563EB' : '#F3F4F6'
-              }
-            ]}
-            onPress={() => setStatusFilter(filter.value)}
-          >
-            <Text 
-              style={[
-                styles.filterButtonText,
-                { 
-                  color: isDarkMode
-                    ? statusFilter === filter.value ? '#FFFFFF' : '#E5E7EB'
-                    : statusFilter === filter.value ? '#FFFFFF' : '#4B5563' 
-                }
-              ]}
-            >
-              {filter.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
     );
-  };
-  
-  // Render time filter buttons
-  const renderTimeFilters = () => {
-    const filters: { label: string; value: TimeFilter }[] = [
-      { label: '24h', value: '24h' },
-      { label: '3d', value: '3d' },
-      { label: '7d', value: '7d' },
-      { label: '30d', value: '30d' },
-      { label: 'All', value: 'all' },
-    ];
-    
-    return (
-      <View style={styles.filtersRow}>
-        {filters.map((filter) => (
-          <TouchableOpacity
-            key={filter.value}
-            style={[
-              styles.filterButton,
-              timeFilter === filter.value && styles.filterButtonActive,
-              { 
-                backgroundColor: isDarkMode 
-                  ? timeFilter === filter.value ? '#3B82F6' : '#374151'
-                  : timeFilter === filter.value ? '#2563EB' : '#F3F4F6'
-              }
-            ]}
-            onPress={() => setTimeFilter(filter.value)}
-          >
-            <Text 
-              style={[
-                styles.filterButtonText,
-                { 
-                  color: isDarkMode
-                    ? timeFilter === filter.value ? '#FFFFFF' : '#E5E7EB'
-                    : timeFilter === filter.value ? '#FFFFFF' : '#4B5563' 
-                }
-              ]}
-            >
-              {filter.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
-  };
+  }, [isDarkMode, handleViewAlarm, renderStatusBadge]);
   
   // Render loading state
   if (isLoading && !refreshing) {
@@ -327,6 +278,7 @@ export default function AlarmHistoryScreen() {
     );
   }
   
+  // Render the main view
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
@@ -354,70 +306,30 @@ export default function AlarmHistoryScreen() {
         </View>
       </View>
       
-      {/* Search Bar */}
-      <View style={[styles.searchContainer, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
-        <Ionicons
-          name="search-outline"
-          size={20}
-          color={isDarkMode ? '#6B7280' : '#9CA3AF'}
-          style={styles.searchIcon}
-        />
-        <TextInput
-          style={[styles.searchInput, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}
-          placeholder="Search alarms..."
-          placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons
-              name="close-circle"
-              size={20}
-              color={isDarkMode ? '#6B7280' : '#9CA3AF'}
-            />
-          </TouchableOpacity>
-        )}
-      </View>
-      
-      {/* Filters */}
-      <View style={styles.filters}>
-        {renderStatusFilters()}
-        {renderTimeFilters()}
-      </View>
-      
-      {/* Alarm List */}
-      <FlatList
-        data={filteredAlarms}
-        keyExtractor={(item) => item.id}
-        renderItem={renderAlarmItem}
-        contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={['#3B82F6']}
-            tintColor={isDarkMode ? '#60A5FA' : '#3B82F6'}
+      {/* Combined Alarms List */}
+      <View style={styles.fullListContainer}>
+          <FlashList
+          data={combinedAlarms}
+          renderItem={renderItem}
+            estimatedItemSize={150}
+            contentContainerStyle={styles.listContainer}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={['#3B82F6']}
+                tintColor={isDarkMode ? '#60A5FA' : '#3B82F6'}
+              />
+            }
+            ListEmptyComponent={
+              <View style={[styles.emptyState, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
+                <Text style={[styles.emptyStateSubtext, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                No alarms found
+                </Text>
+              </View>
+            }
           />
-        }
-        ListEmptyComponent={
-          <View style={[styles.emptyState, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={48}
-              color={isDarkMode ? '#6B7280' : '#9CA3AF'}
-            />
-            <Text style={[styles.emptyStateText, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-              No alarms found
-            </Text>
-            <Text style={[styles.emptyStateSubtext, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-              {isError
-                ? 'Error loading alarms. Please try again.'
-                : 'Try adjusting your filters or search criteria.'}
-            </Text>
-          </View>
-        }
-      />
+      </View>
       
       {/* Alarm Details Modal */}
       <AlarmDetails
@@ -454,49 +366,13 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
   },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginVertical: 8,
-    paddingHorizontal: 12,
-    height: 44,
-    borderRadius: 8,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
+  section: {
     flex: 1,
-    height: '100%',
-    fontSize: 16,
-  },
-  filters: {
-    padding: 16,
-  },
-  filtersRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-    flexWrap: 'wrap',
-  },
-  filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  filterButtonActive: {
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  filterButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+    paddingTop: 8,
   },
   listContainer: {
-    padding: 16,
-    paddingTop: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   alarmItem: {
     padding: 16,
@@ -534,10 +410,12 @@ const styles = StyleSheet.create({
   detailRow: {
     flexDirection: 'row',
     marginBottom: 4,
+    alignItems: 'center',
   },
   detailLabel: {
     fontSize: 14,
-    width: 50,
+    width: 65,
+    marginRight: 4,
   },
   detailValue: {
     fontSize: 14,
@@ -556,8 +434,9 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 32,
+    padding: 16,
     borderRadius: 12,
+    marginTop: 8,
   },
   emptyStateText: {
     fontSize: 18,
@@ -569,16 +448,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  resolutionBox: {
-    marginTop: 8,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  resolutionText: {
-    fontSize: 13,
-    fontStyle: 'italic',
-  },
   timeWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -586,5 +455,20 @@ const styles = StyleSheet.create({
   },
   timeText: {
     marginLeft: 4,
+  },
+  sectionHeader: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fullListContainer: {
+    flex: 1,
   },
 }); 

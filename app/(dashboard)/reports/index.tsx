@@ -8,6 +8,8 @@ import { ReportFormat, ReportGenerator, ReportTimeRange } from '../../components
 import { useTheme } from '../../context/ThemeContext';
 import { useReportGenerator } from '../../hooks/useReportGenerator';
 import { router } from 'expo-router';
+import { ColumnGrouping } from '../../services/ExcelReportService';
+import { Alert } from 'react-native';
 
 export default function ReportsScreen() {
   const { isDarkMode } = useTheme();
@@ -28,29 +30,47 @@ export default function ReportsScreen() {
 
   // Recent reports (would be loaded from storage or API in a real app)
   const [recentReports, setRecentReports] = useState<
-    { id: string; format: ReportFormat; date: Date; filePath: string | null }[]
+    { id: string; format: ReportFormat; date: Date; filePath: string | null; title: string }[]
   >([]);
 
   // Handle report generation
   const handleGenerateReport = useCallback(
     async (reportFormat: ReportFormat, timeRange: ReportTimeRange): Promise<string> => {
-      const filePath = await generateReport(reportFormat, timeRange);
+      try {
+        // Generate a title based on date range
+        const startFormatted = formatDate(timeRange.startDate, 'MMM_d_yyyy');
+        const endFormatted = formatDate(timeRange.endDate, 'MMM_d_yyyy');
+        const title = `Alarm_Report_${startFormatted}_to_${endFormatted}`;
 
-      if (filePath) {
-        // Add to recent reports
-        const newReport = {
-          id: `report-${Date.now()}`,
-          format: reportFormat,
-          date: new Date(),
-          filePath,
-        };
+        // Generate the report
+        const filePath = await generateReport(reportFormat, timeRange, {
+          title,
+          grouping: ColumnGrouping.CHRONOLOGICAL,
+        });
 
-        setRecentReports(prev => [newReport, ...prev]);
-        return filePath;
+        if (filePath) {
+          // Add to recent reports
+          const newReport = {
+            id: `report-${Date.now()}`,
+            format: reportFormat,
+            date: new Date(),
+            filePath,
+            title,
+          };
+
+          setRecentReports(prev => [newReport, ...prev]);
+          return filePath;
+        }
+
+        throw new Error('Failed to generate report');
+      } catch (error) {
+        console.error('Error in handleGenerateReport:', error);
+        Alert.alert(
+          'Report Generation Failed', 
+          error instanceof Error ? error.message : 'An unexpected error occurred'
+        );
+        throw error;
       }
-
-      // If filePath is null, throw an error to maintain Promise<string> return type
-      throw new Error('Failed to generate report');
     },
     [generateReport]
   );
@@ -87,6 +107,10 @@ export default function ReportsScreen() {
         return report.format === 'pdf' ? 'document-text-outline' : 'grid-outline';
       };
 
+      const getIconColor = () => {
+        return report.format === 'pdf' ? '#EF4444' : '#3B82F6';
+      };
+
       return (
         <View
           key={report.id}
@@ -107,7 +131,7 @@ export default function ReportsScreen() {
               <Ionicons
                 name={getIcon()}
                 size={24}
-                color={report.format === 'pdf' ? '#EF4444' : '#3B82F6'}
+                color={getIconColor()}
               />
             </View>
             <View style={styles.reportInfo}>
@@ -117,7 +141,7 @@ export default function ReportsScreen() {
                   { color: isDarkMode ? '#FFFFFF' : '#1F2937' },
                 ]}
               >
-                {report.format.toUpperCase()} Report
+                {report.title.replace(/_/g, ' ')}
               </Text>
               <Text
                 style={[
@@ -189,7 +213,7 @@ export default function ReportsScreen() {
         <View style={styles.headerTextContainer}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Reports</Text>
           <Text style={[styles.headerSubtitle, { color: theme.subtext }]}>
-            Generate and share reports
+            Generate and share alarm reports
           </Text>
         </View>
 
@@ -249,7 +273,7 @@ export default function ReportsScreen() {
                 { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
               ]}
             >
-              Generate your first report by tapping the "New Report" button.
+              Generate your first alarm report by tapping the "New Report" button above.
             </Text>
           </View>
         )}

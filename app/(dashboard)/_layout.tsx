@@ -49,6 +49,12 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
+        name="alarms/[id]"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="analytics/index"
         options={{
           headerShown: false,

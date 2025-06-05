@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -29,10 +29,29 @@ export function SetpointConfigModal({
   isSubmitting,
 }: SetpointConfigModalProps) {
   const { isDarkMode } = useTheme();
-  const [lowDeviation, setLowDeviation] = useState(setpoint?.lowDeviation.toString() || '');
-  const [highDeviation, setHighDeviation] = useState(setpoint?.highDeviation.toString() || '');
+  const [lowDeviation, setLowDeviation] = useState('');
+  const [highDeviation, setHighDeviation] = useState('');
+
+  // Update form values when setpoint changes
+  useEffect(() => {
+    if (setpoint) {
+      setLowDeviation(setpoint.lowDeviation.toString());
+      setHighDeviation(setpoint.highDeviation.toString());
+    } else {
+      // Reset form if no setpoint is provided
+      setLowDeviation('');
+      setHighDeviation('');
+    }
+  }, [setpoint]);
 
   const handleSubmit = () => {
+    // Extra validation to ensure we have a valid setpoint
+    if (!setpoint) {
+      Alert.alert('Error', 'No setpoint selected');
+      onClose();
+      return;
+    }
+
     const lowDev = parseFloat(lowDeviation);
     const highDev = parseFloat(highDeviation);
 
@@ -43,6 +62,12 @@ export function SetpointConfigModal({
 
     onSubmit(lowDev, highDev);
   };
+
+  // Safety check - if no setpoint is available, don't render
+  if (!setpoint && visible) {
+    setTimeout(onClose, 0);
+    return null;
+  }
 
   return (
     <Modal
@@ -83,7 +108,7 @@ export function SetpointConfigModal({
               styles.setpointName,
               { color: isDarkMode ? '#E5E7EB' : '#374151' }
             ]}>
-              {setpoint?.name}
+              {setpoint?.name || ''}
             </Text>
 
             <View style={styles.inputContainer}>

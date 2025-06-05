@@ -8,6 +8,7 @@ import notificationRoutes from './src/routes/notifications';
 import adminRoutes from './src/routes/adminRoutes';
 import scadaRoutes from './src/routes/scadaRoutes';
 import maintenanceRoutes from './src/routes/maintenanceRoutes';
+import reportRoutes from './src/routes/reportRoutes';
 import { processAndFormatAlarms } from './src/services/scadaService';
 import { testScadaConnection } from './src/config/scadaDb';
 import prisma from './src/config/db';
@@ -73,6 +74,7 @@ app.use('/api/operator', operatorRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/scada', scadaRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Route not found handler
 app.use((req, res) => {

@@ -10,9 +10,11 @@ import { apiConfig } from '../api/config';
 export const ALARM_KEYS = {
   all: ['alarms'] as const,
   active: () => [...ALARM_KEYS.all, 'active'] as const,
-  history: (timeframe: number) => [...ALARM_KEYS.all, 'history', timeframe] as const,
+  history: (params: Record<string, any>) => [...ALARM_KEYS.all, 'history', params] as const,
   detail: (id: string) => [...ALARM_KEYS.all, 'detail', id] as const,
   scada: () => ['scada-alarms'] as const,
+  alarmHistory: (params: { alarmId: string; status?: string; hours?: number; search?: string; startTime?: string; timeFilter?: string }) => 
+    [...ALARM_KEYS.all, 'alarm-history', params.alarmId, params] as const,
 };
 
 // Hook for fetching all alarms
@@ -96,15 +98,6 @@ export const useActiveAlarms = () => {
   });
 };
 
-// Hook for fetching alarm history
-export const useAlarmHistory = (timeframe: number = 24) => {
-  return useQuery({
-    queryKey: ALARM_KEYS.history(timeframe),
-    queryFn: () => alarmService.fetchAlarmHistory(timeframe),
-    staleTime: 60000, // Consider history data fresh for 1 minute
-  });
-};
-
 interface UpdateAlarmStatusParams {
   id: string;
   status: AlarmStatus;
@@ -132,4 +125,131 @@ export const useUpdateAlarmStatus = () => {
       queryClient.invalidateQueries({ queryKey: ALARM_KEYS.scada() });
     },
   });
-}; 
+};
+
+export interface AlarmHistoryParams {
+  page?: number;
+  limit?: number;
+  status?: string;
+  hours?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  type?: string;
+  alarmId?: string;
+  startTime?: string;
+  timeFilter?: string;
+}
+
+// Enhanced hook for fetching alarm history with pagination, filtering and sorting
+export function useAlarmHistory({
+  page = 1, 
+  limit = 20, 
+  status = 'all', 
+  hours,
+  search,
+  sortBy = 'timestamp',
+  sortOrder = 'desc',
+  type,
+  alarmId
+}: AlarmHistoryParams = {}) {
+  const params = { page, limit, status, hours, search, sortBy, sortOrder, type, alarmId };
+  
+  return useQuery({
+    queryKey: ALARM_KEYS.history(params),
+    queryFn: async () => {
+      try {
+        // Build the query string with parameters
+        const urlParams = new URLSearchParams();
+        urlParams.append('page', page.toString());
+        urlParams.append('limit', limit.toString());
+        urlParams.append('status', status);
+        if (hours) urlParams.append('hours', hours.toString());
+        if (search) urlParams.append('search', search);
+        urlParams.append('sortBy', sortBy);
+        urlParams.append('sortOrder', sortOrder);
+        if (type) urlParams.append('type', type);
+        if (alarmId) urlParams.append('alarmId', alarmId);
+        
+        const headers = await getAuthHeader();
+        const response = await axios.get(
+          `${apiConfig.apiUrl}/api/scada/history?${urlParams.toString()}`,
+          { headers }
+        );
+        
+        if (response.status !== 200) {
+          throw new Error(`Error fetching alarm history: ${response.status}`);
+        }
+        
+        return response.data;
+      } catch (error) {
+        console.error('Failed to fetch alarm history:', error);
+        throw error;
+      }
+    },
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: (previousData) => previousData, // Use previous data as placeholder
+  });
+}
+
+// Hook for fetching history of a specific alarm
+export function useSpecificAlarmHistory(alarmId: string, params: Partial<AlarmHistoryParams> = {}) {
+  const { limit = 50, status, hours, search, startTime, timeFilter } = params;
+  
+  return useQuery({
+    queryKey: ALARM_KEYS.alarmHistory({ alarmId, status, hours, search, startTime, timeFilter }),
+    queryFn: async () => {
+      if (!alarmId) return null;
+      
+      try {
+        const urlParams = new URLSearchParams();
+        urlParams.append('limit', limit.toString());
+        urlParams.append('alarmId', alarmId);
+        urlParams.append('sortBy', 'timestamp');
+        urlParams.append('sortOrder', 'desc');
+        
+        // Add filter parameters if provided
+        if (status && status !== 'all') urlParams.append('status', status);
+        if (hours) urlParams.append('hours', hours.toString());
+        if (search) urlParams.append('search', search);
+        if (startTime) urlParams.append('startTime', startTime);
+        if (timeFilter) urlParams.append('timeFilter', timeFilter);
+        
+        const headers = await getAuthHeader();
+        const response = await axios.get(
+          `${apiConfig.apiUrl}/api/scada/history?${urlParams.toString()}`,
+          { headers }
+        );
+        
+        if (response.status !== 200) {
+          throw new Error(`Error fetching alarm history: ${response.status}`);
+        }
+        
+        return response.data;
+      } catch (error) {
+        console.error(`Failed to fetch history for alarm ${alarmId}:`, error);
+        throw error;
+      }
+    },
+    enabled: !!alarmId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+  });
+}
+
+// Add this function to the file if it doesn't already exist
+function getAccessToken() {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const authData = localStorage.getItem('auth');
+    if (!authData) return null;
+    
+    const parsed = JSON.parse(authData);
+    return parsed?.token || null;
+  } catch (error) {
+    console.error('Error getting access token:', error);
+    return null;
+  }
+} 
