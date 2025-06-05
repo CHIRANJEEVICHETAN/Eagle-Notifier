@@ -2,7 +2,7 @@ import { getClientWithRetry } from '../config/scadaDb';
 import { NotificationService } from './notificationService';
 import prisma from '../config/db';
 import { format } from 'date-fns';
-import { AlarmStatus } from '@prisma/client';
+import { AlarmStatus } from './../generated/prisma-client';
 
 const DEBUG = process.env.NODE_ENV === 'development';
 // Define SCADA polling interval from environment or use default (2 minutes)
