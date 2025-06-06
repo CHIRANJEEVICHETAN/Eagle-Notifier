@@ -2,18 +2,17 @@ import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet, Animated, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useTheme } from './context/ThemeContext';
-import { updatePushToken } from './api/notificationsApi';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
+    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -32,12 +31,12 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [isLoading, setLoading] = useState(false);
-  
+
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
-  
+
   React.useEffect(() => {
     // Start animations when component mounts
     Animated.parallel([
@@ -58,30 +57,32 @@ export default function OnboardingScreen() {
       }),
     ]).start();
   }, []);
-  
+
   const requestNotificationPermission = useCallback(async () => {
     try {
       // Set loading state
       setLoading(true);
-      
+
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
-      
+
       // Only ask for permission if not already granted
       if (existingStatus !== 'granted') {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
       }
-      
+
       if (finalStatus === 'granted') {
         // Get push token
         try {
           const tokenData = await Notifications.getExpoPushTokenAsync({
-            projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
+            projectId:
+              process.env.EXPO_PUBLIC_PROJECT_ID ||
+              (Constants.expoConfig?.extra as any)?.eas?.projectId,
           });
-          
-          console.log("Expo push token:", tokenData.data);
-          
+
+          console.log('Expo push token:', tokenData.data);
+
           // Save token for when user logs in
           await SecureStore.setItemAsync('tempPushToken', tokenData.data);
         } catch (tokenError) {
@@ -90,84 +91,81 @@ export default function OnboardingScreen() {
       } else {
         // Permission not granted, but continue anyway
         Alert.alert(
-          "Notification Permission",
+          'Notification Permission',
           "You won't receive push notifications. You can enable them later in app settings.",
-          [{ text: "OK" }]
+          [{ text: 'OK' }]
         );
         console.log('Notification permission not granted');
       }
-      
+
       // Mark onboarding as seen
       await SecureStore.setItemAsync('hasSeenOnboarding', 'true');
-      
+
       // Navigate to login screen regardless of permission status
-      router.replace("/(auth)/login");
+      router.replace('/(auth)/login');
     } catch (error) {
       console.error('Error requesting notification permission:', error);
       // Mark onboarding as seen even if there's an error with notifications
       await SecureStore.setItemAsync('hasSeenOnboarding', 'true');
-      
+
       // Navigate to login even if there's an error
-      router.replace("/(auth)/login");
+      router.replace('/(auth)/login');
     } finally {
       setLoading(false);
     }
   }, [router]);
-  
+
   return (
     <View
       style={[
         styles.container,
         { backgroundColor: isDarkMode ? '#111827' : '#F3F4F6' },
         { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-    >
+      ]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      
+
       <View style={styles.content}>
         <Animated.View
           style={[
             styles.logoContainer,
             {
               opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim },
-              ],
+              transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
             },
-          ]}
-        >
-          <View style={[styles.iconWrapper, { backgroundColor: isDarkMode ? '#3B82F6' : '#FFFFFF' }]}>
-            <Image className='mt-3' source={require('../assets/images/Eagle-Logo.png')} style={{ width: 110, height: 110 }} />
+          ]}>
+          <View
+            style={[styles.iconWrapper, { backgroundColor: isDarkMode ? '#3B82F6' : '#FFFFFF' }]}>
+            <Image
+              className="mt-3"
+              source={require('../assets/images/Eagle-Logo.png')}
+              style={{ width: 110, height: 110 }}
+            />
           </View>
-          
+
           <Animated.Text
             style={[
               styles.appName,
               { color: isDarkMode ? '#FFFFFF' : '#1F2937' },
               { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-            ]}
-          >
+            ]}>
             Eagle Notifier
           </Animated.Text>
-          
+
           <Animated.Text
             style={[
               styles.tagline,
               { color: isDarkMode ? '#D1D5DB' : '#4B5563' },
               { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-            ]}
-          >
+            ]}>
             Industrial Alarm Monitoring Made Simple
           </Animated.Text>
         </Animated.View>
-        
+
         <Animated.View
           style={[
             styles.featureContainer,
             { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-          ]}
-        >
+          ]}>
           <FeatureItem
             icon="checkmark-circle-outline"
             title="Real-time Alerts"
@@ -188,14 +186,13 @@ export default function OnboardingScreen() {
           />
         </Animated.View>
       </View>
-      
+
       <View style={styles.footer}>
         <TouchableOpacity
           style={[styles.button, { backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB' }]}
           onPress={requestNotificationPermission}
           activeOpacity={0.8}
-          disabled={isLoading}
-        >
+          disabled={isLoading}>
           {isLoading ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
@@ -205,9 +202,9 @@ export default function OnboardingScreen() {
             </>
           )}
         </TouchableOpacity>
-        
+
         <Text style={[styles.poweredBy, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-          Powered by TecoSoft Digital Solutions
+          Powered by Tecosoft.ai
         </Text>
       </View>
     </View>

@@ -2,19 +2,17 @@
   "expo": {
     "name": "Eagle Notifier",
     "slug": "eagle-notifier",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "eagle-notifier",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "googleServicesFile": "./constants/GoogleService-Info.plist",
-      "bundleIdentifier": "com.tecosoft.eaglenotifier"
+      "bundleIdentifier": "com.tecosoft.eaglenotifier",
+      "buildNumber": "4"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,8 +20,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.tecosoft.eaglenotifier",
-      "googleServicesFile": "./constants/google-services.json",
-      "edgeToEdgeEnabled": true
+      "googleServicesFile": "./constants/google-services.json"
     },
     "web": {
       "bundler": "metro",
@@ -52,11 +49,12 @@
       "expo-secure-store"
     ],
     "experiments": {
-      "typedRoutes": true,
-      "tsconfigPaths": true
+      "typedRoutes": true
     },
     "extra": {
-      "router": {},
+      "router": {
+        "origin": false
+      },
       "eas": {
         "projectId": "72e44855-a2b8-4fb2-bacb-2a39760c6ccd"
       }

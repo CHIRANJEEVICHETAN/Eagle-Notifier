@@ -802,22 +802,18 @@ export default function ProfileScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={[styles.backButton, { backgroundColor: isDarkMode ? '#1F2937' : '#F3F4F6' }]}
-          onPress={() => router.back()}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={20}
-            color={isDarkMode ? '#E5E7EB' : '#4B5563'}
-          />
+          onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={20} color={isDarkMode ? '#E5E7EB' : '#4B5563'} />
         </TouchableOpacity>
-        
+
         <View style={styles.headerContent}>
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
             Profile & Settings
@@ -827,7 +823,7 @@ export default function ProfileScreen() {
           </Text>
         </View>
       </View>
-      
+
       <ScrollView style={styles.content}>
         {/* User Profile Section */}
         <View style={[styles.section, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
@@ -835,40 +831,41 @@ export default function ProfileScreen() {
             <Text style={[styles.sectionTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
               User Profile
             </Text>
-            
+
             {!editingProfile ? (
-              <TouchableOpacity 
-                style={styles.editButton} 
-                onPress={() => setEditingProfile(true)}
-              >
+              <TouchableOpacity style={styles.editButton} onPress={() => setEditingProfile(true)}>
                 <Ionicons
                   name="pencil-outline"
                   size={18}
                   color={isDarkMode ? '#60A5FA' : '#2563EB'}
                 />
-                <Text style={[styles.editButtonText, { color: isDarkMode ? '#60A5FA' : '#2563EB' }]}>
+                <Text
+                  style={[styles.editButtonText, { color: isDarkMode ? '#60A5FA' : '#2563EB' }]}>
                   Edit
                 </Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.actionButtons}>
-                <TouchableOpacity 
-                  style={styles.cancelButton} 
-                  onPress={cancelProfileEdit}
-                >
-                  <Text style={[styles.cancelButtonText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                <TouchableOpacity style={styles.cancelButton} onPress={cancelProfileEdit}>
+                  <Text
+                    style={[
+                      styles.cancelButtonText,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    ]}>
                     Cancel
                   </Text>
                 </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.saveButton, { 
-                    backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB',
-                    opacity: profileMutation.isPending ? 0.7 : 1,
-                  }]}
+
+                <TouchableOpacity
+                  style={[
+                    styles.saveButton,
+                    {
+                      backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB',
+                      opacity: profileMutation.isPending ? 0.7 : 1,
+                    },
+                  ]}
                   onPress={handleProfileSave}
-                  disabled={profileMutation.isPending}
-                >
+                  disabled={profileMutation.isPending}>
                   {profileMutation.isPending ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
@@ -878,30 +875,33 @@ export default function ProfileScreen() {
               </View>
             )}
           </View>
-          
+
           <View style={styles.profileInfo}>
             <TouchableOpacity
               style={styles.avatarContainer}
               onPress={handleAvatarSelection}
-              disabled={avatarLoading || avatarMutation.isPending || removeAvatarMutation.isPending}
-            >
+              disabled={
+                avatarLoading || avatarMutation.isPending || removeAvatarMutation.isPending
+              }>
               {avatarLoading || avatarMutation.isPending || removeAvatarMutation.isPending ? (
-                <View style={[styles.avatar, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
+                <View
+                  style={[styles.avatar, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
                   <ActivityIndicator color={isDarkMode ? '#60A5FA' : '#2563EB'} />
                 </View>
               ) : authState.user?.avatar ? (
-                <Image 
+                <Image
                   key={avatarKey}
                   source={{ uri: authState.user.avatar }}
                   style={styles.avatarImage}
                   onError={() => {
                     console.error('Failed to load avatar image');
                     // Fallback to initial if image fails to load
-                    setAvatarKey(prev => prev + 1);
+                    setAvatarKey((prev) => prev + 1);
                   }}
                 />
               ) : (
-                <View style={[styles.avatar, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
+                <View
+                  style={[styles.avatar, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
                   <Text style={[styles.avatarText, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
                     {authState.user?.name?.charAt(0) || 'U'}
                   </Text>
@@ -913,48 +913,63 @@ export default function ProfileScreen() {
                   />
                 </View>
               )}
-              <Text style={[styles.roleBadge, { 
-                backgroundColor: authState.user?.role === 'ADMIN' 
-                  ? (isDarkMode ? '#4F46E5' : '#6366F1')
-                  : (isDarkMode ? '#2563EB' : '#3B82F6'),
-              }]}>
+              <Text
+                style={[
+                  styles.roleBadge,
+                  {
+                    backgroundColor:
+                      authState.user?.role === 'ADMIN'
+                        ? isDarkMode
+                          ? '#4F46E5'
+                          : '#6366F1'
+                        : isDarkMode
+                          ? '#2563EB'
+                          : '#3B82F6',
+                  },
+                ]}>
                 {authState.user?.role === 'ADMIN' ? 'Admin' : 'Operator'}
               </Text>
             </TouchableOpacity>
-            
+
             <View style={styles.profileFields}>
               {editingProfile ? (
                 <>
                   <View style={styles.inputContainer}>
-                    <Text style={[styles.inputLabel, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+                    <Text
+                      style={[styles.inputLabel, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
                       Name
                     </Text>
                     <TextInput
-                      style={[styles.input, { 
-                        backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
-                        color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                        borderColor: nameError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
-                      }]}
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
+                          color: isDarkMode ? '#FFFFFF' : '#1F2937',
+                          borderColor: nameError ? '#EF4444' : isDarkMode ? '#4B5563' : '#D1D5DB',
+                        },
+                      ]}
                       value={name}
                       onChangeText={validateName}
                       placeholder="Your name"
                       placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
                     />
-                    {nameError ? (
-                      <Text style={styles.errorText}>{nameError}</Text>
-                    ) : null}
+                    {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
                   </View>
-                  
+
                   <View style={styles.inputContainer}>
-                    <Text style={[styles.inputLabel, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+                    <Text
+                      style={[styles.inputLabel, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
                       Email
                     </Text>
                     <TextInput
-                      style={[styles.input, { 
-                        backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
-                        color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                        borderColor: emailError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
-                      }]}
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
+                          color: isDarkMode ? '#FFFFFF' : '#1F2937',
+                          borderColor: emailError ? '#EF4444' : isDarkMode ? '#4B5563' : '#D1D5DB',
+                        },
+                      ]}
                       value={email}
                       onChangeText={validateEmail}
                       placeholder="Your email"
@@ -962,27 +977,29 @@ export default function ProfileScreen() {
                       keyboardType="email-address"
                       autoCapitalize="none"
                     />
-                    {emailError ? (
-                      <Text style={styles.errorText}>{emailError}</Text>
-                    ) : null}
+                    {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
                   </View>
                 </>
               ) : (
                 <>
                   <View style={styles.profileField}>
-                    <Text style={[styles.fieldLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                    <Text
+                      style={[styles.fieldLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
                       Name
                     </Text>
-                    <Text style={[styles.fieldValue, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+                    <Text
+                      style={[styles.fieldValue, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
                       {authState.user?.name || 'Not set'}
                     </Text>
                   </View>
-                  
+
                   <View style={styles.profileField}>
-                    <Text style={[styles.fieldLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                    <Text
+                      style={[styles.fieldLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
                       Email
                     </Text>
-                    <Text style={[styles.fieldValue, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+                    <Text
+                      style={[styles.fieldValue, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
                       {authState.user?.email || 'Not set'}
                     </Text>
                   </View>
@@ -990,12 +1007,11 @@ export default function ProfileScreen() {
               )}
             </View>
           </View>
-          
+
           {/* Password Change Section */}
           <TouchableOpacity
             style={styles.passwordSection}
-            onPress={() => setPasswordFormVisible(!passwordFormVisible)}
-          >
+            onPress={() => setPasswordFormVisible(!passwordFormVisible)}>
             <View style={styles.passwordHeader}>
               <Text style={[styles.passwordTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
                 Change Password
@@ -1007,7 +1023,7 @@ export default function ProfileScreen() {
               />
             </View>
           </TouchableOpacity>
-          
+
           {passwordFormVisible && (
             <View style={styles.passwordForm}>
               <View style={styles.inputContainer}>
@@ -1015,11 +1031,18 @@ export default function ProfileScreen() {
                   Current Password
                 </Text>
                 <TextInput
-                  style={[styles.input, { 
-                    backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
-                    color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                    borderColor: currentPasswordError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
-                  }]}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
+                      color: isDarkMode ? '#FFFFFF' : '#1F2937',
+                      borderColor: currentPasswordError
+                        ? '#EF4444'
+                        : isDarkMode
+                          ? '#4B5563'
+                          : '#D1D5DB',
+                    },
+                  ]}
                   value={currentPassword}
                   onChangeText={validateCurrentPassword}
                   placeholder="Enter current password"
@@ -1030,38 +1053,50 @@ export default function ProfileScreen() {
                   <Text style={styles.errorText}>{currentPasswordError}</Text>
                 ) : null}
               </View>
-              
+
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
                   New Password
                 </Text>
                 <TextInput
-                  style={[styles.input, { 
-                    backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
-                    color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                    borderColor: newPasswordError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
-                  }]}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
+                      color: isDarkMode ? '#FFFFFF' : '#1F2937',
+                      borderColor: newPasswordError
+                        ? '#EF4444'
+                        : isDarkMode
+                          ? '#4B5563'
+                          : '#D1D5DB',
+                    },
+                  ]}
                   value={newPassword}
                   onChangeText={validateNewPassword}
                   placeholder="Enter new password"
                   placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
                   secureTextEntry
                 />
-                {newPasswordError ? (
-                  <Text style={styles.errorText}>{newPasswordError}</Text>
-                ) : null}
+                {newPasswordError ? <Text style={styles.errorText}>{newPasswordError}</Text> : null}
               </View>
-              
+
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
                   Confirm New Password
                 </Text>
                 <TextInput
-                  style={[styles.input, { 
-                    backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
-                    color: isDarkMode ? '#FFFFFF' : '#1F2937',
-                    borderColor: confirmPasswordError ? '#EF4444' : (isDarkMode ? '#4B5563' : '#D1D5DB'),
-                  }]}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
+                      color: isDarkMode ? '#FFFFFF' : '#1F2937',
+                      borderColor: confirmPasswordError
+                        ? '#EF4444'
+                        : isDarkMode
+                          ? '#4B5563'
+                          : '#D1D5DB',
+                    },
+                  ]}
                   value={confirmPassword}
                   onChangeText={validateConfirmPassword}
                   placeholder="Confirm new password"
@@ -1072,39 +1107,40 @@ export default function ProfileScreen() {
                   <Text style={styles.errorText}>{confirmPasswordError}</Text>
                 ) : null}
               </View>
-              
+
               <TouchableOpacity
-                style={[styles.passwordButton, { 
-                  backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB',
-                  opacity: passwordMutation.isPending ? 0.7 : 1,
-                }]}
+                style={[
+                  styles.passwordButton,
+                  {
+                    backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB',
+                    opacity: passwordMutation.isPending ? 0.7 : 1,
+                  },
+                ]}
                 onPress={handlePasswordChange}
-                disabled={passwordMutation.isPending}
-              >
+                disabled={passwordMutation.isPending}>
                 {passwordMutation.isPending ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.passwordButtonText}>
-                    Change Password
-                  </Text>
+                  <Text style={styles.passwordButtonText}>Change Password</Text>
                 )}
               </TouchableOpacity>
             </View>
           )}
         </View>
-        
+
         {/* Notification Settings */}
         <View style={[styles.section, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
           <Text style={[styles.sectionTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
             Notification Settings
           </Text>
-          
+
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
                 Push Notifications
               </Text>
-              <Text style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+              <Text
+                style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
                 Receive notifications on your device
               </Text>
             </View>
@@ -1116,13 +1152,14 @@ export default function ProfileScreen() {
               disabled={notificationMutation.isPending}
             />
           </View>
-          
+
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
                 Email Notifications
               </Text>
-              <Text style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+              <Text
+                style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
                 Receive alarm notifications via email
               </Text>
             </View>
@@ -1134,13 +1171,14 @@ export default function ProfileScreen() {
               disabled={notificationMutation.isPending}
             />
           </View>
-          
+
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
                 Critical Alarms Only
               </Text>
-              <Text style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+              <Text
+                style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
                 Only receive notifications for critical alarms
               </Text>
             </View>
@@ -1153,19 +1191,20 @@ export default function ProfileScreen() {
             />
           </View>
         </View>
-        
+
         {/* Theme Settings */}
         <View style={[styles.section, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
           <Text style={[styles.sectionTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
             App Settings
           </Text>
-          
+
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
                 Dark Mode
               </Text>
-              <Text style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+              <Text
+                style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
                 Use dark theme for the app
               </Text>
             </View>
@@ -1177,22 +1216,23 @@ export default function ProfileScreen() {
             />
           </View>
         </View>
-        
+
         {/* Maintenance Mode Card */}
         {renderMaintenanceModeCard()}
-        
+
         {/* Logout Button */}
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: isDarkMode ? '#DC2626' : '#EF4444' }]}
-          onPress={() => setLogoutModalVisible(true)}
-        >
+          onPress={() => setLogoutModalVisible(true)}>
           <Ionicons name="log-out-outline" size={20} color="#FFFFFF" style={styles.logoutIcon} />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>© 2025 TecoSoft Digital Solutions. All rights reserved.</Text>
-          <Text style={[styles.footerText, { marginTop: 5, paddingBottom: 10 }]}>Version {process.env.EXPO_PUBLIC_APP_VERSION}</Text>
+          <Text style={styles.footerText}>© 2025 Tecosoft.ai. All rights reserved.</Text>
+          <Text style={[styles.footerText, { marginTop: 5, paddingBottom: 10 }]}>
+            Version {process.env.EXPO_PUBLIC_APP_VERSION}
+          </Text>
         </View>
       </ScrollView>
       {/* Logout Confirmation Modal */}
@@ -1200,26 +1240,83 @@ export default function ProfileScreen() {
         visible={logoutModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setLogoutModalVisible(false)}
-      >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{ backgroundColor: isDarkMode ? '#1F2937' : '#FFF', borderRadius: 16, padding: 24, width: 320, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 8 }}>
-            <Ionicons name="log-out-outline" size={40} color={isDarkMode ? '#F87171' : '#EF4444'} style={{ marginBottom: 12 }} />
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: isDarkMode ? '#FFF' : '#1F2937', marginBottom: 8 }}>Confirm Logout</Text>
-            <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 15, textAlign: 'center', marginBottom: 24 }}>
+        onRequestClose={() => setLogoutModalVisible(false)}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}>
+          <View
+            style={{
+              backgroundColor: isDarkMode ? '#1F2937' : '#FFF',
+              borderRadius: 16,
+              padding: 24,
+              width: 320,
+              alignItems: 'center',
+              shadowColor: '#000',
+              shadowOpacity: 0.2,
+              shadowRadius: 8,
+              elevation: 8,
+            }}>
+            <Ionicons
+              name="log-out-outline"
+              size={40}
+              color={isDarkMode ? '#F87171' : '#EF4444'}
+              style={{ marginBottom: 12 }}
+            />
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: 'bold',
+                color: isDarkMode ? '#FFF' : '#1F2937',
+                marginBottom: 8,
+              }}>
+              Confirm Logout
+            </Text>
+            <Text
+              style={{
+                color: isDarkMode ? '#9CA3AF' : '#6B7280',
+                fontSize: 15,
+                textAlign: 'center',
+                marginBottom: 24,
+              }}>
               Are you sure you want to log out?
             </Text>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
               <TouchableOpacity
-                style={{ flex: 1, marginRight: 8, backgroundColor: isDarkMode ? '#374151' : '#E5E7EB', borderRadius: 8, paddingVertical: 12, alignItems: 'center' }}
-                onPress={() => setLogoutModalVisible(false)}
-              >
-                <Text style={{ color: isDarkMode ? '#FFF' : '#1F2937', fontWeight: '500', fontSize: 16 }}>Cancel</Text>
+                style={{
+                  flex: 1,
+                  marginRight: 8,
+                  backgroundColor: isDarkMode ? '#374151' : '#E5E7EB',
+                  borderRadius: 8,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+                onPress={() => setLogoutModalVisible(false)}>
+                <Text
+                  style={{
+                    color: isDarkMode ? '#FFF' : '#1F2937',
+                    fontWeight: '500',
+                    fontSize: 16,
+                  }}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={{ flex: 1, marginLeft: 8, backgroundColor: isDarkMode ? '#EF4444' : '#F87171', borderRadius: 8, paddingVertical: 12, alignItems: 'center' }}
-                onPress={() => { setLogoutModalVisible(false); logout(); }}
-              >
+                style={{
+                  flex: 1,
+                  marginLeft: 8,
+                  backgroundColor: isDarkMode ? '#EF4444' : '#F87171',
+                  borderRadius: 8,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  setLogoutModalVisible(false);
+                  logout();
+                }}>
                 <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 16 }}>Logout</Text>
               </TouchableOpacity>
             </View>

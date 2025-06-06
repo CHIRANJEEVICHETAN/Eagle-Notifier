@@ -1,15 +1,13 @@
 import React, { useEffect, useRef, createContext, useContext, useState } from 'react';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
 import { useAuth } from './context/AuthContext';
 import { updatePushToken } from './api/notificationsApi';
 
 // Set up notification handler with non-deprecated properties
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
+    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
