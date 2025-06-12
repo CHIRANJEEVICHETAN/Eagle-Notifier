@@ -22,7 +22,6 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { AlarmDetails } from '../../components/AlarmDetails';
 import { useActiveAlarms, useUpdateAlarmStatus } from '../../hooks/useAlarms';
-import { useAlarmStore } from '../../store/useAlarmStore';
 import { Alarm, AlarmSeverity } from '../../types/alarm';
 import * as Notifications from 'expo-notifications';
 import { ResolutionModal } from '../../components/ResolutionModal';
@@ -513,7 +512,7 @@ export default function OperatorDashboard() {
     );
   };
 
-  // Modify the renderAlarmSections function to use filtered alarms
+  // Modify the renderAlarmSections function to use filtered alarms.
   const renderAlarmSections = () => {
     return (
       <View style={styles.alarmSections}>
@@ -1159,7 +1158,8 @@ export default function OperatorDashboard() {
     alarmCardActions: {
       flexDirection: 'row',
       justifyContent: 'flex-end',
-      gap: 8,
+      gap: 12,
+      flexWrap: 'wrap',
       marginTop: 12,
       paddingTop: 12,
       borderTopWidth: 1,
@@ -1168,13 +1168,14 @@ export default function OperatorDashboard() {
     actionButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 6,
-      paddingHorizontal: 12,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
       borderRadius: 6,
-      gap: 4,
+      gap: 3,
+      marginBottom: 4,
     },
     actionButtonText: {
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '600',
     },
     adminActions: {
@@ -1206,7 +1207,7 @@ export default function OperatorDashboard() {
       }),
     },
     actionIcon: {
-      marginRight: 12,
+      marginRight: 6,
     },
     actionText: {
       fontSize: 14,
