@@ -21,9 +21,13 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { AlarmDetails } from '../../components/AlarmDetails';
-import { useActiveAlarms, useUpdateAlarmStatus } from '../../hooks/useAlarms';
+import { useActiveAlarms, useUpdateAlarmStatus, ALARM_KEYS, ScadaAlarmResponse } from '../../hooks/useAlarms';
 import { Alarm, AlarmSeverity } from '../../types/alarm';
 import * as Notifications from 'expo-notifications';
+import { useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
+import { apiConfig } from '../../api/config';
+import { getAuthHeader } from '../../api/auth';
 import { ResolutionModal } from '../../components/ResolutionModal';
 import { useSetpoints, useUpdateSetpoint, Setpoint } from '../../hooks/useSetpoints';
 import { SetpointConfigModal } from '../../components/SetpointConfigModal';
@@ -126,15 +130,56 @@ interface AlarmData {
   zone?: string;
 }
 
+// Helper function to correctly format timestamps to show IST time consistently
+const formatTimestamp = (timestamp: string): string => {
+  try {
+    // Always use a consistent approach for both development and production
+    // by manually calculating IST time from UTC
+    
+    // Parse the ISO string to Date object
+    const date = new Date(timestamp);
+    
+    // Get UTC components
+    const utcHours = date.getUTCHours();
+    const utcMinutes = date.getUTCMinutes();
+    const utcSeconds = date.getUTCSeconds();
+    
+    // Add IST offset (+5:30)
+    let istHours = utcHours + 5;
+    let istMinutes = utcMinutes + 30;
+    
+    // Handle minute overflow
+    if (istMinutes >= 60) {
+      istHours += 1;
+      istMinutes -= 60;
+    }
+    
+    // Handle hour overflow
+    if (istHours >= 24) {
+      istHours -= 24;
+    }
+    
+    // Format the time components
+    const hours = istHours.toString().padStart(2, '0');
+    const minutes = istMinutes.toString().padStart(2, '0');
+    const seconds = utcSeconds.toString().padStart(2, '0');
+    
+    return `${hours}:${minutes}:${seconds}`;
+  } catch (error) {
+    console.error('Error formatting timestamp:', error);
+    return '';
+  }
+};
+
 export default function OperatorDashboard() {
   // Theme and Auth Context
   const { isDarkMode, toggleTheme } = useTheme();
   const { authState } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
   
   // Alarm Data and Mutations
   const { data: alarmData, isLoading, isError, error, refetch } = useActiveAlarms();
-  // const { getAlarmsBySeverity } = useAlarmStore();
   const updateAlarmStatus = useUpdateAlarmStatus();
 
   // Setpoint Data and Mutations - Only for Admin
@@ -147,6 +192,7 @@ export default function OperatorDashboard() {
   const [selectedAlarm, setSelectedAlarm] = useState<Alarm | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshTimestamp, setRefreshTimestamp] = useState(Date.now());
   const [unreadNotifications, setUnreadNotifications] = useState(5);
   const [selectedAlarmForResolution, setSelectedAlarmForResolution] = useState<Alarm | null>(null);
   const [resolutionModalVisible, setResolutionModalVisible] = useState(false);
@@ -230,9 +276,30 @@ export default function OperatorDashboard() {
   
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  }, [refetch]);
+    
+    // Use the queryClient to fetch with force refresh parameter
+    try {
+      await queryClient.fetchQuery({
+        queryKey: ALARM_KEYS.scada(true),
+        queryFn: async () => {
+          const headers = await getAuthHeader();
+          const { data } = await axios.get<ScadaAlarmResponse>(
+            `${apiConfig.apiUrl}/api/scada/alarms?force=true`,
+            { headers }
+          );
+          return data;
+        }
+      });
+      
+      // Update refresh timestamp to force re-render of timestamp components
+      setRefreshTimestamp(Date.now());
+      console.log('Manual refresh completed with force=true');
+    } catch (error) {
+      console.error('Error during manual refresh:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [queryClient]);
   
   const handleSeverityFilter = useCallback((severity: AlarmSeverityFilter) => {
     setSeverityFilter(prev => prev === severity ? 'all' : severity);
@@ -306,6 +373,10 @@ export default function OperatorDashboard() {
     }
   }, [authState?.user?.role, router]);
 
+  const scadaInterval = process.env.EXPO_PUBLIC_SCADA_INTERVAL 
+    ? parseInt(process.env.EXPO_PUBLIC_SCADA_INTERVAL, 10) 
+    : 120000;
+
   // Effects
   useEffect(() => {
     const requestPermissions = async () => {
@@ -324,11 +395,14 @@ export default function OperatorDashboard() {
   useEffect(() => {
     const intervalId = setInterval(() => {
       console.log('Fetching fresh alarm data...');
-      refetch();
-    }, 120000);
+      refetch().then(() => {
+        // Update refresh timestamp to force re-render of timestamp components
+        setRefreshTimestamp(Date.now());
+      });
+    }, scadaInterval);
     
     return () => clearInterval(intervalId);
-  }, [refetch]);
+  }, [refetch, scadaInterval]);
 
   useEffect(() => {
     Animated.sequence([
@@ -565,8 +639,11 @@ export default function OperatorDashboard() {
                       </Text>
                       <View style={styles.timeWrapper}>
                         <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#64748B'} />
-                        <Text style={[styles.timeText, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
-                          {alarm.timestamp ? new Date(alarm.timestamp).toLocaleTimeString() : ''}
+                        <Text 
+                          key={`analog-time-${alarm.id}-${refreshTimestamp}`}
+                          style={[styles.timeText, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}
+                        >
+                          {alarm.timestamp ? formatTimestamp(alarm.timestamp) : ''}
                         </Text>
                       </View>
                     </View>
@@ -645,8 +722,11 @@ export default function OperatorDashboard() {
                       </Text>
                       <View style={styles.timeWrapper}>
                         <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#64748B'} />
-                        <Text style={[styles.timeText, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}>
-                          {alarm.timestamp ? new Date(alarm.timestamp).toLocaleTimeString() : ''}
+                        <Text 
+                          key={`binary-time-${alarm.id}-${refreshTimestamp}`}
+                          style={[styles.timeText, { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary }]}
+                        >
+                          {alarm.timestamp ? formatTimestamp(alarm.timestamp) : ''}
                         </Text>
                       </View>
                     </View>
@@ -1458,11 +1538,14 @@ export default function OperatorDashboard() {
           {renderAlarmSections()}
           
           {/* Last updated text */}
-          <Text style={[styles.lastUpdatedText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Last updated: {new Date().toLocaleTimeString()}
+          <Text 
+            key={`last-updated-${refreshTimestamp}`}
+            style={[styles.lastUpdatedText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}
+          >
+            Last updated: {formatTimestamp(new Date().toISOString())}
           </Text>
           <Text style={[styles.updateInfoText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Data refreshes every 2 minutes
+            Data refreshes every {scadaInterval < 60000 ? scadaInterval / 1000 : scadaInterval / 60000} {scadaInterval < 60000 ? 'seconds' : 'minutes'}
           </Text>
         </ScrollView>
       )}

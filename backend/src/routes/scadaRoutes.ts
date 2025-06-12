@@ -13,6 +13,11 @@ router.get('/alarms', authenticate, async (req, res) => {
     
     // forceRefresh parameter can be used to bypass interval-based caching
     const forceRefresh = req.query.force === 'true';
+    
+    if (forceRefresh && DEBUG) {
+      console.log('🔄 Force refresh requested, bypassing cache');
+    }
+    
     const alarms = await processAndFormatAlarms(forceRefresh);
     
     if (DEBUG) {

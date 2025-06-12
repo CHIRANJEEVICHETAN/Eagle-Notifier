@@ -5,8 +5,9 @@ import { format } from 'date-fns';
 import { AlarmStatus } from './../generated/prisma-client';
 
 const DEBUG = process.env.NODE_ENV === 'development';
+
 // Define SCADA polling interval from environment or use default (2 minutes)
-export const SCADA_POLLING_INTERVAL = parseInt(process.env.SCADA_POLLING_INTERVAL || '120000');
+export const SCADA_POLLING_INTERVAL = parseInt(process.env.SCADA_POLLING_INTERVAL || '30000', 10);
 
 // Cache for last fetch time to respect polling interval
 let lastFetchTime = 0;
@@ -233,7 +234,11 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
         if (!scadaData) {
             throw new Error('No SCADA data available');
         }
-
+        
+        // Always use the current timestamp for alarm data to ensure clients see updates
+        // even when the underlying SCADA data hasn't changed
+        const currentTimestamp = new Date();
+        
         const analogAlarms = [];
         const binaryAlarms = [];
 
@@ -371,7 +376,7 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
                 setPoint: formattedSetPoint,
                 lowLimit: formatValue(lowLimit, config.unit),
                 highLimit: formatValue(highLimit, config.unit),
-                timestamp: scadaData.created_timestamp.toISOString(),
+                timestamp: currentTimestamp.toISOString(), // Use current timestamp
                 zone: config.zone,
                 alarmType: 'analog'
             });
@@ -458,7 +463,7 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
                 type: config.type,
                 value: status,
                 setPoint: 'NORMAL',
-                timestamp: scadaData.created_timestamp.toISOString(),
+                timestamp: currentTimestamp.toISOString(), // Use current timestamp
                 zone: config.zone
             });
 
@@ -478,7 +483,7 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
         const result = {
             analogAlarms,
             binaryAlarms,
-            timestamp: scadaData.created_timestamp,
+            timestamp: currentTimestamp, // Use current timestamp
             lastUpdate: new Date()
         };
 

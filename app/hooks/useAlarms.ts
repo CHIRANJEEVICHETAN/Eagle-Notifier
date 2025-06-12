@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-// import { alarmService } from '../api/alarmService';
 import { Alarm, AlarmStatus } from '../types/alarm';
 import { useAlarmStore } from '../store/useAlarmStore';
 import axios from 'axios';
@@ -12,34 +11,10 @@ export const ALARM_KEYS = {
   active: () => [...ALARM_KEYS.all, 'active'] as const,
   history: (params: Record<string, any>) => [...ALARM_KEYS.all, 'history', params] as const,
   detail: (id: string) => [...ALARM_KEYS.all, 'detail', id] as const,
-  scada: () => ['scada-alarms'] as const,
+  scada: (forceRefresh?: boolean) => ['scada-alarms', forceRefresh] as const,
   alarmHistory: (params: { alarmId: string; status?: string; hours?: number; search?: string; startTime?: string; timeFilter?: string }) => 
     [...ALARM_KEYS.all, 'alarm-history', params.alarmId, params] as const,
 };
-
-// // Hook for fetching all alarms
-// export const useAlarms = () => {
-//   const { setAlarms, setLoading, setError } = useAlarmStore();
-  
-//   return useQuery({
-//     queryKey: ALARM_KEYS.all,
-//     queryFn: async () => {
-//       setLoading(true);
-//       try {
-//         const alarms = await alarmService.fetchAlarms();
-//         setAlarms(alarms);
-//         setLoading(false);
-//         return alarms;
-//       } catch (error) {
-//         setError(error instanceof Error ? error.message : 'Failed to fetch alarms');
-//         setLoading(false);
-//         throw error;
-//       }
-//     },
-//     refetchInterval: 60000, // Refetch every minute
-//     staleTime: 30000, // Consider data fresh for 30 seconds
-//   });
-// };
 
 export interface ScadaAlarmResponse {
   analogAlarms: Alarm[];
@@ -47,17 +22,32 @@ export interface ScadaAlarmResponse {
 }
 
 // Hook for fetching active SCADA alarms
-export const useActiveAlarms = () => {
+export const useActiveAlarms = (initialForceRefresh = false) => {
   const { setAlarms, setLoading, setError } = useAlarmStore();
 
+  // Get interval from environment variable or use default value (120000 ms = 2 minutes)
+  const scadaInterval = process.env.EXPO_PUBLIC_SCADA_INTERVAL 
+    ? parseInt(process.env.EXPO_PUBLIC_SCADA_INTERVAL, 10) 
+    : 30000;
+
+  console.log('scadaInterval', scadaInterval);
+    
+  // Calculate staleTime based on interval (if interval ≥ 60000ms, it's in minutes, else in seconds)
+  const staleTime = scadaInterval >= 60000 
+    ? scadaInterval - 10000  // For minutes, subtract 10000ms (0.2 minutes)
+    : scadaInterval - 5000;  // For seconds, subtract 5000ms (5 seconds)
+
+  console.log('staleTime', staleTime);
+
   return useQuery<ScadaAlarmResponse, Error>({
-    queryKey: ALARM_KEYS.scada(),
-    queryFn: async () => {
+    queryKey: ALARM_KEYS.scada(initialForceRefresh),
+    queryFn: async ({ queryKey }) => {
       setLoading(true);
       try {
+        const forceRefresh = queryKey[1] as boolean;
         const headers = await getAuthHeader();
         const { data } = await axios.get<ScadaAlarmResponse>(
-          `${apiConfig.apiUrl}/api/scada/alarms`,
+          `${apiConfig.apiUrl}/api/scada/alarms${forceRefresh ? '?force=true' : ''}`,
           { headers }
         );
         
@@ -91,8 +81,8 @@ export const useActiveAlarms = () => {
         throw error;
       }
     },
-    refetchInterval: 120000, // Refetch every 2 minutes
-    staleTime: 110000, // Consider data stale after 1.8 minutes
+    refetchInterval: 30000,
+    staleTime: 25000, // Ensure staleTime doesn't go negative
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
