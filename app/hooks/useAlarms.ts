@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { alarmService } from '../api/alarmService';
+// import { alarmService } from '../api/alarmService';
 import { Alarm, AlarmStatus } from '../types/alarm';
 import { useAlarmStore } from '../store/useAlarmStore';
 import axios from 'axios';
@@ -17,29 +17,29 @@ export const ALARM_KEYS = {
     [...ALARM_KEYS.all, 'alarm-history', params.alarmId, params] as const,
 };
 
-// Hook for fetching all alarms
-export const useAlarms = () => {
-  const { setAlarms, setLoading, setError } = useAlarmStore();
+// // Hook for fetching all alarms
+// export const useAlarms = () => {
+//   const { setAlarms, setLoading, setError } = useAlarmStore();
   
-  return useQuery({
-    queryKey: ALARM_KEYS.all,
-    queryFn: async () => {
-      setLoading(true);
-      try {
-        const alarms = await alarmService.fetchAlarms();
-        setAlarms(alarms);
-        setLoading(false);
-        return alarms;
-      } catch (error) {
-        setError(error instanceof Error ? error.message : 'Failed to fetch alarms');
-        setLoading(false);
-        throw error;
-      }
-    },
-    refetchInterval: 60000, // Refetch every minute
-    staleTime: 30000, // Consider data fresh for 30 seconds
-  });
-};
+//   return useQuery({
+//     queryKey: ALARM_KEYS.all,
+//     queryFn: async () => {
+//       setLoading(true);
+//       try {
+//         const alarms = await alarmService.fetchAlarms();
+//         setAlarms(alarms);
+//         setLoading(false);
+//         return alarms;
+//       } catch (error) {
+//         setError(error instanceof Error ? error.message : 'Failed to fetch alarms');
+//         setLoading(false);
+//         throw error;
+//       }
+//     },
+//     refetchInterval: 60000, // Refetch every minute
+//     staleTime: 30000, // Consider data fresh for 30 seconds
+//   });
+// };
 
 export interface ScadaAlarmResponse {
   analogAlarms: Alarm[];
