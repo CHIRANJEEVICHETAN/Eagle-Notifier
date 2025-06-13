@@ -14,6 +14,7 @@ import { testScadaConnection } from './src/config/scadaDb';
 import prisma from './src/config/db';
 import authRoutes from './src/routes/authRoutes';
 import operatorRoutes from './src/routes/operatorRoutes';
+import meterRoutes from './src/routes/meterRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -73,6 +74,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/scada', scadaRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/meter', meterRoutes);
 
 // Route not found handler
 app.use((req, res) => {
