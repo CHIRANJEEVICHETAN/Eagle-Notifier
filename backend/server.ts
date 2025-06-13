@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-// import rateLimit from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
 import { errorHandler } from './src/middleware/errorHandler';
 import alarmRoutes from './src/routes/alarmRoutes';
 import notificationRoutes from './src/routes/notifications';
@@ -18,8 +18,6 @@ import operatorRoutes from './src/routes/operatorRoutes';
 // Load environment variables
 dotenv.config();
 
-// Remove direct instantiation, already imported from config/db
-// const prisma = new PrismaClient();
 
 // Initialize Express app
 const app = express();
@@ -35,20 +33,20 @@ app.use(
 // app.set('trust proxy', 1);
 
 // // Rate limiting
-// const apiLimiter = rateLimit({
-//   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 min
-//   max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
-//   standardHeaders: true,
-//   legacyHeaders: false,
-//   keyGenerator: (req) => {
-//     const forwarded = req.headers['x-forwarded-for'];
-//     const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0];
-//     return (ip || req.ip || 'unknown-ip') as string;
-//   },
-// });
+const apiLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 min
+  max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0];
+    return (ip || req.ip || 'unknown-ip') as string;
+  },
+});
 
 // // Apply rate limiting to auth routes
-// app.use('/api/auth', apiLimiter);
+app.use('/api/auth', apiLimiter);
 
 // Configure body parser with increased limits
 app.use(express.json({ limit: '50mb' }));
@@ -89,7 +87,7 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // SCADA Data Polling
-const SCADA_POLL_INTERVAL = parseInt(process.env.SCADA_POLL_INTERVAL || '120000'); // Default 2 minutes
+const SCADA_POLL_INTERVAL = parseInt(process.env.SCADA_POLL_INTERVAL || '30000'); // Default 30 seconds
 
 async function pollScadaData() {
   try {
