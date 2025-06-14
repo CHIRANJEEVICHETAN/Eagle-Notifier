@@ -167,3 +167,19 @@ model SystemSettings {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 } 
+
+// Model to store limits for meter readings
+model MeterLimit {
+  id              String    @id @default(cuid())
+  parameter       String    // voltage, current, frequency, pf, energy, power
+  description     String
+  unit            String
+  highLimit       Float     // Upper threshold that triggers notifications
+  lowLimit        Float?    // Optional lower threshold
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  createdById     String?
+  updatedById     String?
+
+  @@unique([parameter])
+} 

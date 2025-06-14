@@ -11,6 +11,7 @@ const AUTH_TOKEN_KEY = 'eagle_auth_token';
 const REFRESH_TOKEN_KEY = 'eagle_refresh_token';
 const USER_KEY = 'eagle_user';
 const ONBOARDING_KEY = 'hasSeenOnboarding';
+const SELECTED_APP_KEY = 'selected_app_type';
 
 // Add error type to handle different kinds of errors
 export type ErrorType = 'error' | 'warning' | 'info';
@@ -24,6 +25,8 @@ interface AuthContextProps {
   checkAuthRoute: () => void;
   hasSeenOnboarding: boolean | null;
   refreshAuthToken: () => Promise<string | null>;
+  selectedAppType: string | null;
+  setSelectedAppType: (type: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
@@ -40,18 +43,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Track if the user has seen onboarding
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
   
+  // Track selected app type (furnace or meter)
+  const [selectedAppType, setSelectedAppTypeState] = useState<string | null>(null);
+  
   // Navigation state
   const segments = useSegments();
   const isNavigatingRef = useRef(false);
   
-  // Check onboarding status
+  // Check onboarding status and app type selection
   useEffect(() => {
-    const checkOnboarding = async () => {
-      const value = await SecureStore.getItemAsync(ONBOARDING_KEY);
-      setHasSeenOnboarding(value === 'true');
+    const checkUserPreferences = async () => {
+      const onboardingValue = await SecureStore.getItemAsync(ONBOARDING_KEY);
+      setHasSeenOnboarding(onboardingValue === 'true');
+      
+      const appType = await SecureStore.getItemAsync(SELECTED_APP_KEY);
+      setSelectedAppTypeState(appType);
     };
-    checkOnboarding();
+    checkUserPreferences();
   }, []);
+
+  // Update selected app type
+  const setSelectedAppType = async (type: string) => {
+    await SecureStore.setItemAsync(SELECTED_APP_KEY, type);
+    setSelectedAppTypeState(type);
+  };
 
   // Update user data
   const updateUser = useCallback((userData: Partial<User>) => {
@@ -66,7 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     router.replace(path as any);
   }, []);
 
-  // Authentication route checking - simplified
+  // Authentication route checking - simplified and updated to include onboarding
   const checkAuthRoute = useCallback(() => {
     const { isAuthenticated, isLoading } = authState;
     
@@ -74,19 +89,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const inAuthGroup = segments[0] === '(auth)';
     const inDashboardGroup = segments[0] === '(dashboard)';
+    const isOnboarding = segments[0] === 'onboarding';
 
-    // If not authenticated, redirect to onboarding
+    // If not authenticated, redirect to login
     if (!isAuthenticated && !inAuthGroup) {
       navigateTo('/');
       return;
     }
 
-    // If authenticated but in auth/onboarding, redirect to dashboard
-    if (isAuthenticated && (inAuthGroup)) {
-      routeUserByRole(authState.user?.role || 'operator');
+    // If authenticated but in auth group, always go to onboarding
+    if (isAuthenticated && inAuthGroup) {
+      navigateTo('/onboarding');
       return;
     }
-  }, [authState.isAuthenticated, authState.isLoading, authState.user?.role, segments, navigateTo]);
+    
+    // If authenticated and on onboarding screen but already selected app type
+    if (isAuthenticated && isOnboarding && selectedAppType) {
+      routeUserByAppType(selectedAppType);
+      return;
+    }
+  }, [authState.isAuthenticated, authState.isLoading, segments, navigateTo, selectedAppType]);
 
   // Only check routes on initial load and auth state changes, not on every navigation
   useEffect(() => {
@@ -269,6 +291,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
         const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
         const userJson = await SecureStore.getItemAsync(USER_KEY);
+        const appType = await SecureStore.getItemAsync(SELECTED_APP_KEY);
+        
+        // Set selected app type
+        setSelectedAppTypeState(appType);
         
         if (token && userJson) {
           const user = JSON.parse(userJson) as User;
@@ -291,8 +317,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             retryPushTokenRegistration(token, tempPushToken, user);
           }
           
-          // Route to appropriate dashboard based on role
-          routeUserByRole(user.role);
+          // Always navigate to onboarding after initial app load
+          router.replace('/onboarding');
         } else {
           setAuthState(prev => ({ ...prev, isLoading: false }));
         }
@@ -404,10 +430,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Route user based on selected app type
+  const routeUserByAppType = (appType: string) => {
+    if (appType === 'furnace') {
+      router.replace({
+        pathname: '/(dashboard)/operator'
+      });
+    } else if (appType === 'meter') {
+      router.replace({
+        pathname: '/(dashboard)/meterReadings/index'
+      });
+    } else {
+      // Default to onboarding if app type is invalid
+      router.replace('/onboarding');
+    }
+  };
+
   // Route user based on role
   const routeUserByRole = (role: string) => {
-    // All roles navigate to operator dashboard
-    navigateTo('/(dashboard)/operator/');
+    // Check if user has selected app type
+    if (!selectedAppType) {
+      router.replace('/onboarding');
+    } else {
+      routeUserByAppType(selectedAppType);
+    }
   };
 
   const login = async (credentials: LoginCredentials) => {
@@ -518,9 +564,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
       
-      // Explicitly route user based on role after everything is set up
-      console.log('Routing user by role after login:', user.role);
-      routeUserByRole(user.role);
+      // Always navigate to onboarding after login
+      router.replace('/onboarding');
       
     } catch (error: any) {
       console.error('Login error:', error);
@@ -681,6 +726,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await SecureStore.deleteItemAsync(USER_KEY);
       await SecureStore.deleteItemAsync('tempPushToken');
       
+      // Keep app selection for next login
+      // await SecureStore.deleteItemAsync(SELECTED_APP_KEY);
+      
       // Clear axios headers
       delete axios.defaults.headers.common['Authorization'];
       
@@ -710,7 +758,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ authState, login, logout, clearError, updateUser, checkAuthRoute, hasSeenOnboarding, refreshAuthToken }}>
+    <AuthContext.Provider value={{ 
+      authState, 
+      login, 
+      logout, 
+      clearError, 
+      updateUser, 
+      checkAuthRoute, 
+      hasSeenOnboarding, 
+      refreshAuthToken,
+      selectedAppType,
+      setSelectedAppType
+    }}>
       {children}
     </AuthContext.Provider>
   );

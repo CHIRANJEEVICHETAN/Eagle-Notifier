@@ -25,7 +25,37 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
+        name="screens/admin/meterLimits/index"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="screens/admin/meterLimits/[id]"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="screens/admin/users/index"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="meterReadings/index"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="meterReadings/History"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="meterReadings/Reports"
         options={{
           headerShown: false,
         }}

@@ -19,6 +19,25 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
     }
   };
 
+// Get unread notifications count
+router.get('/unread-count', authenticate, asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ message: 'User not authenticated' });
+    return;
+  }
+  
+  // Count unread notifications for the user
+  const count = await prisma.notification.count({
+    where: { 
+      userId,
+      isRead: false 
+    }
+  });
+  
+  res.status(200).json({ count });
+}));
+
 // Get notifications with pagination
 router.get('/', authenticate, asyncHandler(async (req, res) => {
   const userId = req.user?.id;

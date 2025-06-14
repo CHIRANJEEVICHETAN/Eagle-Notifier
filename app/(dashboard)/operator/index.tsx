@@ -1667,6 +1667,21 @@ export default function OperatorDashboard() {
                 backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)',
               },
             ]}
+            onPress={() => router.push('/(dashboard)/meterReadings/index')}>
+            <Ionicons
+              name="speedometer-outline"
+              size={22}
+              color={isDarkMode ? '#6EE7B7' : '#10B981'}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.headerButton,
+              {
+                backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)',
+              },
+            ]}
             onPress={toggleTheme}>
             <Ionicons
               name={isDarkMode ? 'sunny-outline' : 'moon-outline'}

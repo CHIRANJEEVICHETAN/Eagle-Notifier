@@ -4,13 +4,15 @@ import {
   markNotificationAsRead, 
   markAllNotificationsAsRead,
   deleteNotification,
-  updateNotificationSettings
+  updateNotificationSettings,
+  fetchUnreadCount
 } from '../api/notificationsApi';
 import { NotificationSettings } from '../types/notification';
 
 // Query keys
 const NOTIFICATIONS_KEY = 'notifications';
 const SETTINGS_KEY = 'notificationSettings';
+const UNREAD_COUNT_KEY = 'unreadCount';
 
 /**
  * Hook for fetching notifications with pagination and infinite loading
@@ -31,6 +33,17 @@ export const useNotifications = (filter: 'all' | 'unread' = 'all', limit: number
 };
 
 /**
+ * Hook for fetching unread notifications count
+ */
+export const useUnreadCount = () => {
+  return useQuery({
+    queryKey: [UNREAD_COUNT_KEY],
+    queryFn: fetchUnreadCount,
+    staleTime: 30 * 1000, // 30 seconds
+  });
+};
+
+/**
  * Hook for marking a notification as read
  */
 export const useMarkAsRead = () => {
@@ -41,6 +54,7 @@ export const useMarkAsRead = () => {
     onSuccess: (updatedNotification) => {
       // Invalidate notifications cache to refetch with updated data
       queryClient.invalidateQueries({ queryKey: [NOTIFICATIONS_KEY] });
+      queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
     }
   });
 };
@@ -55,6 +69,7 @@ export const useMarkAllAsRead = () => {
     mutationFn: markAllNotificationsAsRead,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [NOTIFICATIONS_KEY] });
+      queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
     }
   });
 };
@@ -69,6 +84,7 @@ export const useDeleteNotification = () => {
     mutationFn: deleteNotification,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [NOTIFICATIONS_KEY] });
+      queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
     }
   });
 };

@@ -146,4 +146,21 @@ export const sendTestNotification = async (): Promise<{ message: string; notific
     console.error('Error sending test notification:', error);
     throw error;
   }
+};
+
+/**
+ * Fetch unread notification count
+ */
+export const fetchUnreadCount = async (): Promise<number> => {
+  try {
+    const headers = await getAuthHeader();
+    const response = await axios.get(
+      `${apiConfig.apiUrl}/api/notifications/unread-count`,
+      { headers }
+    );
+    return response.data.count;
+  } catch (error) {
+    console.error('Error fetching unread count:', error);
+    return 0; // Default to 0 on error
+  }
 }; 
