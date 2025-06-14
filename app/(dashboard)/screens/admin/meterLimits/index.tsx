@@ -47,7 +47,7 @@ export default function MeterLimitsScreen() {
 
   // Redirect if not admin
   if (authState?.isLoading === false && !isAdmin) {
-    router.replace('/(dashboard)/meterReadings/index');
+    router.replace('/(dashboard)/meterReadings');
     return null;
   }
 
@@ -221,7 +221,7 @@ export default function MeterLimitsScreen() {
                     borderColor: isDarkMode ? '#334155' : '#E2E8F0',
                   }
                 ]}
-                onPress={() => router.push(`/(dashboard)/screens/admin/meter-limits/${limit.id}` as any)}
+                onPress={() => router.push(`/(dashboard)/screens/admin/meterLimits/${limit.id}` as any)}
               >
                 <View style={styles.limitInfo}>
                   <Text style={[

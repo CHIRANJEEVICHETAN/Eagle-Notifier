@@ -96,6 +96,80 @@ async function main() {
   }
 
   console.log('✨ Setpoint configuration seeding completed');
+
+  // Define default meter limits
+  const meterLimits = [
+    {
+      parameter: 'voltage',
+      description: 'Line Voltage',
+      unit: 'V',
+      highLimit: 440.0,
+      lowLimit: 380.0
+    },
+    {
+      parameter: 'current',
+      description: 'Line Current',
+      unit: 'A',
+      highLimit: 100.0,
+      lowLimit: 0.0
+    },
+    {
+      parameter: 'frequency',
+      description: 'Power Frequency',
+      unit: 'Hz',
+      highLimit: 51.0,
+      lowLimit: 49.0
+    },
+    {
+      parameter: 'pf',
+      description: 'Power Factor',
+      unit: '',
+      highLimit: 1.0,
+      lowLimit: 0.85
+    },
+    {
+      parameter: 'power',
+      description: 'Active Power',
+      unit: 'kW',
+      highLimit: 75.0,
+      lowLimit: 0.0
+    },
+    {
+      parameter: 'energy',
+      description: 'Energy Consumption',
+      unit: 'kWh',
+      highLimit: 1800.0,
+      lowLimit: 0.0
+    }
+  ];
+
+  console.log('🌱 Starting meter limits seeding...');
+
+  for (const limit of meterLimits) {
+    try {
+      // Check if limit already exists
+      const existing = await prisma.meterLimit.findUnique({
+        where: {
+          parameter: limit.parameter
+        }
+      });
+
+      if (!existing) {
+        // Create new meter limit
+        await prisma.meterLimit.create({
+          data: limit
+        });
+        console.log(`✅ Added meter limit for ${limit.description}`);
+        console.log(`   Range: ${limit.lowLimit} ${limit.unit} to ${limit.highLimit} ${limit.unit}`);
+      } else {
+        console.log(`⏭️ Meter limit for ${limit.description} already exists - skipping`);
+      }
+    } catch (error) {
+      console.error(`❌ Error adding meter limit for ${limit.description}:`, error);
+    }
+  }
+
+  console.log('✨ Meter limits seeding completed');
 }
 
 main()

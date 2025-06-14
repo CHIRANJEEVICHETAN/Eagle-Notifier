@@ -127,7 +127,7 @@ export default function MeterReadingsScreen() {
         name: 'Power', 
         value: latestReadingData.power, 
         unit: 'kW',
-        icon: 'flash-outline',
+        icon: 'flash',
         color: isDarkMode ? '#F97316' : '#EA580C'
       },
     ];
@@ -707,7 +707,7 @@ export default function MeterReadingsScreen() {
                     borderColor: isDarkMode ? '#334155' : '#E2E8F0',
                   }
                 ]}
-                onPress={() => router.push('/(dashboard)/screens/admin/meter-limits' as any)}
+                onPress={() => router.push('/(dashboard)/screens/admin/meterLimits' as any)}
               >
                 <Ionicons 
                   name="settings-outline" 
@@ -755,21 +755,15 @@ export default function MeterReadingsScreen() {
               active: true,
             },
             {
-              name: 'Analytics',
-              icon: 'analytics-outline',
-              route: '/(dashboard)/analytics',
-              active: false,
-            },
-            {
               name: 'History',
               icon: 'alarm-outline',
-              route: '/(dashboard)/alarms/history',
+              route: '/(dashboard)/meterReadings/History',
               active: false,
             },
             {
               name: 'Reports',
               icon: 'document-text-outline',
-              route: '/(dashboard)/reports',
+              route: '/(dashboard)/meterReadings/Reports',
               active: false,
             },
             {

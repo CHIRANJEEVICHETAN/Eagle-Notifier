@@ -3,6 +3,7 @@ import { getClientWithRetry } from '../config/scadaDb';
 import { logError } from '../utils/logger';
 import prisma from '../config/db';
 import { NotificationService } from '../services/notificationService';
+import { authenticate, authorize } from '../middleware/authMiddleware';
 
 const router = Router();
 
@@ -189,7 +190,7 @@ router.get('/limits', asyncHandler(async (req: Request, res: Response) => {
  * @desc    Update meter parameter limits
  * @access  Private (Admin only)
  */
-router.put('/limits/:id', asyncHandler(async (req: Request, res: Response) => {
+router.put('/limits/:id', authenticate, authorize(['ADMIN']), asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { highLimit, lowLimit } = req.body;
   
@@ -203,7 +204,26 @@ router.put('/limits/:id', asyncHandler(async (req: Request, res: Response) => {
   
   try {
     // Get the user ID from the authenticated request
-    const userId = (req as any).user.id;
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+
+    // First check if the limit exists
+    const existingLimit = await prisma.meterLimit.findUnique({
+      where: { id }
+    });
+
+    if (!existingLimit) {
+      return res.status(404).json({
+        success: false,
+        message: 'Meter limit not found'
+      });
+    }
     
     const updatedLimit = await prisma.meterLimit.update({
       where: { id },
