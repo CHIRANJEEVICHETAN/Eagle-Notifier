@@ -48,6 +48,7 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-native": "0.76.9",
+    "react-native-chart-kit": "^6.12.0",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-gifted-charts": "^1.4.61",
     "react-native-reanimated": "~3.16.6",
@@ -74,7 +75,8 @@
     "doctor": {
       "reactNativeDirectoryCheck": {
         "exclude": [
-          "xlsx"
+          "xlsx",
+          "react-native-chart-kit"
         ],
         "listUnknownPackages": false
       }
