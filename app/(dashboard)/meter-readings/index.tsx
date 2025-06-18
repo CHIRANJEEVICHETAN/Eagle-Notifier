@@ -28,6 +28,7 @@ import {
   MeterReading,
   MeterLimit
 } from '../../hooks/useMeterReadings';
+import { PaginatedMeterReadings } from '../../api/meterApi';
 import { useUnreadCount } from '../../hooks/useNotifications';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -648,12 +649,12 @@ export default function MeterReadingsScreen() {
 
   // Update the chart data processing to handle time gaps and convert timestamps
   const chartData = useMemo(() => {
-    if (!historyData || historyData.length === 0) {
+    if (!historyData || !historyData.readings || historyData.readings.length === 0) {
       return null;
     }
     
     // Sort by timestamp ascending for chart
-    const sortedData = [...historyData].sort(
+    const sortedData = [...historyData.readings].sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
 
@@ -1175,8 +1176,8 @@ export default function MeterReadingsScreen() {
               <View style={styles.tableLoadingContainer}>
                 <ActivityIndicator size="small" color={isDarkMode ? '#6EE7B7' : '#10B981'} />
               </View>
-            ) : historyData && historyData.length > 0 ? (
-              historyData.slice(0, 10).map((reading, index) => {
+            ) : historyData && historyData.readings && historyData.readings.length > 0 ? (
+              historyData.readings.slice(0, 10).map((reading, index) => {
                 // Check if any value exceeds limits
                 const limitExceeded = limitsData && limitsData.some(limit => {
                   const value = reading[limit.parameter as keyof MeterReading] as number;

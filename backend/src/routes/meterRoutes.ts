@@ -121,22 +121,65 @@ router.get('/latest', asyncHandler(async (req: Request, res: Response) => {
 router.get('/history', asyncHandler(async (req: Request, res: Response) => {
   const client = await getClientWithRetry();
   
-  const limit = parseInt(req.query.limit as string) || 60; // Default to 60 readings
+  // Parse pagination parameters
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const offset = (page - 1) * limit;
+  
   const hours = parseInt(req.query.hours as string) || 1; // Default to 1 hour
+  const startTime = req.query.startTime as string; // Optional specific start time
   
   try {
-    // Try to get data within the specified time range
-    let result = await client.query(
-      `SELECT meter_id, voltage, current, frequency, pf, energy, power, created_at
-       FROM meter_readings
-       WHERE created_at >= NOW() - INTERVAL '${hours} hours'
-       ORDER BY created_at DESC
-       LIMIT $1`,
-      [limit]
-    );
+    let query: string;
+    let countQuery: string;
+    let queryParams: any[] = [];
+    let countParams: any[] = [];
+    
+    if (startTime) {
+      // If startTime is provided, use it as the reference point
+      query = `
+        SELECT meter_id, voltage, current, frequency, pf, energy, power, created_at
+        FROM meter_readings
+        WHERE created_at >= $1 AND created_at <= NOW()
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+      `;
+      queryParams = [startTime, limit, offset];
+      
+      countQuery = `
+        SELECT COUNT(*) as total
+        FROM meter_readings
+        WHERE created_at >= $1 AND created_at <= NOW()
+      `;
+      countParams = [startTime];
+    } else {
+      // Otherwise use the hours parameter
+      query = `
+        SELECT meter_id, voltage, current, frequency, pf, energy, power, created_at
+        FROM meter_readings
+        WHERE created_at >= NOW() - INTERVAL '${hours} hours'
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+      `;
+      queryParams = [limit, offset];
+      
+      countQuery = `
+        SELECT COUNT(*) as total
+        FROM meter_readings
+        WHERE created_at >= NOW() - INTERVAL '${hours} hours'
+      `;
+      countParams = [];
+    }
+    
+    // Execute the query
+    let result = await client.query(query, queryParams);
+    
+    // Get total count for pagination
+    const countResult = await client.query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].total);
     
     // If no data found in the requested time frame, get the most recent readings anyway
-    if (result.rows.length === 0) {
+    if (result.rows.length === 0 && page === 1) {
       result = await client.query(
         `SELECT meter_id, voltage, current, frequency, pf, energy, power, created_at
          FROM meter_readings
@@ -148,7 +191,15 @@ router.get('/history', asyncHandler(async (req: Request, res: Response) => {
     
     return res.status(200).json({
       success: true,
-      data: result.rows
+      data: {
+        readings: result.rows,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit)
+        }
+      }
     });
   } catch (error) {
     logError('Error fetching meter history', error);

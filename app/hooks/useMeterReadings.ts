@@ -11,7 +11,7 @@ import {
 // Query keys
 export const METER_KEYS = {
   latest: ['meter', 'latest'],
-  history: (hours: number) => ['meter', 'history', hours],
+  history: (hours: number, startTime?: string) => ['meter', 'history', hours, startTime],
   limits: ['meter', 'limits'],
   limit: (id: string) => ['meter', 'limit', id],
 };
@@ -30,10 +30,10 @@ export const useLatestMeterReading = () => {
 /**
  * Hook for fetching historical meter readings
  */
-export const useMeterHistory = (hours: number = 1) => {
+export const useMeterHistory = (hours: number = 1, startTime?: string) => {
   return useQuery({
-    queryKey: METER_KEYS.history(hours),
-    queryFn: () => fetchMeterHistory(hours),
+    queryKey: METER_KEYS.history(hours, startTime),
+    queryFn: () => fetchMeterHistory(hours, 1, 20, startTime),
     staleTime: 1000 * 60 * 3, // 3 minutes
   });
 };

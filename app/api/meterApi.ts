@@ -14,6 +14,20 @@ interface MeterReading {
   created_at: string; 
 }
 
+// Pagination response interface
+interface PaginationInfo {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+// Paginated response interface
+interface PaginatedMeterReadings {
+  readings: MeterReading[];
+  pagination: PaginationInfo;
+}
+
 interface MeterLimit {
   id: string;
   parameter: string;
@@ -38,13 +52,25 @@ export const fetchLatestReading = async (): Promise<MeterReading> => {
 };
 
 /**
- * Fetch historical meter readings
+ * Fetch historical meter readings with pagination
  */
-export const fetchMeterHistory = async (hours: number = 1): Promise<MeterReading[]> => {
+export const fetchMeterHistory = async (
+  hours: number = 1, 
+  page: number = 1, 
+  limit: number = 20, 
+  startTime?: string
+): Promise<PaginatedMeterReadings> => {
   try {
     const headers = await getAuthHeader();
+    
+    // Build query parameters
+    let queryParams = `hours=${hours}&page=${page}&limit=${limit}`;
+    if (startTime) {
+      queryParams += `&startTime=${encodeURIComponent(startTime)}`;
+    }
+    
     const { data } = await axios.get(
-      `${apiConfig.apiUrl}/api/meter/history?hours=${hours}`, 
+      `${apiConfig.apiUrl}/api/meter/history?${queryParams}`, 
       { headers }
     );
     return data.data;
@@ -90,4 +116,4 @@ export const updateMeterLimit = async (
 };
 
 // Export types for use elsewhere
-export type { MeterReading, MeterLimit }; 
+export type { MeterReading, MeterLimit, PaginatedMeterReadings, PaginationInfo }; 
