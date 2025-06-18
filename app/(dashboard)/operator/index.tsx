@@ -1667,7 +1667,7 @@ export default function OperatorDashboard() {
                 backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)',
               },
             ]}
-            onPress={() => router.push('/(dashboard)/meterReadings')}>
+            onPress={() => router.push('/(dashboard)/meter-readings' as any)}>
             <Ionicons
               name="speedometer-outline"
               size={22}

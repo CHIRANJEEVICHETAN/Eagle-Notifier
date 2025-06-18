@@ -47,16 +47,15 @@ export default function MeterLimitsScreen() {
 
   // Redirect if not admin
   if (authState?.isLoading === false && !isAdmin) {
-    router.replace('/(dashboard)/meterReadings');
+    router.replace('/(dashboard)/meter-readings' as any);
     return null;
   }
 
   return (
     <SafeAreaView
-      style={[styles.container, { backgroundColor: isDarkMode ? '#0F172A' : '#F8FAFC' }]}
-    >
+      style={[styles.container, { backgroundColor: isDarkMode ? '#0F172A' : '#F8FAFC' }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      
+
       {/* Header */}
       <View
         style={[
@@ -71,17 +70,12 @@ export default function MeterLimitsScreen() {
             styles.backButton,
             {
               backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)',
-            }
+            },
           ]}
-          onPress={() => router.back()}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color={isDarkMode ? '#94A3B8' : '#475569'}
-          />
+          onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#94A3B8' : '#475569'} />
         </TouchableOpacity>
-        
+
         <View style={styles.headerTitle}>
           <Text
             style={[
@@ -138,25 +132,21 @@ export default function MeterLimitsScreen() {
               colors={['#10B981']}
               tintColor={isDarkMode ? '#6EE7B7' : '#10B981'}
             />
-          }
-        >
+          }>
           {/* Electrical Parameters Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons 
-                name="flash-outline" 
-                size={20} 
+              <Ionicons
+                name="flash-outline"
+                size={20}
                 color={isDarkMode ? '#6EE7B7' : '#10B981'}
-                style={styles.sectionIcon} 
+                style={styles.sectionIcon}
               />
-              <Text style={[
-                styles.sectionTitle, 
-                { color: isDarkMode ? '#F8FAFC' : '#1E293B' }
-              ]}>
+              <Text style={[styles.sectionTitle, { color: isDarkMode ? '#F8FAFC' : '#1E293B' }]}>
                 Electrical Parameters
               </Text>
             </View>
-            
+
             {electricalParams.map((limit) => (
               <TouchableOpacity
                 key={limit.id}
@@ -165,26 +155,26 @@ export default function MeterLimitsScreen() {
                   {
                     backgroundColor: isDarkMode ? '#1E293B' : '#FFFFFF',
                     borderColor: isDarkMode ? '#334155' : '#E2E8F0',
-                  }
+                  },
                 ]}
-                onPress={() => router.push(`/(dashboard)/screens/admin/meter-limits/${limit.id}` as any)}
-              >
+                onPress={() =>
+                  router.push(`/(dashboard)/screens/admin/meter-limits/${limit.id}` as any)
+                }>
                 <View style={styles.limitInfo}>
-                  <Text style={[
-                    styles.parameterName,
-                    { color: isDarkMode ? '#F8FAFC' : '#1E293B' }
-                  ]}>
+                  <Text
+                    style={[styles.parameterName, { color: isDarkMode ? '#F8FAFC' : '#1E293B' }]}>
                     {limit.description}
                   </Text>
-                  <Text style={[
-                    styles.parameterDetail,
-                    { color: isDarkMode ? '#94A3B8' : '#64748B' }
-                  ]}>
-                    High Limit: <Text style={{ fontWeight: '600' }}>{limit.highLimit} {limit.unit}</Text>
+                  <Text
+                    style={[styles.parameterDetail, { color: isDarkMode ? '#94A3B8' : '#64748B' }]}>
+                    High Limit:{' '}
+                    <Text style={{ fontWeight: '600' }}>
+                      {limit.highLimit} {limit.unit}
+                    </Text>
                     {limit.lowLimit !== null && ` • Low Limit: ${limit.lowLimit} ${limit.unit}`}
                   </Text>
                 </View>
-                
+
                 <Ionicons
                   name="chevron-forward"
                   size={22}
@@ -193,24 +183,21 @@ export default function MeterLimitsScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          
+
           {/* Power Parameters Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons 
-                name="battery-charging-outline" 
-                size={20} 
+              <Ionicons
+                name="battery-charging-outline"
+                size={20}
                 color={isDarkMode ? '#6EE7B7' : '#10B981'}
-                style={styles.sectionIcon} 
+                style={styles.sectionIcon}
               />
-              <Text style={[
-                styles.sectionTitle, 
-                { color: isDarkMode ? '#F8FAFC' : '#1E293B' }
-              ]}>
+              <Text style={[styles.sectionTitle, { color: isDarkMode ? '#F8FAFC' : '#1E293B' }]}>
                 Power Parameters
               </Text>
             </View>
-            
+
             {powerParams.map((limit) => (
               <TouchableOpacity
                 key={limit.id}
@@ -219,26 +206,26 @@ export default function MeterLimitsScreen() {
                   {
                     backgroundColor: isDarkMode ? '#1E293B' : '#FFFFFF',
                     borderColor: isDarkMode ? '#334155' : '#E2E8F0',
-                  }
+                  },
                 ]}
-                onPress={() => router.push(`/(dashboard)/screens/admin/meterLimits/${limit.id}` as any)}
-              >
+                onPress={() =>
+                  router.push(`/(dashboard)/screens/admin/meter-limits/${limit.id}` as any)
+                }>
                 <View style={styles.limitInfo}>
-                  <Text style={[
-                    styles.parameterName,
-                    { color: isDarkMode ? '#F8FAFC' : '#1E293B' }
-                  ]}>
+                  <Text
+                    style={[styles.parameterName, { color: isDarkMode ? '#F8FAFC' : '#1E293B' }]}>
                     {limit.description}
                   </Text>
-                  <Text style={[
-                    styles.parameterDetail,
-                    { color: isDarkMode ? '#94A3B8' : '#64748B' }
-                  ]}>
-                    High Limit: <Text style={{ fontWeight: '600' }}>{limit.highLimit} {limit.unit}</Text>
+                  <Text
+                    style={[styles.parameterDetail, { color: isDarkMode ? '#94A3B8' : '#64748B' }]}>
+                    High Limit:{' '}
+                    <Text style={{ fontWeight: '600' }}>
+                      {limit.highLimit} {limit.unit}
+                    </Text>
                     {limit.lowLimit !== null && ` • Low Limit: ${limit.lowLimit} ${limit.unit}`}
                   </Text>
                 </View>
-                
+
                 <Ionicons
                   name="chevron-forward"
                   size={22}
@@ -247,25 +234,23 @@ export default function MeterLimitsScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          
+
           {/* Help Section */}
-          <View style={[
-            styles.helpCard,
-            {
-              backgroundColor: isDarkMode ? 'rgba(6, 95, 70, 0.2)' : 'rgba(220, 252, 231, 0.6)',
-              borderColor: isDarkMode ? '#065F46' : '#10B981',
-            }
-          ]}>
+          <View
+            style={[
+              styles.helpCard,
+              {
+                backgroundColor: isDarkMode ? 'rgba(6, 95, 70, 0.2)' : 'rgba(220, 252, 231, 0.6)',
+                borderColor: isDarkMode ? '#065F46' : '#10B981',
+              },
+            ]}>
             <Ionicons
               name="information-circle-outline"
               size={24}
               color={isDarkMode ? '#6EE7B7' : '#10B981'}
               style={styles.helpIcon}
             />
-            <Text style={[
-              styles.helpText,
-              { color: isDarkMode ? '#A7F3D0' : '#065F46' }
-            ]}>
+            <Text style={[styles.helpText, { color: isDarkMode ? '#A7F3D0' : '#065F46' }]}>
               Configure thresholds to trigger notifications when meter readings exceed their limits.
               Tap on any parameter to edit its high and low limits.
             </Text>

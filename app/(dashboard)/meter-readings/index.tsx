@@ -96,7 +96,7 @@ export default function MeterReadingsScreen() {
         value: latestReadingData.current, 
         unit: 'A',
         icon: 'repeat-outline',
-        color: isDarkMode ? '#3B82F6' : '#2563EB' 
+        color: isDarkMode ? '#06B6D4' : '#0891B2'
       },
       { 
         id: 'frequency', 
@@ -144,12 +144,32 @@ export default function MeterReadingsScreen() {
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
 
+    // Format x-axis labels based on selected timeframe
+    const getFormattedLabels = () => {
+      // Determine how many labels to show
+      const labelCount = 6;
+      const step = Math.max(1, Math.floor(sortedData.length / labelCount));
+      
+      return sortedData.map((d, i) => {
+        const date = new Date(d.created_at);
+        
+        // Different format based on timeframe
+        if (selectedTimeframe === 1) {
+          // For 1 hour, show minutes (e.g., "14:30")
+          return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+        } else if (selectedTimeframe === 6) {
+          // For 6 hours, show hours and minutes (e.g., "14:30")
+          return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+        } else {
+          // For 24 hours, show hour only (e.g., "14h")
+          return `${date.getHours()}h`;
+        }
+      }).filter((_, i) => i % step === 0); // Show ~labelCount labels
+    };
+
     // Extract data for chart
     return {
-      labels: sortedData.map(d => {
-        const date = new Date(d.created_at);
-        return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
-      }).filter((_, i, arr) => i % Math.max(1, Math.floor(arr.length / 6)) === 0), // Show ~6 labels
+      labels: getFormattedLabels(),
       datasets: [
         {
           data: sortedData.map(d => d.voltage),
@@ -158,7 +178,7 @@ export default function MeterReadingsScreen() {
         },
         {
           data: sortedData.map(d => d.current),
-          color: () => isDarkMode ? '#3B82F6' : '#2563EB', // Blue
+          color: () => isDarkMode ? '#06B6D4' : '#0891B2', // Cyan - changed from blue
           strokeWidth: 2
         },
         {
@@ -167,7 +187,8 @@ export default function MeterReadingsScreen() {
           strokeWidth: 2
         },
         {
-          data: sortedData.map(d => d.pf * 100), // Scale PF for visibility
+          // Scale PF by 200 to make it more visible (instead of 100)
+          data: sortedData.map(d => Math.max(0.1, d.pf) * 200),
           color: () => isDarkMode ? '#8B5CF6' : '#7C3AED', // Purple
           strokeWidth: 2
         },
@@ -177,9 +198,129 @@ export default function MeterReadingsScreen() {
           strokeWidth: 2
         },
       ],
-      legend: ['Voltage', 'Current', 'Frequency', 'PF', 'Power']
+      legend: ['Voltage', 'Current', 'Frequency', 'PF', 'Power'],
+      // Store original data for tooltip
+      rawData: sortedData
     };
-  }, [historyData, isDarkMode]);
+  }, [historyData, isDarkMode, selectedTimeframe]);
+
+  // State for tooltip
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipData, setTooltipData] = useState<{
+    dataPoint: number;
+    dataset: number;
+    x: number;
+    y: number;
+    position: { x: number, y: number };
+    timestamp: string;
+    value: number;
+    label: string;
+    color: string;
+    rawValue?: number;
+  } | null>(null);
+
+  // Handle chart point press
+  const handleDataPointClick = (data: any) => {
+    console.log("Chart clicked", data); // Keep logging for debugging
+    
+    if (!chartData || !data || typeof data.index === 'undefined') {
+      console.log("Invalid data for tooltip", data);
+      return;
+    }
+    
+    // Get the click index to find the corresponding data point in each dataset
+    const dataIndex = data.index;
+    
+    // Verify index is within range
+    if (dataIndex < 0 || dataIndex >= (chartData.rawData?.length || 0)) {
+      console.log("Index out of range", dataIndex);
+      return;
+    }
+    
+    // Get the vertical position of the click
+    const clickY = data.y;
+    
+    // Find which dataset's line is closest to the click point
+    let closestDataset = 0;
+    let minDistance = Number.MAX_VALUE;
+    
+    // Go through each dataset and find the closest one to the click point
+    chartData.datasets.forEach((dataset, datasetIndex) => {
+      const datasetValue = dataset.data[dataIndex];
+      // Calculate screen Y position for this dataset value (approximate)
+      // This calculation depends on the chart's internal scaling which we don't have direct access to
+      // So we use the proportion of the value relative to max value in the dataset
+      const maxValue = Math.max(...dataset.data);
+      const proportion = datasetValue / maxValue;
+      const estimatedY = 220 - (proportion * 220); // 220 is chart height
+      
+      const distance = Math.abs(estimatedY - clickY);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestDataset = datasetIndex;
+      }
+    });
+    
+    // Use the determined dataset index
+    const datasetIndex = closestDataset;
+    
+    // Get the raw reading data
+    const rawReading = chartData.rawData[dataIndex];
+    const timestamp = String(new Date(rawReading.created_at).toLocaleTimeString());
+    console.log('Timestamp type:', typeof timestamp);
+    console.log('Timestamp value:', timestamp);
+    
+    // Determine which parameter was pressed and get its color
+    const parameterLabel = chartData.legend[datasetIndex];
+    let datasetColor = '#666666'; // Default fallback color
+    
+    try {
+      // Safely get color from the dataset
+      if (chartData.datasets[datasetIndex] && typeof chartData.datasets[datasetIndex].color === 'function') {
+        datasetColor = chartData.datasets[datasetIndex].color();
+      }
+    } catch (error) {
+      console.log("Error getting dataset color:", error);
+      // Keep using fallback color
+    }
+    
+    // Set tooltip position manually to ensure visibility
+    const tooltipPosition = {
+      x: Math.max(50, Math.min(data.x, SCREEN_WIDTH - 100)), 
+      y: Math.max(100, data.y) // Ensure tooltip is visible
+    };
+    
+    // Get the actual value (convert back if it's power factor)
+    const dataValue = chartData.datasets[datasetIndex].data[dataIndex];
+    let rawValue = typeof dataValue === 'string' ? parseFloat(dataValue) : dataValue as number;
+    
+    if (datasetIndex === 3) { // PF is dataset index 3
+      rawValue = rawValue / 200; // Convert back from scaled value
+    }
+    
+    // Build tooltip data object directly with appropriate types
+    const tooltipDataObj = {
+      dataPoint: dataIndex,
+      dataset: datasetIndex,
+      x: data.x,
+      y: data.y,
+      position: tooltipPosition,
+      timestamp: timestamp,
+      value: rawValue,
+      label: parameterLabel,
+      color: datasetColor,
+      rawValue: rawValue
+    };
+    
+    setTooltipData(tooltipDataObj);
+    
+    setTooltipVisible(true);
+    
+    // Hide tooltip after delay
+    setTimeout(() => {
+      setTooltipVisible(false);
+    }, 5000);
+  };
 
   // Refresh all data
   const handleRefresh = useCallback(async () => {
@@ -217,16 +358,19 @@ export default function MeterReadingsScreen() {
     Alert.alert(
       `${limit.description} Limits`,
       `Current High Limit: ${limit.highLimit} ${limit.unit}\n${
-        limit.lowLimit !== null ? `Current Low Limit: ${limit.lowLimit} ${limit.unit}` : 'No Low Limit set'
+        limit.lowLimit !== null
+          ? `Current Low Limit: ${limit.lowLimit} ${limit.unit}`
+          : 'No Low Limit set'
       }`,
       [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Configure", 
-          onPress: () => router.push({
-            pathname: `/(dashboard)/screens/admin/meter-limits/${limit.id}` as any
-          })
-        }
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Configure',
+          onPress: () =>
+            router.push({
+              pathname: `/(dashboard)/screens/admin/meter-limits/${limit.id}` as any,
+            }),
+        },
       ]
     );
   }, [isAdmin, limitsData, router]);
@@ -518,8 +662,19 @@ export default function MeterReadingsScreen() {
                       borderRadius: 16,
                     },
                     propsForDots: {
-                      r: "4",
-                      strokeWidth: "1",
+                      r: "0", // Set radius to 0 to hide dots
+                      strokeWidth: "0",
+                    },
+                    // Improved y-axis settings
+                    propsForBackgroundLines: {
+                      strokeWidth: 1,
+                      strokeDasharray: '', // Solid lines
+                      stroke: isDarkMode ? 'rgba(148, 163, 184, 0.3)' : 'rgba(100, 116, 139, 0.3)',
+                    },
+                    // Make y-axis values more visible
+                    propsForLabels: {
+                      fontSize: 10,
+                      fontWeight: 'bold',
                     },
                   }}
                   bezier
@@ -527,13 +682,76 @@ export default function MeterReadingsScreen() {
                     marginVertical: 8,
                     borderRadius: 16,
                   }}
-                  withDots={false}
-                  withInnerLines={false}
-                  withOuterLines={true}
+                  withDots={true} // Changed to true to allow touch points
                   withShadow={false}
-                  yAxisInterval={1}
+                  withInnerLines={true}
+                  withOuterLines={true}
+                  withVerticalLines={false}
+                  withHorizontalLines={true}
+                  yAxisInterval={2} // Show more y-axis lines
+                  yAxisLabel=""
+                  yAxisSuffix=""
                   yLabelsOffset={10}
+                  segments={5} // More y-axis segments
+                  fromZero={true} // Start y-axis from zero
+                  onDataPointClick={handleDataPointClick}
+                  hidePointsAtIndex={[]} // No hidden points
+                  getDotColor={(dataPoint, index) => 'rgba(0,0,0,0)'} // Transparent dots
+                  getDotProps={(value, index) => ({
+                    r: '8', // Larger invisible touch area
+                    strokeWidth: 0,
+                    stroke: 'transparent',
+                    fill: 'transparent',
+                  })}
                 />
+                
+                {/* Custom Tooltip */}
+                {tooltipVisible && tooltipData && (
+                  <View 
+                    style={[
+                      styles.tooltip, 
+                      { 
+                        backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                        top: tooltipData.position.y - 100,
+                        left: Math.max(20, Math.min(tooltipData.position.x - 75, SCREEN_WIDTH - 170)),
+                        borderColor: tooltipData.color,
+                        borderWidth: 2,
+                      }
+                    ]}
+                  >
+                    <View 
+                      style={[
+                        styles.tooltipPointer, 
+                        { 
+                          borderTopColor: isDarkMode ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                          borderLeftColor: 'transparent',
+                          borderRightColor: 'transparent'
+                        }
+                      ]} 
+                    />
+                    <Text style={[styles.tooltipTitle, { color: isDarkMode ? '#F8FAFC' : '#1E293B' }]}>
+                      {tooltipData.label}
+                    </Text>
+                    <View style={styles.tooltipRow}>
+                      <Text style={[styles.tooltipLabel, { color: isDarkMode ? '#94A3B8' : '#64748B' }]}>Time:</Text>
+                      <Text style={[styles.tooltipValue, { color: isDarkMode ? '#F8FAFC' : '#1E293B' }]}>
+                        {tooltipData.timestamp}
+                      </Text>
+                    </View>
+                    <View style={styles.tooltipRow}>
+                      <Text style={[styles.tooltipLabel, { color: isDarkMode ? '#94A3B8' : '#64748B' }]}>Value:</Text>
+                      <Text style={[styles.tooltipValue, { color: tooltipData.color }]}>
+                        {tooltipData.dataset === 3 
+                          ? `${formatNumber(tooltipData.rawValue || 0, 2)}` // PF with 2 decimals
+                          : `${formatNumber(tooltipData.rawValue !== undefined ? tooltipData.rawValue : tooltipData.value)}`}
+                        {tooltipData.dataset === 0 ? ' V' : 
+                         tooltipData.dataset === 1 ? ' A' :
+                         tooltipData.dataset === 2 ? ' Hz' :
+                         tooltipData.dataset === 3 ? '' : ' kW'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
                 
                 {/* Legend */}
                 <View style={styles.chartLegend}>
@@ -707,7 +925,7 @@ export default function MeterReadingsScreen() {
                     borderColor: isDarkMode ? '#334155' : '#E2E8F0',
                   }
                 ]}
-                onPress={() => router.push('/(dashboard)/screens/admin/meterLimits' as any)}
+                onPress={() => router.push('/(dashboard)/screens/admin/meter-limits' as any)}
               >
                 <Ionicons 
                   name="settings-outline" 
@@ -751,19 +969,19 @@ export default function MeterReadingsScreen() {
             {
               name: 'Dashboard',
               icon: 'home',
-              route: '/(dashboard)/meterReadings/index',
+              route: '/(dashboard)/meter-readings/index',
               active: true,
             },
             {
               name: 'History',
               icon: 'alarm-outline',
-              route: '/(dashboard)/meterReadings/History',
+              route: '/(dashboard)/meter-readings/History',
               active: false,
             },
             {
               name: 'Reports',
               icon: 'document-text-outline',
-              route: '/(dashboard)/meterReadings/Reports',
+              route: '/(dashboard)/meter-readings/Reports',
               active: false,
             },
             {
@@ -1131,5 +1349,50 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '500',
+  },
+  tooltip: {
+    position: 'absolute',
+    width: 150,
+    padding: 10,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  tooltipPointer: {
+    position: 'absolute',
+    bottom: -10,
+    left: 70,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 10,
+    borderRightWidth: 10,
+    borderTopWidth: 10,
+    borderStyle: 'solid',
+    backgroundColor: 'transparent',
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
+  tooltipTitle: {
+    fontWeight: 'bold',
+    fontSize: 14,
+    marginBottom: 5,
+    textAlign: 'center',
+  },
+  tooltipRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 2,
+  },
+  tooltipLabel: {
+    fontSize: 12,
+  },
+  tooltipValue: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

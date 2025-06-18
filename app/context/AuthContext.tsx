@@ -438,7 +438,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     } else if (appType === 'meter') {
       router.replace({
-        pathname: '/(dashboard)/meterReadings/index'
+        pathname: '/(dashboard)/meter-readings' as any,
       });
     } else {
       // Default to onboarding if app type is invalid

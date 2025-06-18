@@ -16,8 +16,7 @@ export default function DashboardLayout() {
           fontWeight: 'bold',
         },
         headerShadowVisible: false,
-      }}
-    >
+      }}>
       <Stack.Screen
         name="screens/admin/index"
         options={{
@@ -25,13 +24,13 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
-        name="screens/admin/meterLimits/index"
+        name="screens/admin/meter-limits/index"
         options={{
           headerShown: false,
         }}
       />
       <Stack.Screen
-        name="screens/admin/meterLimits/[id]"
+        name="screens/admin/meter-limits/[id]"
         options={{
           headerShown: false,
         }}
@@ -43,19 +42,19 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
-        name="meterReadings/index"
+        name="meter-readings/index"
         options={{
           headerShown: false,
         }}
       />
       <Stack.Screen
-        name="meterReadings/History"
+        name="meter-readings/History"
         options={{
           headerShown: false,
         }}
       />
       <Stack.Screen
-        name="meterReadings/Reports"
+        name="meter-readings/Reports"
         options={{
           headerShown: false,
         }}

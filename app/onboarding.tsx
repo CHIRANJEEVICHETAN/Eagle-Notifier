@@ -49,7 +49,7 @@ export default function Onboarding() {
         });
       } else {
         router.replace({
-          pathname: '/(dashboard)/meterReadings'
+          pathname: '/(dashboard)/meter-readings' as any,
         });
       }
     } catch (error) {
