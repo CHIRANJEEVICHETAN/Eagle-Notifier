@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Platform,
   Dimensions,
   Alert,
+  GestureResponderEvent,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -30,6 +32,459 @@ import { useUnreadCount } from '../../hooks/useNotifications';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+// Add interface for Line component props
+interface LineProps {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  color: string;
+  thickness?: number;
+}
+
+// Add the Line component
+const Line = ({ startX, startY, endX, endY, color, thickness = 1 }: LineProps) => {
+  // Calculate the length and angle of the line
+  const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+  const angle = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI;
+  
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        left: startX,
+        top: startY,
+        width: length,
+        height: thickness,
+        backgroundColor: color,
+        transform: [
+          { translateY: -thickness / 2 },
+          { rotate: `${angle}deg` },
+          { translateY: thickness / 2 },
+        ],
+      }}
+    />
+  );
+};
+
+// Update the interface for the custom chart
+interface MeterDataSeries {
+  name: string;
+  color: string;
+  data: (number | null)[];  // Updated to allow null values
+  unit: string;
+  maxValue?: number; 
+  scale?: number; 
+}
+
+// Add interface for the custom chart component
+interface CustomChartProps {
+  meterData: MeterDataSeries[];
+  timeLabels: string[];
+  isDarkMode: boolean;
+  axisRange: {
+    min: number;
+    max: number;
+    ticks: number[];
+  };
+}
+
+// Add the CustomChart component
+const CustomChart = ({ meterData, timeLabels, isDarkMode, axisRange }: CustomChartProps) => {
+  const textColor = isDarkMode ? '#F3F4F6' : '#1F2937';
+  const gridColor = isDarkMode ? 'rgba(156, 163, 175, 0.2)' : 'rgba(107, 114, 128, 0.2)';
+  const surfaceColor = isDarkMode ? '#1F2937' : '#FFFFFF';
+  
+  // State for touch interaction
+  const [touchedPoint, setTouchedPoint] = useState<{
+    seriesIndex: number;
+    pointIndex: number;
+    x: number;
+    y: number;
+    value: number | null;
+    time: string;
+    name: string;
+    unit: string;
+    color: string;
+  } | null>(null);
+  
+  const chartWidth = SCREEN_WIDTH - 40;
+  const chartHeight = 220;
+  
+  const padding = { top: 20, right: 20, bottom: 40, left: 50 };
+  const graphWidth = chartWidth - padding.left - padding.right;
+  const graphHeight = chartHeight - padding.top - padding.bottom;
+  
+  // Use the provided axis range for Y-axis scaling
+  const minValue = axisRange.min;
+  const maxScaledValue = axisRange.max;
+  const yAxisLabels = axisRange.ticks;
+  
+  const valueRange = useMemo(() => {
+    return maxScaledValue - minValue;
+  }, [minValue, maxScaledValue]);
+  
+  // Functions to calculate x and y positions
+  const getX = useCallback((index: number, totalPoints: number) => {
+    // Calculate x position ensuring points stay within the graph boundaries
+    const xPadding = 0;
+    return padding.left + xPadding + ((index) * (graphWidth - xPadding)) / (totalPoints - 1);
+  }, [graphWidth, padding.left]);
+  
+  const getY = useCallback((value: number | null) => {
+    if (value === undefined || value === null) {
+      return padding.top + graphHeight;
+    }
+    
+    if (isNaN(Number(value))) {
+      return padding.top + graphHeight;
+    }
+    
+    // Clamp value between min and max to prevent rendering outside the chart area
+    const clampedValue = Math.max(minValue, Math.min(maxScaledValue, value));
+    return padding.top + graphHeight - ((clampedValue - minValue) / valueRange) * graphHeight;
+  }, [graphHeight, maxScaledValue, minValue, valueRange, padding.top]);
+
+  // Function to find the closest data point to touch coordinates
+  const findClosestPoint = useCallback((touchX: number, touchY: number) => {
+    let closestDistance = Infinity;
+    let closestPoint = null;
+    
+    meterData.forEach((series, seriesIndex) => {
+      series.data.forEach((value, pointIndex) => {
+        if (value === undefined || value === null || Number.isNaN(Number(value))) return;
+        
+        const pointX = getX(pointIndex, series.data.length);
+        const pointY = getY(value);
+        
+        // Place extra weight on x-distance to make vertical proximity less important
+        const xDistance = Math.abs(touchX - pointX);
+        const yDistance = Math.abs(touchY - pointY);
+        
+        // Use weighted distance calculation - x distance matters more than y
+        const distance = xDistance * 2 + yDistance;
+        
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestPoint = { seriesIndex, pointIndex, value };
+        }
+      });
+    });
+    
+    // Increased the detection range to 50px to be more forgiving
+    if (closestDistance < 50 && closestPoint) {
+      return closestPoint;
+    }
+    
+    return null;
+  }, [getX, getY, meterData]);
+
+  // Handle touch on graph
+  const handleTouch = useCallback((event: GestureResponderEvent) => {
+    try {
+      // Get touch location relative to the chart
+      const touchX = event.nativeEvent.locationX;
+      const touchY = event.nativeEvent.locationY;
+      
+      // Find closest data point
+      const closestPoint = findClosestPoint(touchX, touchY);
+      
+      if (closestPoint) {
+        const { seriesIndex, pointIndex, value } = closestPoint;
+        const series = meterData[seriesIndex];
+        
+        setTouchedPoint({
+          seriesIndex,
+          pointIndex,
+          x: getX(pointIndex, series.data.length),
+          y: getY(value),
+          value,
+          time: timeLabels[pointIndex],
+          name: series.name,
+          unit: series.unit,
+          color: series.color
+        });
+      } else {
+        // Touch was not near any point
+        setTouchedPoint(null);
+      }
+    } catch (error) {
+      console.log('Error in touch handling:', error);
+      setTouchedPoint(null);
+    }
+  }, [findClosestPoint, getX, getY, meterData, timeLabels]);
+
+  // Clear touch when touching outside points
+  const handleTouchOutside = useCallback(() => {
+    setTouchedPoint(null);
+  }, []);
+  
+  // Create PanResponder for handling touch gestures
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (evt) => {
+      handleTouch(evt);
+    },
+    onPanResponderMove: (evt) => {
+      handleTouch(evt);
+    },
+    onPanResponderRelease: () => {
+      // Keep tooltip visible after touch release
+    },
+    onPanResponderTerminate: () => {
+      // Keep tooltip visible after touch terminate
+    },
+  }), [handleTouch]);
+  
+  // Format a number for display with proper handling of undefined/null values
+  const formatDisplayValue = useCallback((value: any) => {
+    if (value === undefined || value === null || isNaN(value)) {
+      return "-";
+    }
+    
+    // Convert to string with 2 decimal places
+    let numStr = String(Math.round(value * 100) / 100);
+    
+    // Add decimal places if needed
+    if (!numStr.includes('.')) {
+      numStr += '.00';
+    } else if (numStr.split('.')[1].length === 1) {
+      numStr += '0';
+    }
+    
+    return numStr;
+  }, []);
+
+  return (
+    <View style={[styles.chartContainer, { backgroundColor: surfaceColor }]}>
+      <View style={{ height: chartHeight, position: 'relative' }}>
+        {/* Grid Lines */}
+        {yAxisLabels.map((yValue, i) => {
+          const yPosition = getY(yValue);
+          return (
+            <View 
+              key={`h-grid-${i}`}
+              style={{
+                position: 'absolute',
+                left: padding.left,
+                top: yPosition,
+                width: graphWidth,
+                height: 1,
+                backgroundColor: gridColor,
+              }}
+            />
+          );
+        })}
+        
+        {/* Add vertical grid lines */}
+        {[...Array(6)].map((_, i) => {
+          const xPosition = padding.left + (i * graphWidth) / 5;
+          return (
+            <View 
+              key={`v-grid-${i}`}
+              style={{
+                position: 'absolute',
+                left: xPosition,
+                top: padding.top,
+                width: 1,
+                height: graphHeight,
+                backgroundColor: gridColor,
+              }}
+            />
+          );
+        })}
+        
+        {/* Y-axis labels */}
+        {yAxisLabels.map((value, i) => {
+          return (
+            <Text 
+              key={`y-label-${i}`}
+              style={{
+                position: 'absolute',
+                left: 10,
+                top: getY(value) - 10,
+                color: textColor,
+                fontSize: 10,
+              }}
+            >
+              {formatDisplayValue(value)}
+            </Text>
+          );
+        })}
+        
+        {/* X-axis labels - using actual data points */}
+        {timeLabels.map((label, i) => {
+          // Skip some labels if we have too many to display
+          if (timeLabels.length > 6 && i % Math.ceil(timeLabels.length / 6) !== 0 && i !== timeLabels.length - 1) {
+            return null;
+          }
+          
+          // Calculate position ensuring points stay within the graph
+          const position = getX(i, timeLabels.length);
+          
+          return (
+            <Text 
+              key={`x-label-${i}`}
+              style={{
+                position: 'absolute',
+                left: position - 15,
+                top: padding.top + graphHeight + 10,
+                color: textColor,
+                fontSize: 10,
+                width: 30,
+                textAlign: 'center',
+              }}
+            >
+              {label}
+            </Text>
+          );
+        })}
+        
+        {/* Draw lines for each data series with increased thickness */}
+        {meterData.map((series, seriesIndex) => (
+          series.data.map((value, i) => {
+            // Skip if current point or next point is invalid or if we're at the last point
+            if (i === series.data.length - 1 || 
+                value === undefined || value === null || isNaN(Number(value)) || 
+                series.data[i + 1] === undefined || series.data[i + 1] === null || isNaN(Number(series.data[i + 1]))) 
+              return null;
+            
+            const startX = getX(i, series.data.length);
+            const startY = getY(value);
+            const endX = getX(i + 1, series.data.length);
+            const endY = getY(series.data[i + 1]);
+            
+            // Only draw line if both points are within a reasonable range and within the graph boundaries
+            if (startX < padding.left || endX < padding.left || 
+                startX > padding.left + graphWidth || endX > padding.left + graphWidth ||
+                startY < padding.top || endY < padding.top || 
+                startY > padding.top + graphHeight || endY > padding.top + graphHeight ||
+                Math.abs(endY - startY) > graphHeight * 0.9) { // Skip extreme jumps
+              return null;
+            }
+            
+            return (
+              <Line
+                key={`line-${seriesIndex}-${i}`}
+                startX={startX}
+                startY={startY}
+                endX={endX}
+                endY={endY}
+                color={series.color}
+                thickness={2} // Increased line thickness
+              />
+            );
+          })
+        ))}
+        
+        {/* Touch overlay for the entire chart area */}
+        <View
+          {...panResponder.panHandlers}
+          style={{
+            position: 'absolute',
+            left: padding.left,
+            top: padding.top,
+            width: graphWidth,
+            height: graphHeight,
+            zIndex: 10,
+          }}
+        />
+        
+        {/* Tooltip for selected point */}
+        {touchedPoint && (
+          <View
+            style={{
+              position: 'absolute',
+              left: (touchedPoint.x < chartWidth / 2) ? touchedPoint.x + 10 : touchedPoint.x - 160,
+              top: (touchedPoint.y < chartHeight / 2) ? touchedPoint.y + 10 : touchedPoint.y - 80,
+              width: 150,
+              backgroundColor: isDarkMode ? 'rgba(17, 24, 39, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              borderRadius: 12,
+              padding: 12,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 6,
+              elevation: 8,
+              zIndex: 100,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: touchedPoint.color, marginRight: 8 }} />
+                <Text style={{ color: textColor, fontWeight: 'bold', fontSize: 14 }} numberOfLines={1}>
+                  {touchedPoint.name}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={handleTouchOutside} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close-circle" size={20} color={textColor} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginBottom: 8 }}>
+              <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 12 }}>Value</Text>
+              <Text style={{ color: touchedPoint.color, fontSize: 18, fontWeight: '600' }}>
+                {formatDisplayValue(touchedPoint.value)} {touchedPoint.unit}
+              </Text>
+            </View>
+
+            <View>
+              <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 12 }}>Time</Text>
+              <Text style={{ color: textColor, fontSize: 14 }}>
+                {touchedPoint.time}
+              </Text>
+            </View>
+          </View>
+        )}
+        
+        {/* Axes */}
+        <View 
+          style={{
+            position: 'absolute',
+            left: padding.left,
+            top: padding.top + graphHeight,
+            width: graphWidth,
+            height: 1,
+            backgroundColor: textColor,
+          }}
+        />
+        <View 
+          style={{
+            position: 'absolute',
+            left: padding.left,
+            top: padding.top,
+            width: 1,
+            height: graphHeight,
+            backgroundColor: textColor,
+          }}
+        />
+      </View>
+      
+      {/* Legend */}
+      <View style={styles.chartLegend}>
+        {meterData.map((series, index) => (
+          <View key={series.name} style={styles.legendItem}>
+            <View
+              style={[
+                styles.legendColor,
+                { backgroundColor: series.color }
+              ]}
+            />
+            <Text
+              style={[
+                styles.legendText,
+                { color: isDarkMode ? '#94A3B8' : '#64748B' },
+              ]}>
+              {series.name}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+};
+
 export default function MeterReadingsScreen() {
   // Theme and Auth Context
   const { isDarkMode, toggleTheme } = useTheme();
@@ -41,6 +496,7 @@ export default function MeterReadingsScreen() {
   // UI State
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTimeframe, setSelectedTimeframe] = useState<number>(1); // Default 1 hour
+  const [graphView, setGraphView] = useState<'primary' | 'secondary'>('primary'); // New state for graph view
   
   // Get unread notifications count
   const { data: unreadCount = 0 } = useUnreadCount();
@@ -133,7 +589,64 @@ export default function MeterReadingsScreen() {
     ];
   }, [latestReadingData, isDarkMode]);
 
-  // Process chart data
+  // Improve the sanitizeOutliers function to better handle data gaps
+  const sanitizeOutliers = (data: number[], timestamps: string[]): (number | null)[] => {
+    if (data.length <= 2) return data as (number | null)[];
+    
+    const validValues = data.filter(v => v !== undefined && v !== null && !isNaN(v));
+    if (validValues.length <= 2) return data as (number | null)[];
+    
+    // Calculate mean and standard deviation
+    const mean = validValues.reduce((sum, val) => sum + val, 0) / validValues.length;
+    const stdDev = Math.sqrt(
+      validValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / validValues.length
+    );
+    
+    // Filter out extreme values (more than 3 standard deviations from the mean)
+    const threshold = 3 * stdDev;
+    
+    // Also handle time gaps - don't connect points that are too far apart in time
+    const result = data.map((v, i) => {
+      if (v === undefined || v === null || isNaN(Number(v))) return null;
+      
+      // Check for large time gaps if we have timestamp data
+      if (i > 0 && timestamps && timestamps[i] && timestamps[i-1]) {
+        const currentTime = new Date(timestamps[i]).getTime();
+        const prevTime = new Date(timestamps[i-1]).getTime();
+        const timeDiff = Math.abs(currentTime - prevTime);
+        
+        // If time difference is more than 15 minutes, don't connect these points
+        if (timeDiff > 15 * 60 * 1000) {
+          return null;
+        }
+      }
+      
+      return Math.abs(v - mean) > threshold ? null : v;
+    });
+    
+    return result;
+  };
+
+  // Add a function to convert UTC to IST (UTC+5:30)
+  const convertToIST = (utcDateString: string): Date => {
+    const date = new Date(utcDateString);
+    // Add 5 hours and 30 minutes for IST
+    return new Date(date.getTime() + (5 * 60 + 30) * 60 * 1000);
+  };
+
+  // Format time with IST conversion
+  const formatTimeIST = (dateString: string): string => {
+    const istDate = convertToIST(dateString);
+    return istDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Format full timestamp with IST conversion
+  const formatTimestampIST = (dateString: string): string => {
+    const istDate = convertToIST(dateString);
+    return istDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
+
+  // Update the chart data processing to handle time gaps and convert timestamps
   const chartData = useMemo(() => {
     if (!historyData || historyData.length === 0) {
       return null;
@@ -144,183 +657,105 @@ export default function MeterReadingsScreen() {
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
 
-    // Format x-axis labels based on selected timeframe
-    const getFormattedLabels = () => {
-      // Determine how many labels to show
-      const labelCount = 6;
-      const step = Math.max(1, Math.floor(sortedData.length / labelCount));
-      
-      return sortedData.map((d, i) => {
-        const date = new Date(d.created_at);
+    // Format time labels based on the actual timestamps in the data with IST conversion
+    const formatTimeLabels = () => {
+      return sortedData.map(item => {
+        const istDate = convertToIST(item.created_at);
         
-        // Different format based on timeframe
+        // Format based on timeframe
         if (selectedTimeframe === 1) {
-          // For 1 hour, show minutes (e.g., "14:30")
-          return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+          // For 1-hour, show HH:MM
+          const hours = istDate.getHours().toString().padStart(2, '0');
+          const minutes = istDate.getMinutes().toString().padStart(2, '0');
+          return `${hours}:${minutes}`;
         } else if (selectedTimeframe === 6) {
-          // For 6 hours, show hours and minutes (e.g., "14:30")
-          return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+          // For 6-hour, show HH:MM
+          const hours = istDate.getHours().toString().padStart(2, '0');
+          const minutes = istDate.getMinutes().toString().padStart(2, '0');
+          return `${hours}:${minutes}`;
         } else {
-          // For 24 hours, show hour only (e.g., "14h")
-          return `${date.getHours()}h`;
+          // For 24-hour, show HH:00 format
+          const hours = istDate.getHours().toString().padStart(2, '0');
+          return `${hours}h`;
         }
-      }).filter((_, i) => i % step === 0); // Show ~labelCount labels
+      });
     };
 
-    // Extract data for chart
+    // Get time labels from actual data
+    const labels = formatTimeLabels();
+    const timestamps = sortedData.map(d => d.created_at);
+
+    // Define color mapping for each parameter as string values
+    const paramColors = {
+      voltage: isDarkMode ? '#F59E0B' : '#D97706', // Amber
+      current: isDarkMode ? '#06B6D4' : '#0891B2', // Cyan
+      frequency: isDarkMode ? '#10B981' : '#059669', // Green
+      pf: isDarkMode ? '#8B5CF6' : '#7C3AED', // Purple
+      power: isDarkMode ? '#F97316' : '#EA580C', // Orange
+      energy: isDarkMode ? '#EC4899' : '#DB2777', // Pink
+    };
+
+    // Define units for each parameter
+    const paramUnits = {
+      voltage: 'V',
+      current: 'A',
+      frequency: 'Hz',
+      pf: '',
+      power: 'kW',
+      energy: 'kWh',
+    };
+
+    // Create datasets based on the selected view with sanitized data and time-gap handling
+    const primaryDatasets = [
+      {
+        name: 'Power Factor',
+        color: paramColors.pf,
+        data: sanitizeOutliers(sortedData.map(d => d.pf), timestamps),
+        unit: paramUnits.pf
+      },
+      {
+        name: 'Power',
+        color: paramColors.power,
+        data: sanitizeOutliers(sortedData.map(d => d.power), timestamps),
+        unit: paramUnits.power
+      },
+      {
+        name: 'Current',
+        color: paramColors.current,
+        data: sanitizeOutliers(sortedData.map(d => d.current), timestamps),
+        unit: paramUnits.current
+      },
+      {
+        name: 'Energy',
+        color: paramColors.energy,
+        data: sanitizeOutliers(sortedData.map(d => d.energy), timestamps),
+        unit: paramUnits.energy
+      }
+    ];
+    
+    const secondaryDatasets = [
+      {
+        name: 'Frequency',
+        color: paramColors.frequency,
+        data: sanitizeOutliers(sortedData.map(d => d.frequency), timestamps),
+        unit: paramUnits.frequency
+      },
+      {
+        name: 'Voltage',
+        color: paramColors.voltage,
+        data: sanitizeOutliers(sortedData.map(d => d.voltage), timestamps),
+        unit: paramUnits.voltage
+      }
+    ];
+    
+    // Return the chart data based on selected view
     return {
-      labels: getFormattedLabels(),
-      datasets: [
-        {
-          data: sortedData.map(d => d.voltage),
-          color: () => isDarkMode ? '#F59E0B' : '#D97706', // Amber
-          strokeWidth: 2
-        },
-        {
-          data: sortedData.map(d => d.current),
-          color: () => isDarkMode ? '#06B6D4' : '#0891B2', // Cyan - changed from blue
-          strokeWidth: 2
-        },
-        {
-          data: sortedData.map(d => d.frequency),
-          color: () => isDarkMode ? '#10B981' : '#059669', // Green
-          strokeWidth: 2
-        },
-        {
-          // Scale PF by 200 to make it more visible (instead of 100)
-          data: sortedData.map(d => Math.max(0.1, d.pf) * 200),
-          color: () => isDarkMode ? '#8B5CF6' : '#7C3AED', // Purple
-          strokeWidth: 2
-        },
-        {
-          data: sortedData.map(d => d.power),
-          color: () => isDarkMode ? '#F97316' : '#EA580C', // Orange
-          strokeWidth: 2
-        },
-      ],
-      legend: ['Voltage', 'Current', 'Frequency', 'PF', 'Power'],
-      // Store original data for tooltip
+      labels,
+      primaryDatasets,
+      secondaryDatasets,
       rawData: sortedData
     };
   }, [historyData, isDarkMode, selectedTimeframe]);
-
-  // State for tooltip
-  const [tooltipVisible, setTooltipVisible] = useState(false);
-  const [tooltipData, setTooltipData] = useState<{
-    dataPoint: number;
-    dataset: number;
-    x: number;
-    y: number;
-    position: { x: number, y: number };
-    timestamp: string;
-    value: number;
-    label: string;
-    color: string;
-    rawValue?: number;
-  } | null>(null);
-
-  // Handle chart point press
-  const handleDataPointClick = (data: any) => {
-    console.log("Chart clicked", data); // Keep logging for debugging
-    
-    if (!chartData || !data || typeof data.index === 'undefined') {
-      console.log("Invalid data for tooltip", data);
-      return;
-    }
-    
-    // Get the click index to find the corresponding data point in each dataset
-    const dataIndex = data.index;
-    
-    // Verify index is within range
-    if (dataIndex < 0 || dataIndex >= (chartData.rawData?.length || 0)) {
-      console.log("Index out of range", dataIndex);
-      return;
-    }
-    
-    // Get the vertical position of the click
-    const clickY = data.y;
-    
-    // Find which dataset's line is closest to the click point
-    let closestDataset = 0;
-    let minDistance = Number.MAX_VALUE;
-    
-    // Go through each dataset and find the closest one to the click point
-    chartData.datasets.forEach((dataset, datasetIndex) => {
-      const datasetValue = dataset.data[dataIndex];
-      // Calculate screen Y position for this dataset value (approximate)
-      // This calculation depends on the chart's internal scaling which we don't have direct access to
-      // So we use the proportion of the value relative to max value in the dataset
-      const maxValue = Math.max(...dataset.data);
-      const proportion = datasetValue / maxValue;
-      const estimatedY = 220 - (proportion * 220); // 220 is chart height
-      
-      const distance = Math.abs(estimatedY - clickY);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestDataset = datasetIndex;
-      }
-    });
-    
-    // Use the determined dataset index
-    const datasetIndex = closestDataset;
-    
-    // Get the raw reading data
-    const rawReading = chartData.rawData[dataIndex];
-    const timestamp = String(new Date(rawReading.created_at).toLocaleTimeString());
-    console.log('Timestamp type:', typeof timestamp);
-    console.log('Timestamp value:', timestamp);
-    
-    // Determine which parameter was pressed and get its color
-    const parameterLabel = chartData.legend[datasetIndex];
-    let datasetColor = '#666666'; // Default fallback color
-    
-    try {
-      // Safely get color from the dataset
-      if (chartData.datasets[datasetIndex] && typeof chartData.datasets[datasetIndex].color === 'function') {
-        datasetColor = chartData.datasets[datasetIndex].color();
-      }
-    } catch (error) {
-      console.log("Error getting dataset color:", error);
-      // Keep using fallback color
-    }
-    
-    // Set tooltip position manually to ensure visibility
-    const tooltipPosition = {
-      x: Math.max(50, Math.min(data.x, SCREEN_WIDTH - 100)), 
-      y: Math.max(100, data.y) // Ensure tooltip is visible
-    };
-    
-    // Get the actual value (convert back if it's power factor)
-    const dataValue = chartData.datasets[datasetIndex].data[dataIndex];
-    let rawValue = typeof dataValue === 'string' ? parseFloat(dataValue) : dataValue as number;
-    
-    if (datasetIndex === 3) { // PF is dataset index 3
-      rawValue = rawValue / 200; // Convert back from scaled value
-    }
-    
-    // Build tooltip data object directly with appropriate types
-    const tooltipDataObj = {
-      dataPoint: dataIndex,
-      dataset: datasetIndex,
-      x: data.x,
-      y: data.y,
-      position: tooltipPosition,
-      timestamp: timestamp,
-      value: rawValue,
-      label: parameterLabel,
-      color: datasetColor,
-      rawValue: rawValue
-    };
-    
-    setTooltipData(tooltipDataObj);
-    
-    setTooltipVisible(true);
-    
-    // Hide tooltip after delay
-    setTimeout(() => {
-      setTooltipVisible(false);
-    }, 5000);
-  };
 
   // Refresh all data
   const handleRefresh = useCallback(async () => {
@@ -547,7 +982,7 @@ export default function MeterReadingsScreen() {
                 styles.sectionSubtitle,
                 { color: isDarkMode ? '#94A3B8' : '#64748B' },
               ]}>
-              Last updated: {latestReadingData ? new Date(latestReadingData.created_at).toLocaleTimeString() : 'N/A'}
+              Last updated: {latestReadingData ? formatTimestampIST(latestReadingData.created_at) : 'N/A'}
             </Text>
           </View>
 
@@ -631,13 +1066,60 @@ export default function MeterReadingsScreen() {
 
           {/* Chart Section */}
           <View style={styles.chartSection}>
-            <View style={styles.sectionHeader}>
+            <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
               <Text style={[
                 styles.sectionTitle,
                 { color: isDarkMode ? '#F8FAFC' : '#1E293B' },
               ]}>
                 Parameter History
               </Text>
+              
+              {/* Toggle Switch for Graph View */}
+              <View style={[
+                styles.toggleContainer,
+                { borderColor: isDarkMode ? '#334155' : '#E2E8F0' }
+              ]}>
+                <TouchableOpacity 
+                  style={[
+                    styles.toggleButton,
+                    { backgroundColor: isDarkMode 
+                      ? graphView === 'primary' ? '#10B981' : '#1E293B' 
+                      : graphView === 'primary' ? '#059669' : '#F8FAFC' 
+                    }
+                  ]}
+                  onPress={() => setGraphView('primary')}
+                >
+                  <Text style={[
+                    styles.toggleText,
+                    { color: graphView === 'primary' 
+                      ? '#FFFFFF' 
+                      : isDarkMode ? '#94A3B8' : '#64748B' 
+                    }
+                  ]}>
+                    0-20
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[
+                    styles.toggleButton,
+                    { backgroundColor: isDarkMode 
+                      ? graphView === 'secondary' ? '#10B981' : '#1E293B' 
+                      : graphView === 'secondary' ? '#059669' : '#F8FAFC' 
+                    }
+                  ]}
+                  onPress={() => setGraphView('secondary')}
+                >
+                  <Text style={[
+                    styles.toggleText,
+                    { color: graphView === 'secondary' 
+                      ? '#FFFFFF' 
+                      : isDarkMode ? '#94A3B8' : '#64748B' 
+                    }
+                  ]}>
+                    0-200
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
             
             {isHistoryLoading ? (
@@ -646,136 +1128,15 @@ export default function MeterReadingsScreen() {
                 <Text style={{ color: isDarkMode ? '#94A3B8' : '#64748B', marginTop: 8 }}>Loading chart data...</Text>
               </View>
             ) : chartData ? (
-              <View style={styles.chartContainer}>
-                <LineChart
-                  data={chartData}
-                  width={SCREEN_WIDTH - 40}
-                  height={220}
-                  chartConfig={{
-                    backgroundColor: isDarkMode ? '#1E293B' : '#FFFFFF',
-                    backgroundGradientFrom: isDarkMode ? '#1E293B' : '#FFFFFF',
-                    backgroundGradientTo: isDarkMode ? '#1E293B' : '#FFFFFF',
-                    decimalPlaces: 1,
-                    color: (opacity = 1) => isDarkMode ? `rgba(248, 250, 252, ${opacity})` : `rgba(30, 41, 59, ${opacity})`,
-                    labelColor: (opacity = 1) => isDarkMode ? `rgba(148, 163, 184, ${opacity})` : `rgba(100, 116, 139, ${opacity})`,
-                    style: {
-                      borderRadius: 16,
-                    },
-                    propsForDots: {
-                      r: "0", // Set radius to 0 to hide dots
-                      strokeWidth: "0",
-                    },
-                    // Improved y-axis settings
-                    propsForBackgroundLines: {
-                      strokeWidth: 1,
-                      strokeDasharray: '', // Solid lines
-                      stroke: isDarkMode ? 'rgba(148, 163, 184, 0.3)' : 'rgba(100, 116, 139, 0.3)',
-                    },
-                    // Make y-axis values more visible
-                    propsForLabels: {
-                      fontSize: 10,
-                      fontWeight: 'bold',
-                    },
-                  }}
-                  bezier
-                  style={{
-                    marginVertical: 8,
-                    borderRadius: 16,
-                  }}
-                  withDots={true} // Changed to true to allow touch points
-                  withShadow={false}
-                  withInnerLines={true}
-                  withOuterLines={true}
-                  withVerticalLines={false}
-                  withHorizontalLines={true}
-                  yAxisInterval={2} // Show more y-axis lines
-                  yAxisLabel=""
-                  yAxisSuffix=""
-                  yLabelsOffset={10}
-                  segments={5} // More y-axis segments
-                  fromZero={true} // Start y-axis from zero
-                  onDataPointClick={handleDataPointClick}
-                  hidePointsAtIndex={[]} // No hidden points
-                  getDotColor={(dataPoint, index) => 'rgba(0,0,0,0)'} // Transparent dots
-                  getDotProps={(value, index) => ({
-                    r: '8', // Larger invisible touch area
-                    strokeWidth: 0,
-                    stroke: 'transparent',
-                    fill: 'transparent',
-                  })}
-                />
-                
-                {/* Custom Tooltip */}
-                {tooltipVisible && tooltipData && (
-                  <View 
-                    style={[
-                      styles.tooltip, 
-                      { 
-                        backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-                        top: tooltipData.position.y - 100,
-                        left: Math.max(20, Math.min(tooltipData.position.x - 75, SCREEN_WIDTH - 170)),
-                        borderColor: tooltipData.color,
-                        borderWidth: 2,
-                      }
-                    ]}
-                  >
-                    <View 
-                      style={[
-                        styles.tooltipPointer, 
-                        { 
-                          borderTopColor: isDarkMode ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-                          borderLeftColor: 'transparent',
-                          borderRightColor: 'transparent'
-                        }
-                      ]} 
-                    />
-                    <Text style={[styles.tooltipTitle, { color: isDarkMode ? '#F8FAFC' : '#1E293B' }]}>
-                      {tooltipData.label}
-                    </Text>
-                    <View style={styles.tooltipRow}>
-                      <Text style={[styles.tooltipLabel, { color: isDarkMode ? '#94A3B8' : '#64748B' }]}>Time:</Text>
-                      <Text style={[styles.tooltipValue, { color: isDarkMode ? '#F8FAFC' : '#1E293B' }]}>
-                        {tooltipData.timestamp}
-                      </Text>
-                    </View>
-                    <View style={styles.tooltipRow}>
-                      <Text style={[styles.tooltipLabel, { color: isDarkMode ? '#94A3B8' : '#64748B' }]}>Value:</Text>
-                      <Text style={[styles.tooltipValue, { color: tooltipData.color }]}>
-                        {tooltipData.dataset === 3 
-                          ? `${formatNumber(tooltipData.rawValue || 0, 2)}` // PF with 2 decimals
-                          : `${formatNumber(tooltipData.rawValue !== undefined ? tooltipData.rawValue : tooltipData.value)}`}
-                        {tooltipData.dataset === 0 ? ' V' : 
-                         tooltipData.dataset === 1 ? ' A' :
-                         tooltipData.dataset === 2 ? ' Hz' :
-                         tooltipData.dataset === 3 ? '' : ' kW'}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-                
-                {/* Legend */}
-                <View style={styles.chartLegend}>
-                  {chartData.legend.map((label, index) => (
-                    <View key={label} style={styles.legendItem}>
-                      <View
-                        style={[
-                          styles.legendColor,
-                          {
-                            backgroundColor: chartData.datasets[index].color(),
-                          },
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.legendText,
-                          { color: isDarkMode ? '#94A3B8' : '#64748B' },
-                        ]}>
-                        {label}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
+              <CustomChart 
+                meterData={graphView === 'primary' ? chartData.primaryDatasets : chartData.secondaryDatasets} 
+                timeLabels={chartData.labels} 
+                isDarkMode={isDarkMode}
+                axisRange={graphView === 'primary' 
+                  ? { min: 0, max: 20, ticks: [0, 5, 10, 15, 20] }
+                  : { min: 0, max: 200, ticks: [0, 50, 100, 150, 200] }
+                }
+              />
             ) : (
               <View style={styles.noDataContainer}>
                 <Ionicons name="analytics-outline" size={48} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
@@ -836,7 +1197,7 @@ export default function MeterReadingsScreen() {
                       },
                     ]}>
                     <Text style={[styles.tableCell, { color: isDarkMode ? '#94A3B8' : '#64748B' }]}>
-                      {new Date(reading.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTimeIST(reading.created_at)}
                     </Text>
                     <Text style={[
                       styles.tableCell, 
@@ -1228,8 +1589,20 @@ const styles = StyleSheet.create({
     marginVertical: 8,
   },
   chartContainer: {
-    alignItems: 'center',
-    paddingVertical: 8,
+    marginVertical: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   chartLoadingContainer: {
     height: 220,
@@ -1245,7 +1618,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    marginTop: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
   },
   legendItem: {
     flexDirection: 'row',
@@ -1350,49 +1724,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  tooltip: {
-    position: 'absolute',
-    width: 150,
-    padding: 10,
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-    zIndex: 1000,
-  },
-  tooltipPointer: {
-    position: 'absolute',
-    bottom: -10,
-    left: 70,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 10,
-    borderRightWidth: 10,
-    borderTopWidth: 10,
-    borderStyle: 'solid',
-    backgroundColor: 'transparent',
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-  },
-  tooltipTitle: {
-    fontWeight: 'bold',
-    fontSize: 14,
-    marginBottom: 5,
-    textAlign: 'center',
-  },
-  tooltipRow: {
+  toggleContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 2,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'gray', // We'll apply the dynamic color in the component
   },
-  tooltipLabel: {
-    fontSize: 12,
+  toggleButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  tooltipValue: {
+  toggleText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '500',
   },
 });
