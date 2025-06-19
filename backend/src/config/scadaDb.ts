@@ -4,6 +4,11 @@ import { logError } from './../utils/logger';
 
 const DEBUG = process.env.NODE_ENV === 'development';
 
+// Custom error interface with code property
+interface PostgresError extends Error {
+  code?: string;
+}
+
 const createScadaPool = () => {
   try {
     const dbUrl = process.env.DATABASE_URL;
@@ -32,11 +37,12 @@ const createScadaPool = () => {
       },
       // Enhanced connection pool settings to prevent timeouts
       max: 20,               // Maximum number of clients in the pool
-      min: 2,  // Keep at least 2 connections ready
-      idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
-      connectionTimeoutMillis: 2000, // How long to wait for a connection
-      maxUses: 7500,        // Close and replace after this many uses
-      allowExitOnIdle: false // Don't exit on idle
+      min: 4,                // Keep at least 4 connections ready
+      idleTimeoutMillis: 15000, // Reduced idle timeout below our 30s polling interval
+      connectionTimeoutMillis: 5000, // Increased time to wait for a connection
+      maxUses: 5000,         // Close and replace after this many uses
+      allowExitOnIdle: false, // Don't exit on idle
+      keepAlive: true       // Enable TCP keepalive
     });
 
     // Add event listeners for connection issues
@@ -44,10 +50,16 @@ const createScadaPool = () => {
       if (DEBUG) console.log('🟢 New client connected to SCADA DB');
     });
 
-    pool.on('error', (err, client) => {
+    pool.on('error', (err: PostgresError, client) => {
       logError('Unexpected error on idle client', err);
+      // Force close this client and let the pool create a new one
       if (client) {
         client.release(true);
+      }
+      // Recreate the pool if we had critical errors
+      if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
+        console.log('🔄 Database connection error detected, recreating connection pool');
+        scadaPool = createScadaPool();
       }
     });
 
@@ -79,8 +91,27 @@ const getScadaPool = () => {
 // Helper function to get a client with retry logic
 export async function getClientWithRetry(retries = 3, delay = 500): Promise<PoolClient> {
   try {
-    if (DEBUG) console.log('🔵 Client acquired from pool');
+    // Check if pool is healthy, recreate if needed
+    if (!scadaPool || scadaPool.totalCount < 1) {
+      console.log('🔄 Pool doesn\'t exist or is empty, recreating connection pool');
+      scadaPool = createScadaPool();
+    }
+    
     const client = await getScadaPool().connect();
+    
+    // Test if connection is still valid with simple query
+    try {
+      await client.query('SELECT 1');
+    } catch (testError) {
+      console.error('❌ Connection test failed, releasing and retrying', testError);
+      client.release(true);
+      // If we still have retries left, attempt to get a new client
+      if (retries > 0) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return getClientWithRetry(retries - 1, delay * 2);
+      }
+      throw new Error('Connection test failed');
+    }
     
     // Ensure client is properly released when it's no longer needed
     const originalRelease = client.release;
@@ -158,8 +189,10 @@ export async function testScadaConnection() {
 // Close all database connections
 export async function closeScadaConnections() {
   try {
-    await getScadaPool().end();
-    if (DEBUG) console.log('✅ All SCADA database connections closed');
+    if (scadaPool) {
+      await scadaPool.end();
+      if (DEBUG) console.log('✅ All SCADA database connections closed');
+    }
     return true;
   } catch (error) {
     console.error('❌ Error closing SCADA database connections:', error);

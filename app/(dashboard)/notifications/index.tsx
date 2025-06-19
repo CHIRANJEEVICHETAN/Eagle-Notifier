@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { format as formatDate, isToday, isYesterday, isThisWeek } from 'date-fns';
 import { useTheme } from '../../context/ThemeContext';
@@ -26,6 +26,9 @@ import { Notification } from '../../types/notification';
 export default function NotificationsScreen() {
   const { isDarkMode } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const source = params.source as string | undefined;
+  
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [refreshing, setRefreshing] = useState(false);
   
@@ -38,11 +41,24 @@ export default function NotificationsScreen() {
     hasNextPage,
     isFetchingNextPage,
     refetch
-  } = useNotifications(filter);
+  } = useNotifications(filter, 10, source);
   
   const markAsReadMutation = useMarkAsRead();
   const markAllAsReadMutation = useMarkAllAsRead();
   const deleteNotificationMutation = useDeleteNotification();
+  
+  // Determine title and subtitle based on source
+  const pageTitle = useMemo(() => {
+    if (source === 'Meter') return 'Meter Notifications';
+    if (source === 'Furnace') return 'Furnace Notifications';
+    return 'Notifications';
+  }, [source]);
+
+  const pageSubtitle = useMemo(() => {
+    if (source === 'Meter') return 'Meter reading alerts and updates';
+    if (source === 'Furnace') return 'Furnace status alerts and updates';
+    return 'Stay updated with system alerts';
+  }, [source]);
   
   // Flatten the pages of notifications
   const notifications = useMemo(() => {
@@ -239,6 +255,18 @@ export default function NotificationsScreen() {
   const renderEmptyComponent = useCallback(() => {
     if (isLoading) return null;
     
+    const emptyMessage = source 
+      ? `No ${source.toLowerCase()} notifications`
+      : 'No notifications';
+    
+    const emptySubtitle = filter === 'unread' 
+      ? source 
+        ? `You have no unread ${source.toLowerCase()} notifications`
+        : 'You have no unread notifications'
+      : source 
+        ? `You have no ${source.toLowerCase()} notifications yet`
+        : 'You have no notifications yet';
+    
     return (
       <View style={[
         styles.emptyContainer,
@@ -253,19 +281,17 @@ export default function NotificationsScreen() {
           styles.emptyTitle,
           { color: isDarkMode ? '#FFFFFF' : '#1F2937' }
         ]}>
-          No notifications
+          {emptyMessage}
         </Text>
         <Text style={[
           styles.emptySubtitle,
           { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
         ]}>
-          {filter === 'unread' 
-            ? 'You have no unread notifications' 
-            : 'You have no notifications yet'}
+          {emptySubtitle}
         </Text>
       </View>
     );
-  }, [isLoading, isDarkMode, filter]);
+  }, [isLoading, isDarkMode, filter, source]);
   
   // Render footer component
   const renderFooterComponent = useCallback(() => {
@@ -393,13 +419,13 @@ export default function NotificationsScreen() {
             styles.headerTitle,
             { color: isDarkMode ? '#FFFFFF' : '#1F2937' }
           ]}>
-            Notifications
+            {pageTitle}
           </Text>
           <Text style={[
             styles.headerSubtitle,
             { color: isDarkMode ? '#9CA3AF' : '#6B7280' }
           ]}>
-            Stay updated with system alerts
+            {pageSubtitle}
           </Text>
         </View>
       </View>

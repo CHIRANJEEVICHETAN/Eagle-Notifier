@@ -10,7 +10,7 @@ import scadaRoutes from './src/routes/scadaRoutes';
 import maintenanceRoutes from './src/routes/maintenanceRoutes';
 import reportRoutes from './src/routes/reportRoutes';
 import { processAndFormatAlarms } from './src/services/scadaService';
-import { testScadaConnection } from './src/config/scadaDb';
+import { testScadaConnection, checkScadaHealth } from './src/config/scadaDb';
 import prisma from './src/config/db';
 import authRoutes from './src/routes/authRoutes';
 import operatorRoutes from './src/routes/operatorRoutes';
@@ -19,6 +19,17 @@ import meterRoutes from './src/routes/meterRoutes';
 // Load environment variables
 dotenv.config();
 
+// Type definitions for Express middleware stacks
+interface RouteHandler {
+  route?: {
+    path: string;
+    methods: Record<string, boolean>;
+  };
+  name?: string;
+  handle?: {
+    stack: RouteHandler[];
+  };
+}
 
 // Initialize Express app
 const app = express();
@@ -88,15 +99,50 @@ app.use((req, res) => {
 // Error handling middleware (must be after all other middleware and routes)
 app.use(errorHandler);
 
-// SCADA Data Polling
-const SCADA_POLL_INTERVAL = parseInt(process.env.SCADA_POLL_INTERVAL || '30000'); // Default 30 seconds
+// Get polling interval - first check for EXPO_PUBLIC_SCADA_INTERVAL, then fallback to other env vars
+const SCADA_POLL_INTERVAL = parseInt(
+  process.env.SCADA_POLL_INTERVAL || process.env.EXPO_PUBLIC_SCADA_INTERVAL ||  
+  '30000'
+); // Default 30 seconds
 
+// Track if polling is currently active
+let isPolling = false;
+
+// Reliable polling function with overlap protection
 async function pollScadaData() {
+  // Skip if already polling to prevent overlap
+  if (isPolling) {
+    console.log('⚠️ Previous poll still in progress, skipping this interval');
+    return;
+  }
+
   try {
-    await processAndFormatAlarms();
-    console.log('SCADA data processed successfully');
+    isPolling = true;
+    console.log(`📊 Polling SCADA data at ${new Date().toISOString()}`);
+    
+    // Adding a timeout to prevent stuck operations
+    const pollPromise = processAndFormatAlarms(true); // Force refresh
+    
+    // Add a timeout to ensure we don't get stuck
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('SCADA poll timeout')), 20000); // 20 second timeout
+    });
+    
+    await Promise.race([pollPromise, timeoutPromise]);
+    console.log('✅ SCADA data processed successfully');
   } catch (error) {
-    console.error('Error polling SCADA data:', error);
+    console.error('🔴 Error polling SCADA data:', error);
+    
+    // Check database health if we encounter an error
+    const healthStatus = await checkScadaHealth();
+    console.log('🏥 SCADA DB Health Check:', healthStatus.status);
+    
+    if (healthStatus.status === 'unhealthy') {
+      console.log('🔄 Attempting to reconnect to SCADA database...');
+      await testScadaConnection();
+    }
+  } finally {
+    isPolling = false;
   }
 }
 
@@ -127,39 +173,44 @@ async function startServer() {
     // Start server
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
+      
+      // Log all available routes
       console.log('Available routes:');
-      console.log('GET /api/notifications');
-      console.log('GET /api/notifications/:id');
-      console.log('PATCH /api/notifications/:id/read');
-      console.log('PATCH /api/notifications/mark-all-read');
-      console.log('DELETE /api/notifications/:id');
-      console.log('PUT /api/notifications/push-token');
+      // Simplified route logging to avoid type issues
+      console.log('/api/auth routes (authentication)');
+      console.log('/api/alarms routes (alarm management)');
+      console.log('/api/admin routes (administrative functions)');
+      console.log('/api/operator routes (operator functions)');
+      console.log('/api/notifications routes (notification management)');
+      console.log('/api/scada routes (SCADA data access)');
+      console.log('/api/maintenance routes (maintenance operations)');
+      console.log('/api/reports routes (reporting functions)');
+      console.log('/api/meter routes (meter readings)');
+
       console.log(`SCADA polling interval: ${SCADA_POLL_INTERVAL}ms`);
 
       // Start SCADA polling if connection was successful
       if (scadaConnected) {
-        // Use reference to allow clearing interval on shutdown
+        // Use reliable interval with jitter to prevent thundering herd problems
         const pollingInterval = setInterval(() => {
-          try {
+          // Add small random jitter (±500ms) to prevent synchronized requests
+          const jitter = Math.floor(Math.random() * 1000) - 500;
+          setTimeout(() => {
             pollScadaData().catch(error => {
               console.error('Error in SCADA polling:', error);
             });
-          } catch (error) {
-            console.error('Error in SCADA polling:', error);
-          }
+          }, jitter);
         }, SCADA_POLL_INTERVAL);
         
         // Add to tracked intervals for clean shutdown
         trackedIntervals.push(pollingInterval);
         
-        // Initial poll with error handling
-        try {
+        // Initial poll with error handling (with a slight delay to ensure server is fully ready)
+        setTimeout(() => {
           pollScadaData().catch(error => {
             console.error('Error in initial SCADA poll:', error);
           });
-        } catch (error) {
-          console.error('Error in initial SCADA poll:', error);
-        }
+        }, 2000);
       }
     });
   } catch (error) {

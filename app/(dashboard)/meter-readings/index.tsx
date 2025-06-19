@@ -878,7 +878,10 @@ export default function MeterReadingsScreen() {
                 backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)',
               },
             ]}
-            onPress={() => router.push('/notifications')}>
+            onPress={() => router.push({
+              pathname: '/notifications',
+              params: { source: 'Meter' }
+            })}>
             <Ionicons
               name="notifications-outline"
               size={22}

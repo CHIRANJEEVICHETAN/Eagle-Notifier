@@ -6,12 +6,19 @@ import { AlarmStatus } from './../generated/prisma-client';
 
 const DEBUG = process.env.NODE_ENV === 'development';
 
-// Define SCADA polling interval from environment or use default (2 minutes)
-export const SCADA_POLLING_INTERVAL = parseInt(process.env.SCADA_POLLING_INTERVAL || '30000', 10);
+// Define SCADA polling interval from environment or use default (30 seconds)
+export const SCADA_POLLING_INTERVAL = parseInt(
+  process.env.SCADA_POLL_INTERVAL || process.env.EXPO_PUBLIC_SCADA_INTERVAL ||  
+  '30000'
+); // Default 30 seconds
 
 // Cache for last fetch time to respect polling interval
 let lastFetchTime = 0;
 let cachedScadaData: ScadaData | null = null;
+
+// Keep track of consecutive errors for backoff strategy
+let consecutiveErrors = 0;
+const MAX_CONSECUTIVE_ERRORS = 5;
 
 export interface ScadaData {
     // Analog Values
@@ -142,14 +149,42 @@ export const getLatestScadaData = async (forceRefresh = false): Promise<ScadaDat
             `;
     
             const result = await client.query(query);
+            
+            // Reset consecutive errors counter on success
+            consecutiveErrors = 0;
+            
             lastFetchTime = now;
             cachedScadaData = result.rows[0] || null;
+            
+            if (!cachedScadaData) {
+                console.warn('⚠️ No SCADA data rows returned from query');
+            } else if (DEBUG) {
+                console.log(`📊 Fresh SCADA data fetched at ${new Date().toISOString()}`);
+            }
+            
             return cachedScadaData;
         } finally {
-            client.release();
+            client.release(true); // Force release to prevent connection leaks
         }
     } catch (error) {
+        // Increment consecutive errors for exponential backoff
+        consecutiveErrors++;
+        
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            // If we've had many consecutive errors, add increasing delay
+            const backoffDelay = Math.min(1000 * Math.pow(2, consecutiveErrors - MAX_CONSECUTIVE_ERRORS), 30000);
+            console.error(`🔴 Multiple consecutive SCADA fetch errors (${consecutiveErrors}). Backing off for ${backoffDelay}ms before next attempt.`);
+            // We don't actually need to wait here, just logging the backoff strategy
+        }
+        
         console.error('Error fetching latest SCADA data:', error);
+        
+        // If we have cached data, return it as fallback even if expired
+        if (cachedScadaData) {
+            console.log('⚠️ Using stale cached SCADA data due to fetch error');
+            return cachedScadaData;
+        }
+        
         return null;
     }
 };

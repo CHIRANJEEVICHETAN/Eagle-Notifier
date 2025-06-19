@@ -17,10 +17,14 @@ const UNREAD_COUNT_KEY = 'unreadCount';
 /**
  * Hook for fetching notifications with pagination and infinite loading
  */
-export const useNotifications = (filter: 'all' | 'unread' = 'all', limit: number = 10) => {
+export const useNotifications = (
+  filter: 'all' | 'unread' = 'all', 
+  limit: number = 10,
+  source?: string
+) => {
   return useInfiniteQuery({
-    queryKey: [NOTIFICATIONS_KEY, filter, limit],
-    queryFn: ({ pageParam = 1 }) => fetchNotifications(pageParam as number, limit, filter),
+    queryKey: [NOTIFICATIONS_KEY, filter, limit, source],
+    queryFn: ({ pageParam = 1 }) => fetchNotifications(pageParam as number, limit, filter, source),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => {
       if (lastPage.pagination.hasMore) {

@@ -35,6 +35,30 @@ interface MeterLimit {
   unit: string;
   highLimit: number;
   lowLimit: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Report types
+export interface MeterReportParams {
+  startDate: Date;
+  endDate: Date;
+  parameters?: string[];
+  title?: string;
+  sortOrder?: string;
+}
+
+export interface MeterReport {
+  id: string;
+  title: string;
+  format: string;
+  fileName: string;
+  fileSize: number;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+  parameters: string[];
+  metadata?: any;
 }
 
 /**
@@ -111,6 +135,66 @@ export const updateMeterLimit = async (
     return data.data;
   } catch (error) {
     console.error('Error updating meter limit:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate a new meter readings report
+ * @param params Report parameters
+ */
+export const generateMeterReport = async (params: MeterReportParams): Promise<MeterReport> => {
+  try {
+    const headers = await getAuthHeader();
+    const { data } = await axios.post(
+      `${apiConfig.apiUrl}/api/meter/reports`, 
+      params, 
+      { headers }
+    );
+    return data.data;
+  } catch (error) {
+    console.error('Error generating meter report:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all reports for current user
+ */
+export const getMeterReports = async (): Promise<MeterReport[]> => {
+  try {
+    const headers = await getAuthHeader();
+    const { data } = await axios.get(
+      `${apiConfig.apiUrl}/api/meter/reports`, 
+      { headers }
+    );
+    return data.data;
+  } catch (error) {
+    console.error('Error fetching meter reports:', error);
+    throw error;
+  }
+};
+
+/**
+ * Download a specific report by ID
+ * @param id Report ID
+ * @returns Blob of the report file
+ */
+export const downloadMeterReport = async (id: string): Promise<Blob> => {
+  try {
+    const headers = await getAuthHeader();
+    const response = await axios.get(
+      `${apiConfig.apiUrl}/api/meter/reports/${id}`, 
+      { 
+        headers,
+        responseType: 'blob' 
+      }
+    );
+    return new Blob([response.data], {
+      type: response.headers['content-type']
+    });
+  } catch (error) {
+    console.error('Error downloading meter report:', error);
     throw error;
   }
 };

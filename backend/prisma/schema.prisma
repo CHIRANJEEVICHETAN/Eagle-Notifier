@@ -30,6 +30,7 @@ model User {
   acknowledgedHistoryAlarms AlarmHistory[] @relation("AcknowledgedBy")
   resolvedHistoryAlarms AlarmHistory[] @relation("ResolvedBy")
   notifications   Notification[]
+  reports         MeterReport[]
   pushToken       String?
   notificationSettings NotificationSettings?
 }
@@ -166,7 +167,7 @@ model SystemSettings {
   enabledAt       DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-} 
+}
 
 // Model to store limits for meter readings
 model MeterLimit {
@@ -182,4 +183,21 @@ model MeterLimit {
   updatedById     String?
 
   @@unique([parameter])
+}
+
+// Model to store generated meter reports
+model MeterReport {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  title           String
+  format          String    // "excel", "pdf", etc
+  fileContent     Bytes     // Store the file content in bytea format
+  fileName        String
+  fileSize        Int
+  startDate       DateTime
+  endDate         DateTime
+  parameters      String[]  // Array of parameters included in report
+  createdAt       DateTime  @default(now())
+  metadata        Json?
 } 

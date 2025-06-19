@@ -50,6 +50,27 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 20;
   const skip = (page - 1) * limit;
   const filter = req.query.filter as string || 'all';
+  const source = req.query.source as string;
+  
+  console.log(`🔍 Notifications request - Page: ${page}, Limit: ${limit}, Filter: ${filter}, Source: ${source}, UserId: ${userId}`);
+  
+  // Debug query to check if there are any meter notifications for this user
+  if (source === 'Meter') {
+    const debugCount = await prisma.notification.count({
+      where: {
+        userId,
+        title: { contains: 'Meter' }
+      }
+    });
+    console.log(`🔍 DEBUG: Found ${debugCount} meter notifications for user ${userId}`);
+
+    // Use parameterized query to avoid type errors and SQL injection
+    const rawQueryResult = await prisma.$queryRaw<
+      Array<{ count: number }>
+    >`SELECT COUNT(*) FROM "Notification" WHERE title LIKE 'Meter%' and "userId" = 'f0f5cc12-0a48-4436-8784-1f87eb5756b8';`;
+    const rawCount = rawQueryResult[0]?.count ?? 0;
+    console.log(`🔍 DEBUG: Raw query result: ${rawCount}`);
+  }
   
   // Build filter conditions
   const where: any = { userId };
@@ -57,8 +78,20 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
     where.isRead = false;
   }
   
+  // Add source filtering if provided
+  if (source === 'Meter') {
+    console.log('📱 Applying Meter filter');
+    where.title = { contains: 'Meter' };
+  } else if (source === 'Furnace') {
+    console.log('🔥 Applying Furnace filter');
+    where.NOT = { title: { contains: 'Meter' } };
+  }
+  
+  console.log('🔍 Query where clause:', JSON.stringify(where));
+  
   // Get total count for pagination
   const total = await prisma.notification.count({ where });
+  console.log(`📊 Total matching notifications: ${total}`);
   
   // Get notifications with pagination
   const notifications = await prisma.notification.findMany({
@@ -67,6 +100,8 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
     skip,
     take: limit
   });
+  
+  console.log(`📬 Retrieved notifications: ${notifications.length}`);
   
   // Calculate pagination info
   const totalPages = Math.ceil(total / limit);

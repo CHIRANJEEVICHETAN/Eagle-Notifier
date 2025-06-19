@@ -9,14 +9,19 @@ import { getAuthHeader } from './auth';
 export const fetchNotifications = async (
   page: number = 1,
   limit: number = 20,
-  filter: 'all' | 'unread' = 'all'
+  filter: 'all' | 'unread' = 'all',
+  source?: string
 ): Promise<NotificationResponse> => {
   try {
     const headers = await getAuthHeader();
-    const response = await axios.get(
-      `${apiConfig.apiUrl}/api/notifications?page=${page}&limit=${limit}&filter=${filter}`,
-      { headers }
-    );
+    let url = `${apiConfig.apiUrl}/api/notifications?page=${page}&limit=${limit}&filter=${filter}`;
+    
+    // Add source parameter if provided
+    if (source) {
+      url += `&source=${source}`;
+    }
+    
+    const response = await axios.get(url, { headers });
     return response.data;
   } catch (error) {
     console.error('Error fetching notifications:', error);
