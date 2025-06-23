@@ -16,6 +16,7 @@
 - [User Workflows](#user-workflows)
 - [Getting Started](#getting-started)
 - [SCADA Integration](#scada-integration)
+- [Meter Readings Feature](#meter-readings-feature)
 - [User Roles](#user-roles)
 - [API Endpoints](#api-endpoints)
 - [Deployment](#deployment)
@@ -38,6 +39,7 @@ The system continuously monitors industrial equipment parameters (temperatures, 
 - **Historical Data Analysis**: Tracking and reporting on past alarms and resolutions
 - **Mobile-first Design**: Full functionality accessible via intuitive mobile interface
 - **Role-based Permissions**: Differentiated experiences for operators vs. administrators
+- **Meter Readings Analysis**: Real-time and historical electrical parameter monitoring with report generation
 
 ## Business Value
 
@@ -50,6 +52,7 @@ Eagle Notifier delivers significant value to industrial operations by:
 - **Supporting Compliance**: Documentation of all alarms and resolutions for regulatory requirements
 - **Enabling Data-Driven Decisions**: Historical reporting identifies recurring issues and improvement opportunities
 - **Lowering Operational Costs**: Reduced need for continuous on-site monitoring staff
+- **Optimizing Energy Usage**: Meter readings help identify inefficiencies and optimize energy consumption
 
 ## Key Features
 
@@ -64,6 +67,9 @@ Eagle Notifier delivers significant value to industrial operations by:
 - **Offline Capabilities**: View previously loaded alarms even without network connectivity
 - **Analytics Dashboard**: Visualize alarm trends and performance metrics
 - **Resolution Documentation**: Track troubleshooting steps and resolution methods
+- **Meter Readings**: Monitor electrical parameters with historical data and custom reports
+- **Excel Report Generation**: Create customizable reports with selected parameters and date ranges
+- **Time-based Filtering**: View historical data based on customizable time ranges
 
 ## System Architecture
 
@@ -104,16 +110,17 @@ flowchart TD
         F[Notification Service]
         G[Reporting Service]
         H[User Management Service]
+        I[Meter Reading Service]
     end
 
     subgraph "Databases"
-        I[(Application DB)]
-        J[(SCADA DB)]
+        J[(Application DB)]
+        K[(SCADA DB)]
     end
 
     subgraph "External Services"
-        K[Push Notification Service]
-        L[Email Service]
+        L[Push Notification Service]
+        M[Email Service]
     end
 
     A <--> C
@@ -123,14 +130,16 @@ flowchart TD
     C --> F
     C --> G
     C --> H
-    D <--> I
-    E <--> I
-    F <--> I
-    G <--> I
-    H <--> I
+    C --> I
+    D <--> J
     E <--> J
-    F --> K
+    F <--> J
+    G <--> J
+    H <--> J
+    I <--> J
+    E <--> K
     F --> L
+    F --> M
 ```
 
 ### Component Descriptions
@@ -159,24 +168,31 @@ flowchart TD
    - Sends push notifications to mobile devices
    - Manages notification preferences
    - Handles notification delivery status tracking
+   - Supports priority-based alerts and muting schedules
 
 6. **Reporting Service**:
    - Generates historical alarm reports
    - Provides analytics on alarm frequency and resolution times
-   - Exports data in various formats (PDF, CSV)
+   - Exports data in various formats (PDF, Excel)
 
 7. **User Management Service**:
    - Handles user creation, updates, and deletion
    - Manages user roles and permissions
    - Provides user profile functionality
 
-8. **Databases**:
-   - Application DB: PostgreSQL database storing application data, user information, and alarm history
-   - SCADA DB: External database containing real-time industrial equipment data
+8. **Meter Reading Service**:
+   - Monitors electrical parameters (voltage, current, frequency, etc.)
+   - Processes readings against configurable thresholds
+   - Generates reports with customizable parameters
+   - Provides historical data visualization and analysis
 
-9. **External Services**:
-   - Push Notification Service: Expo Push Notification Service
-   - Email Service: For sending reports and critical notifications
+9. **Databases**:
+   - Application DB: PostgreSQL database storing application data, user information, alarm history, and meter reports
+   - SCADA DB: External database containing real-time industrial equipment data and meter readings
+
+10. **External Services**:
+    - Push Notification Service: Expo Push Notification Service
+    - Email Service: For sending reports and critical notifications
 
 ## Data Flow
 
@@ -208,6 +224,19 @@ sequenceDiagram
     DB->>Server: Return matching records
     Server->>Mobile: Send formatted report
     Mobile->>User: Display report
+    SCADA->>Server: Meter readings data (polled)
+    Server->>Server: Process readings against limits
+    Server->>DB: Store processed meter readings
+    Server->>Mobile: Push notifications for limit violations
+    User->>Mobile: Request meter report
+    Mobile->>Server: Send meter report parameters
+    Server->>SCADA: Query meter history
+    SCADA->>Server: Return meter readings data
+    Server->>Server: Generate Excel report
+    Server->>DB: Store report file
+    Server->>Mobile: Send report metadata
+    Mobile->>Server: Download report file
+    Mobile->>User: Display/share report
 ```
 
 ### Alarm Processing Flow
@@ -236,6 +265,25 @@ flowchart TD
     M --> N
 ```
 
+### Meter Reading Flow
+
+```mermaid
+flowchart TD
+    A[Meter Readings] --> B[Store in Database]
+    B --> C{Check Against Limits}
+    C -->|Within Limits| D[Normal Status]
+    C -->|Exceeds Limits| E[Generate Alert]
+    E --> F[Push Notification]
+    B --> G[Historical Storage]
+    G --> H{User Request}
+    H -->|View History| I[Display Readings]
+    H -->|Generate Report| J[Select Parameters]
+    J --> K[Date Range Selection]
+    K --> L[Create Excel Report]
+    L --> M[Store Report]
+    M --> N[Download/Share]
+```
+
 ### Database Schema Overview
 
 ```mermaid
@@ -244,8 +292,11 @@ erDiagram
     USER ||--o{ ALARM : "acknowledges"
     USER ||--o{ ALARM : "resolves"
     USER ||--o{ NOTIFICATION_SETTINGS : "configures"
+    USER ||--o{ METER_REPORT : "generates"
     ALARM ||--o{ ALARM_HISTORY : "creates"
     SCADA_DB ||--o{ ALARM : "generates"
+    SCADA_DB ||--o{ METER_READINGS : "generates"
+    METER_LIMIT ||--o{ METER_READINGS : "configures"
     SETPOINT ||--o{ ALARM : "configures"
 
     USER {
@@ -334,6 +385,43 @@ erDiagram
         datetime createdAt
         datetime updatedAt
     }
+    
+    METER_READINGS {
+        int meter_id PK
+        float voltage
+        float current
+        float frequency
+        float pf
+        float energy
+        float power
+        datetime created_at
+    }
+    
+    METER_LIMIT {
+        string id PK
+        string parameter
+        string description
+        string unit
+        float highLimit
+        float lowLimit
+        datetime createdAt
+        datetime updatedAt
+    }
+    
+    METER_REPORT {
+        string id PK
+        string userId FK
+        string title
+        string format
+        bytes fileContent
+        string fileName
+        int fileSize
+        datetime startDate
+        datetime endDate
+        string[] parameters
+        datetime createdAt
+        json metadata
+    }
 ```
 
 ## Technologies Used
@@ -347,6 +435,8 @@ erDiagram
 - **Zustand**: Lightweight state management solution
 - **Expo Notifications**: Push notification handling for real-time alerts
 - **React Native Reanimated**: Advanced animations for fluid user experience
+- **FlashList**: High-performance list component for optimized rendering
+- **ExcelJS**: Excel report generation and manipulation
 
 ### Backend
 - **Node.js with Express**: Server-side JavaScript runtime and API framework
@@ -356,6 +446,7 @@ erDiagram
 - **Docker**: Containerization for consistent deployment
 - **JWT**: JSON Web Tokens for secure authentication
 - **Winston**: Logging infrastructure for debugging and monitoring
+- **ExcelJS**: Server-side Excel report generation
 - **Jest**: Testing framework for unit and integration tests
 
 ### DevOps
@@ -376,6 +467,7 @@ flowchart TD
     C --> D[View Active Alarms]
     C --> E[View Notifications]
     C --> F[Generate Reports]
+    C --> P[View Meter Readings]
     D --> G[Acknowledge Alarm]
     D --> H[View Alarm Details]
     H --> G
@@ -388,6 +480,15 @@ flowchart TD
     M --> N[View Report]
     N --> O[Export Report]
     O --> K
+    P --> Q[View Live Readings]
+    P --> R[View Reading History]
+    P --> S[Generate Meter Report]
+    Q --> K
+    R --> K
+    S --> T[Select Date Range]
+    T --> U[Select Parameters]
+    U --> V[Download Report]
+    V --> K
 ```
 
 ### Administrator Workflow
@@ -400,6 +501,7 @@ flowchart TD
     C --> E[Configure Setpoints]
     C --> F[View System Stats]
     C --> G[Operator Functions]
+    C --> X[Configure Meter Limits]
     
     D --> H[Add User]
     D --> I[Edit User]
@@ -424,6 +526,10 @@ flowchart TD
     G --> T[Generate Reports]
     S --> K
     T --> K
+    
+    X --> Y[Set Parameter Limits]
+    Y --> Z[Update Threshold Values]
+    Z --> K
 ```
 
 ### App Screens and Navigation Flow
@@ -438,6 +544,7 @@ flowchart TD
     C --> E[Notifications]
     C --> F[Reports]
     C --> G[Settings]
+    C --> Q[Meter Readings]
     
     D --> H[Alarm Details]
     H --> I[Resolution Form]
@@ -452,11 +559,19 @@ flowchart TD
     G --> O[Theme Settings]
     G --> P[Notification Settings]
     
+    Q --> R[Live Readings]
+    Q --> S[Readings History]
+    Q --> T[Reports]
+    S --> U[Time-based Filtering]
+    T --> V[Report Generator]
+    V --> W[Report Preview]
+    
     subgraph Admin Only
-    G --> Q[User Management]
-    G --> R[System Settings]
-    Q --> S[User Form]
-    R --> T[Setpoint Config]
+    G --> X[User Management]
+    G --> Y[System Settings]
+    X --> Z[User Form]
+    Y --> AA[Setpoint Config]
+    Y --> AB[Meter Limit Config]
     end
 ```
 
@@ -501,6 +616,7 @@ npm install
    - Create `.env` file in the root directory for Expo configuration:
      - `EXPO_PUBLIC_API_URL`: Backend API URL
      - `EXPO_PUBLIC_PROJECT_ID`: Expo project ID for push notifications
+     - `EXPO_PUBLIC_PUSH_NOTIFICATION_ENDPOINT`: Expo push token endpoint
 
 4. **Setup the database:**
 ```bash
@@ -577,6 +693,70 @@ Administrators can configure alarm thresholds through the setpoint management in
 
 These configurations are stored in the `Setpoint` table and used by the alarm processing service to determine when to generate alarms.
 
+## Meter Readings Feature
+
+The meter readings functionality allows monitoring and analysis of electrical parameters from connected equipment. This feature provides real-time and historical data visualization, along with comprehensive reporting capabilities.
+
+### Meter Reading Parameters
+
+The system monitors and records the following electrical parameters:
+- **Voltage** (V): Supply voltage measurements
+- **Current** (A): Current consumption measurements
+- **Frequency** (Hz): Power frequency measurements
+- **Power Factor**: Ratio of real power to apparent power
+- **Energy** (kWh): Energy consumption measurements
+- **Power** (kW): Real power consumption measurements
+
+### Data Collection
+
+Meter readings are collected from the SCADA system and stored in a dedicated `meter_readings` table with the following structure:
+- `meter_id`: Unique identifier for each reading
+- `voltage`, `current`, `frequency`, `pf`, `energy`, `power`: Electrical parameters
+- `created_at`: Timestamp when the reading was recorded
+
+### User Interface Components
+
+The meter readings feature includes several user interface components:
+
+1. **Live Readings**: Real-time display of current electrical parameters
+2. **Historical View**: Browsing past readings with customizable time filters:
+   - Predefined filters (24h, 3d, 7d, 30d)
+   - Custom date range selection
+3. **Report Generation**: Creating Excel reports with:
+   - Customizable date ranges
+   - Parameter selection
+   - Custom report titles
+   - Downloadable Excel files
+
+### Threshold Monitoring
+
+The system allows administrators to configure limits for each electrical parameter:
+- **High Limits**: Upper thresholds that trigger alerts when exceeded
+- **Low Limits**: Lower thresholds that trigger alerts when values fall below them
+
+When a parameter exceeds its configured limits, the system automatically generates notifications to alert operators.
+
+### Report Generation
+
+The meter report generation feature allows users to:
+1. Select a date range for the report
+2. Choose which parameters to include
+3. Customize the report title
+4. Generate and download an Excel file containing the selected data
+5. Access previously generated reports
+
+Reports are stored in the database and can be downloaded or shared directly from the mobile application.
+
+### Mobile Experience
+
+The meter readings feature is fully integrated into the mobile application with:
+- Responsive design for various screen sizes
+- Dark/light theme support
+- Pull-to-refresh functionality
+- Infinite scrolling for history browsing
+- Interactive date pickers for custom ranges
+- Optimized performance with virtualized lists
+
 ## User Roles
 
 The system implements a role-based access control system with two primary roles:
@@ -588,6 +768,9 @@ The system implements a role-based access control system with two primary roles:
 - Generate reports on alarm history
 - Receive and manage notifications
 - Update personal profile and notification preferences
+- View meter readings and generate meter reports
+- Access historical meter data with custom filtering
+- View and download previously generated reports
 
 ### Administrator
 - All operator capabilities
@@ -597,6 +780,7 @@ The system implements a role-based access control system with two primary roles:
   - Delete user accounts
   - Reset user passwords
 - Configure system setpoints for each equipment type and zone
+- Configure meter reading limits and thresholds
 - Access system dashboards with performance metrics
 - View audit logs of system activities
 - Configure global system settings
@@ -625,6 +809,18 @@ The backend provides a comprehensive REST API:
 - `PATCH /api/notifications/mark-all-read`: Mark all notifications as read
 - `DELETE /api/notifications/:id`: Delete notification
 - `PUT /api/notifications/push-token`: Update push notification token
+
+### Meter Readings
+- `POST /api/meter`: Submit new meter readings
+- `GET /api/meter/latest`: Get latest meter readings
+- `GET /api/meter/history`: Get historical meter readings with pagination and filtering
+- `GET /api/meter/limits`: Get all meter parameter limits
+- `PUT /api/meter/limits/:id`: Update meter parameter limits
+
+### Meter Reports
+- `POST /api/meter/reports`: Generate a meter readings report
+- `GET /api/meter/reports`: Get all reports for the current user
+- `GET /api/meter/reports/:id`: Download a specific report
 
 ### Operator Routes
 - `GET /api/operator/dashboard`: Get operator dashboard data
