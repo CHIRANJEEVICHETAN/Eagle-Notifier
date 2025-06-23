@@ -27,7 +27,6 @@ import {
   MeterReading,
   MeterLimit
 } from '../../hooks/useMeterReadings';
-import { PaginatedMeterReadings } from '../../api/meterApi';
 import { useUnreadCount } from '../../hooks/useNotifications';
 import { 
   convertToIST, 
@@ -505,7 +504,12 @@ export default function MeterReadingsScreen() {
   const [graphView, setGraphView] = useState<'primary' | 'secondary'>('primary'); // New state for graph view
   
   // Get unread notifications count
-  const { data: unreadCount = 0 } = useUnreadCount();
+  const { data: unreadCount = 0, isLoading: isUnreadLoading, error: unreadError } = useUnreadCount();
+  
+  // Debug log for unread count
+  useEffect(() => {
+    console.log('📊 Meter readings - Unread count:', unreadCount, 'Loading:', isUnreadLoading, 'Error:', unreadError);
+  }, [unreadCount, isUnreadLoading, unreadError]);
 
   // Fetch data using custom hooks
   const { 

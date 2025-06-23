@@ -27,6 +27,8 @@ router.get('/unread-count', authenticate, asyncHandler(async (req, res) => {
     return;
   }
   
+  console.log(`📊 Fetching unread count for user: ${userId}`);
+  
   // Count unread notifications for the user
   const count = await prisma.notification.count({
     where: { 
@@ -34,6 +36,8 @@ router.get('/unread-count', authenticate, asyncHandler(async (req, res) => {
       isRead: false 
     }
   });
+  
+  console.log(`📊 Unread count for user ${userId}: ${count}`);
   
   res.status(200).json({ count });
 }));

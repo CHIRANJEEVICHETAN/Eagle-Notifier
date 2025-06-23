@@ -32,6 +32,7 @@ import { ResolutionModal } from '../../components/ResolutionModal';
 import { useSetpoints, useUpdateSetpoint, Setpoint } from '../../hooks/useSetpoints';
 import { SetpointConfigModal } from '../../components/SetpointConfigModal';
 import { useMaintenance } from '../../context/MaintenanceContext';
+import { useUnreadCount } from '../../hooks/useNotifications';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -194,10 +195,12 @@ export default function OperatorDashboard() {
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshTimestamp, setRefreshTimestamp] = useState(Date.now());
-  const [unreadNotifications, setUnreadNotifications] = useState(5);
   const [selectedAlarmForResolution, setSelectedAlarmForResolution] = useState<Alarm | null>(null);
   const [resolutionModalVisible, setResolutionModalVisible] = useState(false);
   const [severityFilter, setSeverityFilter] = useState<AlarmSeverityFilter>('all');
+
+  // Get unread notifications count
+  const { data: unreadNotifications = 0 } = useUnreadCount();
 
   // Admin-only state
   const [selectedSetpoint, setSelectedSetpoint] = useState<Setpoint | null>(null);
@@ -426,20 +429,22 @@ export default function OperatorDashboard() {
   }, [refetch, scadaInterval]);
 
   useEffect(() => {
-    Animated.sequence([
-      Animated.spring(notificationBadgeScale, {
-        toValue: 1.2,
-        useNativeDriver: true,
-        tension: 400,
-        friction: 20,
-      }),
-      Animated.spring(notificationBadgeScale, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 400,
-        friction: 20,
-      }),
-    ]).start();
+    if (unreadNotifications > 0) {
+      Animated.sequence([
+        Animated.spring(notificationBadgeScale, {
+          toValue: 1.2,
+          useNativeDriver: true,
+          tension: 400,
+          friction: 20,
+        }),
+        Animated.spring(notificationBadgeScale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 400,
+          friction: 20,
+        }),
+      ]).start();
+    }
   }, [unreadNotifications, notificationBadgeScale]);
 
   // Render Functions
@@ -1006,24 +1011,7 @@ export default function OperatorDashboard() {
         : '#991B1B'; // More readable in light mode
   };
 
-  // Add notification badge animation
-  useEffect(() => {
-    // Animate notification badge when count changes
-    Animated.sequence([
-      Animated.spring(notificationBadgeScale, {
-        toValue: 1.2,
-        useNativeDriver: true,
-        tension: 400,
-        friction: 20,
-      }),
-      Animated.spring(notificationBadgeScale, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 400,
-        friction: 20,
-      }),
-    ]).start();
-  }, [unreadNotifications]);
+  // Notification badge animation is handled above
 
   // Functions are now declared at the top of the component using useCallback
 

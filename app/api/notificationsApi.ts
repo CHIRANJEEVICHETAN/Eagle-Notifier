@@ -163,9 +163,11 @@ export const fetchUnreadCount = async (): Promise<number> => {
       `${apiConfig.apiUrl}/api/notifications/unread-count`,
       { headers }
     );
+    
+    console.log('📊 Unread count response:', response.data);
     return response.data.count;
   } catch (error) {
-    console.error('Error fetching unread count:', error);
+    console.error('❌ Error fetching unread count:', error);
     return 0; // Default to 0 on error
   }
 }; 

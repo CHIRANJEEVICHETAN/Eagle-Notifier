@@ -46,11 +46,10 @@ export const convertToIST = (utcDateString: string): Date => {
  */
 export const formatTimeIST = (dateString: string): string => {
   const istDate = convertToIST(dateString);
-  return istDate.toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit',
-    timeZone: 'UTC' // We already converted to IST, so display as UTC to avoid double conversion
-  });
+  // Format directly without timezone specification since we already converted to IST
+  const hours = istDate.getHours().toString().padStart(2, '0');
+  const minutes = istDate.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
 };
 
 /**
@@ -61,12 +60,17 @@ export const formatTimeIST = (dateString: string): string => {
  */
 export const formatTimestampIST = (dateString: string): string => {
   const istDate = convertToIST(dateString);
-  return istDate.toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit', 
-    hour12: true,
-    timeZone: 'UTC' // We already converted to IST, so display as UTC to avoid double conversion
-  });
+  // Format directly without timezone specification since we already converted to IST
+  let hours = istDate.getHours();
+  const minutes = istDate.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  
+  // Convert to 12-hour format
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 should be 12
+  const formattedHours = hours.toString().padStart(2, '0');
+  
+  return `${formattedHours}:${minutes} ${ampm}`;
 };
 
 /**
@@ -77,18 +81,23 @@ export const formatTimestampIST = (dateString: string): string => {
  */
 export const formatFullTimestampIST = (dateString: string): string => {
   const istDate = convertToIST(dateString);
-  const dateStr = istDate.toLocaleDateString('en-IN', {
-    timeZone: 'UTC', // We already converted to IST
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  const timeStr = istDate.toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit', 
-    hour12: true,
-    timeZone: 'UTC' // We already converted to IST
-  });
+  
+  // Format date manually to ensure consistency
+  const day = istDate.getDate().toString().padStart(2, '0');
+  const month = (istDate.getMonth() + 1).toString().padStart(2, '0');
+  const year = istDate.getFullYear();
+  const dateStr = `${day}/${month}/${year}`;
+  
+  // Format time in 12-hour format
+  let hours = istDate.getHours();
+  const minutes = istDate.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 should be 12
+  const formattedHours = hours.toString().padStart(2, '0');
+  const timeStr = `${formattedHours}:${minutes} ${ampm}`;
+  
   return `${dateStr} ${timeStr}`;
 };
 
@@ -123,4 +132,23 @@ export const getCurrentIST = (): Date => {
   const now = new Date();
   const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
   return new Date(now.getTime() + istOffsetMs);
+};
+
+/**
+ * Debug function to test timezone conversion
+ * Use this to verify the conversion is working correctly
+ */
+export const debugTimezoneConversion = (utcDateString: string): void => {
+  console.log('=== Timezone Conversion Debug ===');
+  console.log('Input UTC string:', utcDateString);
+  
+  const istDate = convertToIST(utcDateString);
+  console.log('Converted IST Date object:', istDate);
+  console.log('IST Hours:', istDate.getHours());
+  console.log('IST Minutes:', istDate.getMinutes());
+  
+  console.log('Formatted Time (24h):', formatTimeIST(utcDateString));
+  console.log('Formatted Time (12h):', formatTimestampIST(utcDateString));
+  console.log('Formatted Full:', formatFullTimestampIST(utcDateString));
+  console.log('===================================');
 }; 

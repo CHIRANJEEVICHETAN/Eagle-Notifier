@@ -44,6 +44,9 @@ export const useUnreadCount = () => {
     queryKey: [UNREAD_COUNT_KEY],
     queryFn: fetchUnreadCount,
     staleTime: 30 * 1000, // 30 seconds
+    refetchInterval: 60 * 1000, // Refetch every minute
+    refetchOnWindowFocus: true, // Refetch when app comes into focus
+    refetchOnMount: true, // Always refetch on mount
   });
 };
 
@@ -59,6 +62,11 @@ export const useMarkAsRead = () => {
       // Invalidate notifications cache to refetch with updated data
       queryClient.invalidateQueries({ queryKey: [NOTIFICATIONS_KEY] });
       queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
+      
+      // Optimistically update the unread count
+      queryClient.setQueryData([UNREAD_COUNT_KEY], (old: number | undefined) => {
+        return Math.max(0, (old || 0) - 1);
+      });
     }
   });
 };
@@ -74,6 +82,9 @@ export const useMarkAllAsRead = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [NOTIFICATIONS_KEY] });
       queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
+      
+      // Optimistically update the unread count to 0
+      queryClient.setQueryData([UNREAD_COUNT_KEY], 0);
     }
   });
 };
@@ -89,6 +100,9 @@ export const useDeleteNotification = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [NOTIFICATIONS_KEY] });
       queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
+      
+      // Force refetch of unread count since we don't know if deleted notification was read/unread
+      queryClient.refetchQueries({ queryKey: [UNREAD_COUNT_KEY] });
     }
   });
 };
