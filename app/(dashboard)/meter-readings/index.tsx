@@ -19,7 +19,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { LineChart } from 'react-native-chart-kit';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
   useLatestMeterReading, 
@@ -30,6 +29,12 @@ import {
 } from '../../hooks/useMeterReadings';
 import { PaginatedMeterReadings } from '../../api/meterApi';
 import { useUnreadCount } from '../../hooks/useNotifications';
+import { 
+  convertToIST, 
+  formatTimeIST, 
+  formatTimestampIST, 
+  formatChartLabelIST 
+} from '../../utils/timezoneUtils';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -628,24 +633,7 @@ export default function MeterReadingsScreen() {
     return result;
   };
 
-  // Add a function to convert UTC to IST (UTC+5:30)
-  const convertToIST = (utcDateString: string): Date => {
-    const date = new Date(utcDateString);
-    // Add 5 hours and 30 minutes for IST
-    return new Date(date.getTime() + (5 * 60 + 30) * 60 * 1000);
-  };
-
-  // Format time with IST conversion
-  const formatTimeIST = (dateString: string): string => {
-    const istDate = convertToIST(dateString);
-    return istDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  // Format full timestamp with IST conversion
-  const formatTimestampIST = (dateString: string): string => {
-    const istDate = convertToIST(dateString);
-    return istDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-  };
+  // Timezone conversion functions are now imported from utils/timezoneUtils
 
   // Update the chart data processing to handle time gaps and convert timestamps
   const chartData = useMemo(() => {
@@ -660,26 +648,7 @@ export default function MeterReadingsScreen() {
 
     // Format time labels based on the actual timestamps in the data with IST conversion
     const formatTimeLabels = () => {
-      return sortedData.map(item => {
-        const istDate = convertToIST(item.created_at);
-        
-        // Format based on timeframe
-        if (selectedTimeframe === 1) {
-          // For 1-hour, show HH:MM
-          const hours = istDate.getHours().toString().padStart(2, '0');
-          const minutes = istDate.getMinutes().toString().padStart(2, '0');
-          return `${hours}:${minutes}`;
-        } else if (selectedTimeframe === 6) {
-          // For 6-hour, show HH:MM
-          const hours = istDate.getHours().toString().padStart(2, '0');
-          const minutes = istDate.getMinutes().toString().padStart(2, '0');
-          return `${hours}:${minutes}`;
-        } else {
-          // For 24-hour, show HH:00 format
-          const hours = istDate.getHours().toString().padStart(2, '0');
-          return `${hours}h`;
-        }
-      });
+      return sortedData.map(item => formatChartLabelIST(item.created_at, selectedTimeframe));
     };
 
     // Get time labels from actual data

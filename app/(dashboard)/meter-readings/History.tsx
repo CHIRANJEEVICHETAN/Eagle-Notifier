@@ -22,6 +22,11 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { fetchMeterHistory, MeterReading } from '../../api/meterApi';
 import { getAuthHeader } from '../../api/auth';
 import { apiConfig } from '../../api/config';
+import { 
+  convertToIST, 
+  formatTimeIST, 
+  formatFullTimestampIST 
+} from '../../utils/timezoneUtils';
 
 /**
  * MeterReadingsHistoryScreen
@@ -156,25 +161,7 @@ export default function MeterReadingsHistoryScreen() {
     return String(Math.round(value * factor) / factor);
   };
 
-  // Add a function to convert UTC to IST (UTC+5:30)
-  const convertToIST = (utcDateString: string): Date => {
-    const date = new Date(utcDateString);
-    // Add 5 hours and 30 minutes for IST
-    return new Date(date.getTime() + (5 * 60 + 30) * 60 * 1000);
-  };
-
-  // Format time with IST conversion
-  const formatTimeIST = (dateString: string): string => {
-    const istDate = convertToIST(dateString);
-    return istDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  // Format full timestamp with IST conversion
-  const formatTimestampIST = (dateString: string): string => {
-    const istDate = convertToIST(dateString);
-    return istDate.toLocaleDateString() + ' ' + 
-           istDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-  };
+  // Timezone conversion functions are now imported from utils/timezoneUtils
   
   // Handle refresh
   const handleRefresh = useCallback(async () => {
@@ -487,7 +474,7 @@ export default function MeterReadingsHistoryScreen() {
     <View style={[styles.readingItem, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
       <View style={styles.readingHeader}>
         <Text style={[styles.readingTimestamp, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-          {formatTimestampIST(item.created_at)}
+          {formatFullTimestampIST(item.created_at)}
         </Text>
         <View style={[styles.readingIdBadge, { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }]}>
           <Text style={[styles.readingIdText, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
@@ -570,7 +557,7 @@ export default function MeterReadingsHistoryScreen() {
         </View>
       </View>
     </View>
-  ), [isDarkMode, formatNumber, formatTimestampIST]);
+  ), [isDarkMode, formatNumber, formatFullTimestampIST]);
   
   // Render footer with loading indicator for pagination
   const renderFooter = useCallback(() => {
