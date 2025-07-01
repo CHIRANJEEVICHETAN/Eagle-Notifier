@@ -1,6 +1,7 @@
 import express, { Request, Response, Router, RequestHandler } from 'express';
 import { getClientWithRetry } from '../config/scadaDb';
 import { authenticate } from '../middleware/authMiddleware';
+import prisma from '../config/db';
 
 const router: Router = express.Router();
 
@@ -35,19 +36,32 @@ router.get('/alarm-data', function(req: Request, res: Response) {
       const client = await getClientWithRetry();
 
       try {
-        // Build the query based on filters
+        // Get setpoints to calculate thresholds
+        const setpoints = await prisma.setpoint.findMany();
+        const setpointMap = new Map<string, { lowDeviation: number; highDeviation: number }>();
+        
+        setpoints.forEach(sp => {
+          setpointMap.set(sp.scadaField, {
+            lowDeviation: sp.lowDeviation,
+            highDeviation: sp.highDeviation
+          });
+        });
+
+        // Build the query to fetch all required fields
         let query = `
           SELECT 
             id, 
             created_timestamp,
-            hz1sv, hz1pv, hz1ht, hz1lt,
-            hz2sv, hz2pv, hz2ht, hz2lt,
-            cpsv, cppv, cph, cpl,
-            tz1sv, tz1pv, tz1ht, tz1lt,
-            tz2sv, tz2pv, tz2ht, tz2lt,
-            oilpv, deppv, postpv,
+            -- Analog values (first 11 fields)
+            hz1sv, hz1pv,
+            hz2sv, hz2pv,
+            cpsv, cppv,
+            tz1sv, tz1pv,
+            tz2sv, tz2pv,
+            oilpv,
+            -- Binary status fields (fields 12-18+)
             oiltemphigh, oillevelhigh, oillevellow,
-            hz1hfail, hz2hfail, 
+            hz1hfail, hz2hfail,
             hardconfail, hardcontraip,
             oilconfail, oilcontraip,
             hz1fanfail, hz2fanfail,
@@ -195,9 +209,39 @@ router.get('/alarm-data', function(req: Request, res: Response) {
         // Execute the query
         const result = await client.query(query, queryParams);
         
+        // Add calculated threshold values to each row
+        const enrichedData = result.rows.map(row => {
+          const enrichedRow = { ...row };
+          
+          // Calculate thresholds for analog values based on setpoints
+          const addThresholds = (setValueField: string, presentValueField: string) => {
+            const setpoint = setpointMap.get(setValueField);
+            if (setpoint && row[setValueField] !== null && row[setValueField] !== undefined) {
+              const setValue = row[setValueField];
+              enrichedRow[`${presentValueField.replace('pv', 'ht')}`] = setValue + setpoint.highDeviation;
+              enrichedRow[`${presentValueField.replace('pv', 'lt')}`] = setValue + setpoint.lowDeviation;
+            }
+          };
+          
+          // Add thresholds for each analog field
+          addThresholds('hz1sv', 'hz1pv');
+          addThresholds('hz2sv', 'hz2pv');
+          const cpSetpoint = setpointMap.get('cpsv');
+          if (cpSetpoint && row.cpsv !== null && row.cpsv !== undefined) {
+            const cpSetValue = row.cpsv;
+            enrichedRow['cph'] = cpSetValue + cpSetpoint.highDeviation;
+            enrichedRow['cpl'] = cpSetValue + cpSetpoint.lowDeviation;
+          }
+          addThresholds('tz1sv', 'tz1pv');
+          addThresholds('tz2sv', 'tz2pv');
+          addThresholds('oilpv', 'oilpv'); // Special case for oil temperature
+          
+          return enrichedRow;
+        });
+        
         return res.json({
-          count: result.rows.length,
-          data: result.rows
+          count: enrichedData.length,
+          data: enrichedData
         });
       } finally {
         client.release();
@@ -205,6 +249,221 @@ router.get('/alarm-data', function(req: Request, res: Response) {
     } catch (error) {
       console.error('Error fetching alarm report data:', error);
       return res.status(500).json({ error: 'Failed to retrieve alarm data' });
+    }
+  })();
+});
+
+/**
+ * @route   GET /api/reports/furnace
+ * @desc    Get saved furnace reports for a user with pagination
+ * @access  Private
+ */
+router.get('/furnace', function(req: Request, res: Response) {
+  (async () => {
+    try {
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      // Parse pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const skip = (page - 1) * limit;
+
+      // Get reports with pagination and exclude large fileContent for list view
+      const reports = await prisma.furnaceReport.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          title: true,
+          format: true,
+          fileName: true,
+          fileSize: true,
+          startDate: true,
+          endDate: true,
+          grouping: true,
+          includeThresholds: true,
+          includeStatusFields: true,
+          alarmTypes: true,
+          severityLevels: true,
+          zones: true,
+          createdAt: true,
+          metadata: true,
+          user: {
+            select: { id: true, name: true, email: true }
+          }
+          // Exclude fileContent to reduce memory usage
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit
+      });
+
+      // Get total count for pagination info
+      const totalCount = await prisma.furnaceReport.count({
+        where: { userId }
+      });
+
+      const totalPages = Math.ceil(totalCount / limit);
+
+      return res.json({
+        reports,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalCount,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching furnace reports:', error);
+      return res.status(500).json({ error: 'Failed to retrieve furnace reports' });
+    }
+  })();
+});
+
+/**
+ * @route   POST /api/reports/furnace
+ * @desc    Save a new furnace report
+ * @access  Private
+ */
+router.post('/furnace', function(req: Request, res: Response) {
+  (async () => {
+    try {
+      console.log('POST /api/reports/furnace - Request received');
+      const userId = (req as any).user?.id;
+      console.log('User ID:', userId);
+      
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      const {
+        title,
+        format,
+        fileContent,
+        fileName,
+        fileSize,
+        startDate,
+        endDate,
+        grouping,
+        includeThresholds,
+        includeStatusFields,
+        alarmTypes,
+        severityLevels,
+        zones,
+        metadata
+      } = req.body;
+      
+      console.log('Request body keys:', Object.keys(req.body));
+      console.log('Title:', title);
+      console.log('File size:', fileSize);
+      console.log('File content length:', fileContent?.length);
+
+      // Convert base64 to buffer
+      const buffer = Buffer.from(fileContent, 'base64');
+      console.log('Buffer size:', buffer.length);
+
+      console.log('Creating furnace report in database...');
+      const report = await prisma.furnaceReport.create({
+        data: {
+          userId,
+          title,
+          format,
+          fileContent: buffer,
+          fileName,
+          fileSize,
+          startDate: new Date(startDate),
+          endDate: new Date(endDate),
+          grouping,
+          includeThresholds: includeThresholds ?? true,
+          includeStatusFields: includeStatusFields ?? true,
+          alarmTypes: alarmTypes || [],
+          severityLevels: severityLevels || [],
+          zones: zones || [],
+          metadata
+        }
+      });
+
+      console.log('Report saved successfully with ID:', report.id);
+      return res.json({ id: report.id, message: 'Furnace report saved successfully' });
+    } catch (error: any) {
+      console.error('Error saving furnace report:', error);
+      console.error('Error stack:', error.stack);
+      console.error('Error message:', error.message);
+      return res.status(500).json({ 
+        error: 'Failed to save furnace report',
+        details: error.message 
+      });
+    }
+  })();
+});
+
+/**
+ * @route   GET /api/reports/furnace/:id
+ * @desc    Get a specific furnace report file
+ * @access  Private
+ */
+router.get('/furnace/:id', function(req: Request, res: Response) {
+  (async () => {
+    try {
+      const userId = (req as any).user?.id;
+      const reportId = req.params.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      const report = await prisma.furnaceReport.findFirst({
+        where: { 
+          id: reportId,
+          userId 
+        }
+      });
+
+      if (!report) {
+        return res.status(404).json({ error: 'Report not found' });
+      }
+
+      // Set appropriate headers for file download
+      res.setHeader('Content-Type', 
+        report.format === 'pdf' 
+          ? 'application/pdf' 
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="${report.fileName}"`);
+      res.setHeader('Content-Length', report.fileContent.length);
+
+      return res.send(report.fileContent);
+    } catch (error) {
+      console.error('Error retrieving furnace report:', error);
+      return res.status(500).json({ error: 'Failed to retrieve report' });
+    }
+  })();
+});
+
+/**
+ * @route   GET /api/reports/setpoints
+ * @desc    Get setpoint configurations for alarm processing
+ * @access  Private
+ */
+router.get('/setpoints', function(req: Request, res: Response) {
+  (async () => {
+    try {
+      const setpoints = await prisma.setpoint.findMany({
+        orderBy: [
+          { type: 'asc' },
+          { zone: 'asc' },
+          { name: 'asc' }
+        ]
+      });
+
+      return res.json(setpoints);
+    } catch (error) {
+      console.error('Error fetching setpoints:', error);
+      return res.status(500).json({ error: 'Failed to retrieve setpoints' });
     }
   })();
 });

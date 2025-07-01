@@ -202,7 +202,6 @@ export default function ProfileScreen() {
     onSuccess: (data) => {
       setNotificationSettings(data);
       queryClient.invalidateQueries({ queryKey: ['notificationSettings'] });
-      Alert.alert('Success', 'Notification settings updated');
     },
     onError: (error: any) => {
       const errorMessage = error.response?.data?.message || 'Failed to update notification settings';

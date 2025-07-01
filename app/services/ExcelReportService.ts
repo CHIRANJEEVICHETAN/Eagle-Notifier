@@ -7,7 +7,8 @@ import { AlarmData } from '../hooks/useAlarmReportData';
 export enum ColumnGrouping {
   BY_TYPE = 'by_type',
   BY_ZONE = 'by_zone',
-  CHRONOLOGICAL = 'chronological'
+  NEWEST_FIRST = 'newest_first',
+  OLDEST_FIRST = 'oldest_first'
 }
 
 interface GenerateReportOptions {
@@ -33,7 +34,7 @@ export class ExcelReportService {
     const { 
       alarmData, 
       title, 
-      grouping = ColumnGrouping.CHRONOLOGICAL,
+      grouping = ColumnGrouping.NEWEST_FIRST,
       includeThresholds = true,
       includeStatusFields = true 
     } = options;
@@ -51,13 +52,19 @@ export class ExcelReportService {
       case ColumnGrouping.BY_ZONE:
         processedData = this.processDataByZone(alarmData, includeThresholds, includeStatusFields);
         break;
-      case ColumnGrouping.CHRONOLOGICAL:
+      case ColumnGrouping.OLDEST_FIRST:
+        processedData = this.processDataChronologically(alarmData, includeThresholds, includeStatusFields, 'asc');
+        break;
+      case ColumnGrouping.NEWEST_FIRST:
       default:
-        processedData = this.processDataChronologically(alarmData, includeThresholds, includeStatusFields);
+        processedData = this.processDataChronologically(alarmData, includeThresholds, includeStatusFields, 'desc');
     }
     
     // Convert to worksheet
     const ws = XLSX.utils.json_to_sheet(processedData);
+    
+    // Make headers bold
+    this.makeHeadersBold(ws, processedData);
     
     // Add column widths
     const colWidths = this.getColumnWidths(processedData);
@@ -82,9 +89,16 @@ export class ExcelReportService {
   private static processDataChronologically(
     alarmData: AlarmData[], 
     includeThresholds: boolean,
-    includeStatusFields: boolean
+    includeStatusFields: boolean,
+    sortOrder: 'asc' | 'desc' = 'desc'
   ): any[] {
-    return alarmData.map(record => {
+    // Sort data based on sortOrder
+    const sortedData = [...alarmData].sort((a, b) => {
+      const dateA = new Date(a.created_timestamp).getTime();
+      const dateB = new Date(b.created_timestamp).getTime();
+      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+    return sortedData.map(record => {
       // Define an interface for the report object
       interface ReportData {
         Timestamp: string;
@@ -98,10 +112,16 @@ export class ExcelReportService {
         'ID': record.id,
       };
       
-      // Add temperature fields
+      // Add all analog fields with descriptive names (Fields 1-11)
+      
+      // 1. Hardening Zone 1 Set Value
+      if (record.hz1sv !== undefined) {
+        baseObj['Hardening Zone 1 Set Value'] = record.hz1sv;
+      }
+      
+      // 2. Hardening Zone 1 Present Value
       if (record.hz1pv !== undefined) {
-        baseObj['HZ1 Value'] = record.hz1pv;
-        baseObj['HZ1 Setpoint'] = record.hz1sv;
+        baseObj['Hardening Zone 1 Present Value'] = record.hz1pv;
         
         if (includeThresholds) {
           baseObj['HZ1 High Threshold'] = record.hz1ht;
@@ -109,9 +129,14 @@ export class ExcelReportService {
         }
       }
       
+      // 3. Hardening Zone 2 Set Value
+      if (record.hz2sv !== undefined) {
+        baseObj['Hardening Zone 2 Set Value'] = record.hz2sv;
+      }
+      
+      // 4. Hardening Zone 2 Present Value
       if (record.hz2pv !== undefined) {
-        baseObj['HZ2 Value'] = record.hz2pv;
-        baseObj['HZ2 Setpoint'] = record.hz2sv;
+        baseObj['Hardening Zone 2 Present Value'] = record.hz2pv;
         
         if (includeThresholds) {
           baseObj['HZ2 High Threshold'] = record.hz2ht;
@@ -119,30 +144,14 @@ export class ExcelReportService {
         }
       }
       
-      if (record.tz1pv !== undefined) {
-        baseObj['TZ1 Value'] = record.tz1pv;
-        baseObj['TZ1 Setpoint'] = record.tz1sv;
-        
-        if (includeThresholds) {
-          baseObj['TZ1 High Threshold'] = record.tz1ht;
-          baseObj['TZ1 Low Threshold'] = record.tz1lt;
-        }
+      // 5. Carbon Potential Set Value
+      if (record.cpsv !== undefined) {
+        baseObj['Carbon Potential Set Value'] = record.cpsv;
       }
       
-      if (record.tz2pv !== undefined) {
-        baseObj['TZ2 Value'] = record.tz2pv;
-        baseObj['TZ2 Setpoint'] = record.tz2sv;
-        
-        if (includeThresholds) {
-          baseObj['TZ2 High Threshold'] = record.tz2ht;
-          baseObj['TZ2 Low Threshold'] = record.tz2lt;
-        }
-      }
-      
-      // Add carbon fields
+      // 6. Carbon Potential Present Value
       if (record.cppv !== undefined) {
-        baseObj['Carbon Value'] = record.cppv;
-        baseObj['Carbon Setpoint'] = record.cpsv;
+        baseObj['Carbon Potential Present Value'] = record.cppv;
         
         if (includeThresholds) {
           baseObj['Carbon High Threshold'] = record.cph;
@@ -150,49 +159,69 @@ export class ExcelReportService {
         }
       }
       
-      // Add other sensor readings
-      if (record.oilpv !== undefined) {
-        baseObj['Oil Temperature'] = record.oilpv;
+      // 7. Tempering Zone 1 Set Value
+      if (record.tz1sv !== undefined) {
+        baseObj['Tempering Zone 1 Set Value'] = record.tz1sv;
       }
       
-      if (record.deppv !== undefined) {
-        baseObj['Depth'] = record.deppv;
-      }
-      
-      if (record.postpv !== undefined) {
-        baseObj['Post Temp'] = record.postpv;
-      }
-      
-      // Add status fields if requested
-      if (includeStatusFields) {
-        const statusFields = {
-          'Oil Temp High': record.oiltemphigh ? 'Yes' : 'No',
-          'Oil Level High': record.oillevelhigh ? 'Yes' : 'No',
-          'Oil Level Low': record.oillevellow ? 'Yes' : 'No',
-          'HZ1 Heater Fail': record.hz1hfail ? 'Yes' : 'No',
-          'HZ2 Heater Fail': record.hz2hfail ? 'Yes' : 'No',
-          'Hard Con Fail': record.hardconfail ? 'Yes' : 'No',
-          'Hard Con Trip': record.hardcontraip ? 'Yes' : 'No',
-          'Oil Con Fail': record.oilconfail ? 'Yes' : 'No',
-          'Oil Con Trip': record.oilcontraip ? 'Yes' : 'No',
-          'HZ1 Fan Fail': record.hz1fanfail ? 'Yes' : 'No',
-          'HZ2 Fan Fail': record.hz2fanfail ? 'Yes' : 'No',
-          'HZ1 Fan Trip': record.hz1fantrip ? 'Yes' : 'No',
-          'HZ2 Fan Trip': record.hz2fantrip ? 'Yes' : 'No',
-          'Temp Con Fail': record.tempconfail ? 'Yes' : 'No',
-          'Temp Con Trip': record.tempcontraip ? 'Yes' : 'No',
-          'TZ1 Fan Fail': record.tz1fanfail ? 'Yes' : 'No',
-          'TZ2 Fan Fail': record.tz2fanfail ? 'Yes' : 'No',
-          'TZ1 Fan Trip': record.tz1fantrip ? 'Yes' : 'No',
-          'TZ2 Fan Trip': record.tz2fantrip ? 'Yes' : 'No',
-        };
+      // 8. Tempering Zone 1 Present Value
+      if (record.tz1pv !== undefined) {
+        baseObj['Tempering Zone 1 Present Value'] = record.tz1pv;
         
-        // Only include status fields that have value of true
-        Object.entries(statusFields).forEach(([key, value]) => {
-          if (value === 'Yes') {
-            baseObj[key] = value;
-          }
-        });
+        if (includeThresholds) {
+          baseObj['TZ1 High Threshold'] = record.tz1ht;
+          baseObj['TZ1 Low Threshold'] = record.tz1lt;
+        }
+      }
+      
+      // 9. Tempering Zone 2 Set Value
+      if (record.tz2sv !== undefined) {
+        baseObj['Tempering Zone 2 Set Value'] = record.tz2sv;
+      }
+      
+      // 10. Tempering Zone 2 Present Value
+      if (record.tz2pv !== undefined) {
+        baseObj['Tempering Zone 2 Present Value'] = record.tz2pv;
+        
+        if (includeThresholds) {
+          baseObj['TZ2 High Threshold'] = record.tz2ht;
+          baseObj['TZ2 Low Threshold'] = record.tz2lt;
+        }
+      }
+      
+      // 11. Oil Temperature Present Value
+      if (record.oilpv !== undefined) {
+        baseObj['Oil Temperature Present Value'] = record.oilpv;
+      }
+      
+      // Add binary status fields (Fields 12-18) - Always show as True/False
+      if (includeStatusFields) {
+        // 12. Oil Temperature High
+        baseObj['Oil Temperature High'] = record.oiltemphigh ? 'True' : 'False';
+        
+        // 13. Oil Level High
+        baseObj['Oil Level High'] = record.oillevelhigh ? 'True' : 'False';
+        
+        // 14. Oil Level Low
+        baseObj['Oil Level Low'] = record.oillevellow ? 'True' : 'False';
+        
+        // 15. Hardening Zone 1 Heater Failure
+        baseObj['Hardening Zone 1 Heater Failure'] = record.hz1hfail ? 'True' : 'False';
+        
+        // 16. Hardening Zone 2 Heater Failure
+        baseObj['Hardening Zone 2 Heater Failure'] = record.hz2hfail ? 'True' : 'False';
+        
+        // 17. Hardening Zone 1 Fan Failure
+        baseObj['Hardening Zone 1 Fan Failure'] = record.hz1fanfail ? 'True' : 'False';
+        
+        // 18. Hardening Zone 2 Fan Failure
+        baseObj['Hardening Zone 2 Fan Failure'] = record.hz2fanfail ? 'True' : 'False';
+        
+        // 19. Tempering Zone 1 Fan Failure
+        baseObj['Tempering Zone 1 Fan Failure'] = record.tz1fanfail ? 'True' : 'False';
+        
+        // 20. Tempering Zone 2 Fan Failure
+        baseObj['Tempering Zone 2 Fan Failure'] = record.tz2fanfail ? 'True' : 'False';
       }
       
       return baseObj;
@@ -427,6 +456,49 @@ export class ExcelReportService {
   }
   
   /**
+   * Make headers bold in the worksheet
+   */
+  private static makeHeadersBold(ws: XLSX.WorkSheet, data: any[]): void {
+    if (data.length === 0) return;
+    
+    // Get column names from the first row
+    const columns = Object.keys(data[0]);
+    
+    // Apply bold formatting to header row (row 1)
+    columns.forEach((_, colIndex) => {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: colIndex });
+      const cell = ws[cellAddress];
+      
+      if (cell) {
+        // Initialize cell style if it doesn't exist
+        if (!cell.s) {
+          cell.s = {};
+        }
+        
+        // Set font to bold
+        cell.s.font = {
+          bold: true,
+          name: 'Calibri',
+          sz: 11
+        };
+        
+        // Optional: Add background color for better visibility
+        cell.s.fill = {
+          fgColor: { rgb: 'E7E6E6' }
+        };
+        
+        // Optional: Add border
+        cell.s.border = {
+          top: { style: 'thin' },
+          bottom: { style: 'thin' },
+          left: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+      }
+    });
+  }
+
+  /**
    * Get appropriate column widths based on the data
    */
   private static getColumnWidths(data: any[]): number[] {
@@ -453,8 +525,12 @@ export class ExcelReportService {
    * Save workbook to a file and return the file path
    */
   private static async saveWorkbookToFile(wb: XLSX.WorkBook, filename: string): Promise<string> {
-    // Write to binary string
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    // Write to binary string with cellStyles enabled to preserve formatting
+    const wbout = XLSX.write(wb, { 
+      bookType: 'xlsx', 
+      type: 'base64',
+      cellStyles: true // Enable cell styles for bold headers and formatting
+    });
     
     // Create file path
     const filePath = `${FileSystem.documentDirectory}${filename}`;

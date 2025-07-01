@@ -12,18 +12,19 @@ import {
   GestureResponderEvent,
   Animated,
   Easing,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { format as formatDate, subDays, subHours } from 'date-fns';
 import { useRouter } from 'expo-router';
+import { useAnalyticsData } from '../../hooks/useAlarms';
+import { useQueryClient } from '@tanstack/react-query';
 
 // Types
 type GraphType = 'analog' | 'binary';
-type TimeRange = '1h' | '12h' | '24h' | '7d' | 'custom';
+type TimeRange = '10s' | '15s' | '20s' | '1m' | '2m';
 
 // Binary alarm interfaces
 interface BinaryAlarmSeries {
@@ -52,7 +53,7 @@ interface LineProps {
   color: string;
 }
 
-// Update Line component with proper type annotations
+// Update Line component with better visibility
 const Line = ({ startX, startY, endX, endY, color }: LineProps) => {
   // Calculate the length and angle of the line
   const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
@@ -65,13 +66,18 @@ const Line = ({ startX, startY, endX, endY, color }: LineProps) => {
         left: startX,
         top: startY,
         width: length,
-        height: 2,
+        height: 3, // Increased thickness from 2 to 3
         backgroundColor: color,
         transform: [
-          { translateY: -1 },
+          { translateY: -1.5 }, // Adjusted for center alignment
           { rotate: `${angle}deg` },
           { translateY: 0 },
         ],
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.3,
+        shadowRadius: 1,
+        elevation: 2, // Better visibility on Android
       }}
     />
   );
@@ -119,9 +125,26 @@ const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
   const graphWidth = chartWidth - padding.left - padding.right;
   const graphHeight = chartHeight - padding.top - padding.bottom;
   
-  // Fixed Y-axis range from 0 to 1000
-  const minValue = 0;
-  const maxValue = 1000;
+  // Smart Y-axis range based on actual data with better handling for different value ranges
+  const allValues = alarmData.flatMap(series => series.data).filter(val => !isNaN(val) && val !== null && val !== undefined);
+  
+  let dataMinValue = allValues.length > 0 ? Math.min(...allValues) : 0;
+  let dataMaxValue = allValues.length > 0 ? Math.max(...allValues) : 1000;
+  
+  // Handle edge cases for very small ranges or values close to zero
+  const dataRange = dataMaxValue - dataMinValue;
+  
+  // If range is very small (all values are similar), add artificial range
+  if (dataRange < 10) {
+    const midPoint = (dataMaxValue + dataMinValue) / 2;
+    dataMinValue = midPoint - 25;
+    dataMaxValue = midPoint + 25;
+  }
+  
+  // Add dynamic padding based on the range (minimum 20 units, maximum 20% of range)
+  const basePadding = Math.max(20, dataRange * 0.15);
+  const minValue = Math.max(0, dataMinValue - basePadding);
+  const maxValue = dataMaxValue + basePadding;
   const valueRange = maxValue - minValue;
   
   // Functions to calculate x and y positions
@@ -254,22 +277,29 @@ const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
         style={{ height: chartHeight, position: 'relative' }}
       >
         {/* Grid Lines */}
-        {[0, 200, 400, 600, 800, 1000].map((yValue, i) => {
-          const yPosition = getY(yValue);
-          return (
-            <View 
-              key={`h-grid-${i}`}
-              style={{
-                position: 'absolute',
-                left: padding.left,
-                top: yPosition,
-                width: graphWidth,
-                height: 1,
-                backgroundColor: gridColor,
-              }}
-            />
-          );
-        })}
+        {(() => {
+          // Generate 6 evenly spaced grid lines based on data range
+          const gridValues = [];
+          for (let i = 0; i <= 5; i++) {
+            gridValues.push(minValue + (i * (maxValue - minValue)) / 5);
+          }
+          return gridValues.map((yValue, i) => {
+            const yPosition = getY(yValue);
+            return (
+              <View 
+                key={`h-grid-${i}`}
+                style={{
+                  position: 'absolute',
+                  left: padding.left,
+                  top: yPosition,
+                  width: graphWidth,
+                  height: 1,
+                  backgroundColor: gridColor,
+                }}
+              />
+            );
+          });
+        })()}
         
         {timeLabels.map((_, i) => (
           <View 
@@ -286,22 +316,29 @@ const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
         ))}
         
         {/* Y-axis labels */}
-        {[0, 200, 400, 600, 800, 1000].map((value, i) => {
-          return (
-            <Text 
-              key={`y-label-${i}`}
-              style={{
-                position: 'absolute',
-                left: 10,
-                top: getY(value) - 10,
-                color: textColor,
-                fontSize: 10,
-              }}
-            >
-              {value}
-            </Text>
-          );
-        })}
+        {(() => {
+          // Generate 6 evenly spaced labels based on data range
+          const labelValues = [];
+          for (let i = 0; i <= 5; i++) {
+            labelValues.push(minValue + (i * (maxValue - minValue)) / 5);
+          }
+          return labelValues.map((value, i) => {
+            return (
+              <Text 
+                key={`y-label-${i}`}
+                style={{
+                  position: 'absolute',
+                  left: 10,
+                  top: getY(value) - 10,
+                  color: textColor,
+                  fontSize: 10,
+                }}
+              >
+                {value.toFixed(0)}
+              </Text>
+            );
+          });
+        })()}
         
         {/* X-axis labels */}
         {getVisibleTimeLabels().map((label, i) => {
@@ -353,13 +390,20 @@ const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
               key={`point-${seriesIndex}-${i}`}
               style={{
                 position: 'absolute',
-                left: getX(i) - 4,
-                top: getY(value) - 4,
-                width: 8,
-                height: 8,
-                borderRadius: 4,
+                left: getX(i) - 5,
+                top: getY(value) - 5,
+                width: 10, // Increased from 8 to 10
+                height: 10, // Increased from 8 to 10
+                borderRadius: 5, // Adjusted for new size
                 backgroundColor: series.color,
+                borderWidth: 2, // Added border for better visibility
+                borderColor: isDarkMode ? '#FFFFFF' : '#000000',
                 zIndex: 5,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.3,
+                shadowRadius: 2,
+                elevation: 3,
               }}
             />
           ))
@@ -944,129 +988,23 @@ const BinaryChart = ({ alarmData, timeLabels }: BinaryChartProps) => {
 export default function AnalyticsScreen() {
   const { isDarkMode } = useTheme();
   const router = useRouter();
+  const queryClient = useQueryClient();
   
   // Animation value for toggle button
   const animatedValue = useRef(new Animated.Value(0)).current;
   
   // State
   const [activeGraph, setActiveGraph] = useState<GraphType>('analog');
-  const [timeRange, setTimeRange] = useState<TimeRange>('24h');
-  const [isLoading, setIsLoading] = useState(false);
-  const [customStartDate, setCustomStartDate] = useState(new Date());
-  const [customEndDate, setCustomEndDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [pickerMode, setPickerMode] = useState<'start' | 'end'>('start');
-  const [alarmData, setAlarmData] = useState([
-    {
-      name: "HARDENING ZONE 1 TEMPERATURE",
-      color: GRAPH_COLORS.zone1,
-      data: [820, 810, 795, 785, 780, 785, 790, 795, 798, 800],
-      thresholds: {
-        critical: { low: 760, high: 840 },
-        warning: { low: 775, high: 825 }
-      }
-    },
-    {
-      name: "HARDENING ZONE 2 TEMPERATURE",
-      color: GRAPH_COLORS.zone2,
-      data: [850, 840, 835, 830, 825, 830, 835, 840, 845, 850],
-      thresholds: {
-        critical: { low: 810, high: 880 },
-        warning: { low: 820, high: 870 }
-      }
-    },
-    {
-      name: "CARBON POTENTIAL (CP %)",
-      color: GRAPH_COLORS.carbon,
-      data: [0.4, 0.38, 0.36, 0.35, 0.33, 0.35, 0.38, 0.4, 0.42, 0.43],
-      thresholds: {
-        critical: { low: 0.30, high: 0.50 },
-        warning: { low: 0.35, high: 0.45 }
-      }
-    },
-    {
-      name: "OIL TEMPERATURE",
-      color: GRAPH_COLORS.oil,
-      data: [72, 70, 68, 69, 71, 73, 75, 73, 71, 70],
-      thresholds: {
-        critical: { low: 50, high: 80 },
-        warning: { low: 55, high: 75 }
-      }
-    },
-    {
-      name: "TEMPERING ZONE 1 TEMPERATURE",
-      color: GRAPH_COLORS.tempering1,
-      data: [435, 437, 440, 438, 435, 433, 435, 438, 440, 442],
-      thresholds: {
-        critical: { low: 420, high: 460 },
-        warning: { low: 425, high: 455 }
-      }
-    },
-    {
-      name: "TEMPERING ZONE 2 TEMPERATURE",
-      color: GRAPH_COLORS.tempering2,
-      data: [455, 458, 460, 459, 456, 454, 455, 458, 460, 462],
-      thresholds: {
-        critical: { low: 450, high: 470 },
-        warning: { low: 452, high: 468 }
-      }
-    },
-  ]);
-  const [binaryAlarmData, setBinaryAlarmData] = useState<BinaryAlarmSeries[]>([
-    {
-      name: "OIL LEVEL (LOW/HIGH)",
-      color: "#FF6384", // Red
-      data: [0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
-    },
-    {
-      name: "HARDENING HEATER FAILURE (ZONE 1)",
-      color: "#36A2EB", // Blue
-      data: [1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
-    },
-    {
-      name: "HARDENING HEATER FAILURE (ZONE 2)",
-      color: "#4BC0C0", // Teal
-      data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    },
-    {
-      name: "HARDENING CONVEYOR (NOT ROTATING)",
-      color: "#FFCE56", // Yellow
-      data: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
-    },
-    {
-      name: "OIL QUECH CONVEYOR (NOT ROTATING)",
-      color: "#9966FF", // Purple
-      data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    },
-    {
-      name: "HARDENING FAN MOTOR NOT RUNNING (ZONE 1)",
-      color: "#FF9F40", // Orange
-      data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    },
-    {
-      name: "HARDENING FAN MOTOR NOT RUNNING (ZONE 2)",
-      color: "#4CAF50", // Green
-      data: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
-    },
-    {
-      name: "TEMPERING CONVEYOR (NOT ROTATING)",
-      color: "#E91E63", // Pink
-      data: [1, 0, 1, 0, 1, 0, 0, 0, 0, 0]
-    },
-    {
-      name: "TEMPERING FAN MOTOR NOT RUNNING (ZONE 1)",
-      color: "#2196F3", // Light Blue
-      data: [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]
-    },
-    {
-      name: "TEMPERING FAN MOTOR NOT RUNNING (ZONE 2)",
-      color: "#00BCD4", // Cyan
-      data: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
-    }
-  ]);
-  const [timeLabels, setTimeLabels] = useState<string[]>([
-    "06:00", "06:01", "06:02", "06:03", "06:04", "06:05", "06:06", "06:07", "06:08", "06:09"
-  ]);
+  const [timeRange, setTimeRange] = useState<TimeRange>('20s');
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Fetch real-time analytics data
+  const { data: analyticsData, isLoading, error, refetch } = useAnalyticsData(timeRange);
+
+  // Invalidate cache immediately when timeRange changes for instant switching
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['scada-analytics'] });
+  }, [timeRange, queryClient]);
 
   // Theme colors
   const theme = useMemo(() => ({
@@ -1078,257 +1016,25 @@ export default function AnalyticsScreen() {
     primary: isDarkMode ? '#3B82F6' : '#2563EB',
   }), [isDarkMode]);
 
-  // Get time range based on selected filter
-  const getTimeRange = useCallback(() => {
-    const now = new Date();
-    let startDate;
-    let endDate = now;
-    
-    switch(timeRange) {
-      case '1h':
-        startDate = subHours(now, 1);
-        break;
-      case '12h':
-        startDate = subHours(now, 12);
-        break;
-      case '24h':
-        startDate = subHours(now, 24);
-        break;
-      case '7d':
-        startDate = subDays(now, 7);
-        break;
-      case 'custom':
-        startDate = customStartDate;
-        endDate = customEndDate;
-        break;
-      default:
-        startDate = subHours(now, 24);
-    }
-    
-    return { startDate, endDate };
-  }, [timeRange, customStartDate, customEndDate]);
-
-  // Function to fetch data from backend
-  const fetchAlarmData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      // Get the time range for filtering
-    const { startDate, endDate } = getTimeRange();
-      
-      // This is where you would make your API call
-      // For example:
-      // const response = await fetch(
-      //   `your-api-endpoint?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
-      // );
-      // const data = await response.json();
-      
-      // For now, we'll simulate dynamic data by generating random variations
-      // based on the selected time range
-      const dynamicData = generateDynamicData(startDate, endDate);
-      setAlarmData(dynamicData);
-    } catch (error) {
-      console.error('Error fetching alarm data:', error);
-      // You might want to show an error message to the user
-    } finally {
-      setIsLoading(false);
-    }
-  }, [timeRange, customStartDate, customEndDate]);
-
-  // Update the generateDynamicData function to use appropriate time formats
-  // and label counts for different time ranges
-  const generateDynamicData = useCallback((startDate: Date, endDate: Date) => {
-    // The number of data points depends on the time range
-    let numberOfPoints = 10;
-    let timeFormat = 'HH:mm';
-    
-    if (timeRange === '1h') {
-      numberOfPoints = 7;  // Every 10 minutes
-    } else if (timeRange === '12h') {
-      numberOfPoints = 13;  // Every hour
-    } else if (timeRange === '24h') {
-      numberOfPoints = 13;  // Every 2 hours
-      timeFormat = 'HH:mm';
-    } else if (timeRange === '7d') {
-      numberOfPoints = 8;  // Daily
-      timeFormat = 'MM/dd';
-    } else if (timeRange === 'custom') {
-      // For custom range, determine the appropriate format and points based on duration
-      const durationMs = endDate.getTime() - startDate.getTime();
-      const durationHours = durationMs / (1000 * 60 * 60);
-      
-      if (durationHours <= 24) {
-        timeFormat = 'HH:mm';
-        numberOfPoints = Math.min(13, Math.max(7, Math.floor(durationHours) + 1));
-      } else if (durationHours <= 72) {
-        timeFormat = 'MM/dd HH:mm';
-        numberOfPoints = 10;
-    } else {
-        timeFormat = 'MM/dd';
-        numberOfPoints = 10;
-      }
-    }
-    
-    // Create time labels based on the selected range
-    const timeDiff = endDate.getTime() - startDate.getTime();
-    const labels = Array.from({ length: numberOfPoints }, (_, i) => {
-      const pointDate = new Date(startDate.getTime() + (timeDiff * i / (numberOfPoints - 1)));
-      return formatDate(pointDate, timeFormat);
-    });
-    
-    // Ensure labels are in ascending order
-    labels.sort((a, b) => {
-      // Try to parse dates for comparison
-      try {
-        if (timeFormat === 'MM/dd') {
-          // For MM/dd format, compare by converting to current year
-          const currentYear = new Date().getFullYear();
-          const dateA = new Date(`${currentYear}/${a}`);
-          const dateB = new Date(`${currentYear}/${b}`);
-          return dateA.getTime() - dateB.getTime();
-        } else if (timeFormat.includes('HH:mm')) {
-          // For time formats, compare by converting to minutes
-          const [hoursA, minsA] = a.split(':').map(Number);
-          const [hoursB, minsB] = b.split(':').map(Number);
-          return (hoursA * 60 + minsA) - (hoursB * 60 + minsB);
-        }
-      } catch (e) {
-        // If parsing fails, fall back to string comparison
-      }
-      return a.localeCompare(b);
-    });
-    
-    // Update the timeLabels state
-    setTimeLabels(labels);
-    
-    // Generate random variations for analog alarm data
-    const analogData = [
-      {
-        name: "HARDENING ZONE 1 TEMPERATURE",
-        color: GRAPH_COLORS.zone1,
-        data: Array.from({ length: numberOfPoints }, () => 780 + Math.random() * 40),
-        thresholds: {
-          critical: { low: 760, high: 840 },
-          warning: { low: 775, high: 825 }
-        }
-      },
-      {
-        name: "HARDENING ZONE 2 TEMPERATURE",
-        color: GRAPH_COLORS.zone2,
-        data: Array.from({ length: numberOfPoints }, () => 830 + Math.random() * 30),
-        thresholds: {
-          critical: { low: 810, high: 880 },
-          warning: { low: 820, high: 870 }
-        }
-      },
-      {
-        name: "CARBON POTENTIAL (CP %)",
-        color: GRAPH_COLORS.carbon,
-        data: Array.from({ length: numberOfPoints }, () => 0.33 + Math.random() * 0.15),
-        thresholds: {
-          critical: { low: 0.30, high: 0.50 },
-          warning: { low: 0.35, high: 0.45 }
-        }
-      },
-      {
-        name: "OIL TEMPERATURE",
-        color: GRAPH_COLORS.oil,
-        data: Array.from({ length: numberOfPoints }, () => 65 + Math.random() * 15),
-        thresholds: {
-          critical: { low: 50, high: 80 },
-          warning: { low: 55, high: 75 }
-        }
-      },
-      {
-        name: "TEMPERING ZONE 1 TEMPERATURE",
-        color: GRAPH_COLORS.tempering1,
-        data: Array.from({ length: numberOfPoints }, () => 430 + Math.random() * 15),
-        thresholds: {
-          critical: { low: 420, high: 460 },
-          warning: { low: 425, high: 455 }
-        }
-      },
-      {
-        name: "TEMPERING ZONE 2 TEMPERATURE",
-        color: GRAPH_COLORS.tempering2,
-        data: Array.from({ length: numberOfPoints }, () => 450 + Math.random() * 15),
-        thresholds: {
-          critical: { low: 450, high: 470 },
-          warning: { low: 452, high: 468 }
-        }
-      },
-    ];
-    
-    // Generate binary alarm data with occasional failures
-    const binaryData: BinaryAlarmSeries[] = [
-      {
-        name: "OIL LEVEL (LOW/HIGH)",
-        color: "#FF6384", // Red
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.7 ? 1 : 0)
-      },
-      {
-        name: "HARDENING HEATER FAILURE (ZONE 1)",
-        color: "#36A2EB", // Blue
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.8 ? 1 : 0)
-      },
-      {
-        name: "HARDENING HEATER FAILURE (ZONE 2)",
-        color: "#4BC0C0", // Teal
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.9 ? 1 : 0)
-      },
-      {
-        name: "HARDENING CONVEYOR (NOT ROTATING)",
-        color: "#FFCE56", // Yellow
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.85 ? 1 : 0)
-      },
-      {
-        name: "OIL QUECH CONVEYOR (NOT ROTATING)",
-        color: "#9966FF", // Purple
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.95 ? 1 : 0)
-      },
-      {
-        name: "HARDENING FAN MOTOR NOT RUNNING (ZONE 1)",
-        color: "#FF9F40", // Orange
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.9 ? 1 : 0)
-      },
-      {
-        name: "HARDENING FAN MOTOR NOT RUNNING (ZONE 2)",
-        color: "#4CAF50", // Green
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.8 ? 1 : 0)
-      },
-      {
-        name: "TEMPERING CONVEYOR (NOT ROTATING)",
-        color: "#E91E63", // Pink
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.7 ? 1 : 0)
-      },
-      {
-        name: "TEMPERING FAN MOTOR NOT RUNNING (ZONE 1)",
-        color: "#2196F3", // Light Blue
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.75 ? 1 : 0)
-      },
-      {
-        name: "TEMPERING FAN MOTOR NOT RUNNING (ZONE 2)",
-        color: "#00BCD4", // Cyan
-        data: Array.from({ length: numberOfPoints }, () => Math.random() > 0.85 ? 1 : 0)
-      }
-    ];
-    
-    // Update both analog and binary data states
-    setAlarmData(analogData);
-    setBinaryAlarmData(binaryData);
-    
-    return analogData;
-  }, [timeRange, customStartDate, customEndDate]);
-
-  // Fetch data whenever time range changes
-  useEffect(() => {
-    fetchAlarmData();
-  }, [timeRange, customStartDate, customEndDate, fetchAlarmData]);
-
   // Toggle between graph types
   const toggleGraph = useCallback(() => {
     // Update graph type
     setActiveGraph(prev => prev === 'analog' ? 'binary' : 'analog');
   }, []);
+
+  // Pull to refresh functionality
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+      // Also invalidate the query to force a fresh fetch
+      queryClient.invalidateQueries({ queryKey: ['scada-analytics', timeRange] });
+    } catch (error) {
+      console.error('Error refreshing analytics data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, queryClient, timeRange]);
 
   // Update animation when graph type changes
   useEffect(() => {
@@ -1442,11 +1148,11 @@ export default function AnalyticsScreen() {
   // Render time range selector
   const renderTimeRangeSelector = () => {
     const ranges: { label: string; value: TimeRange }[] = [
-      { label: '1H', value: '1h' },
-      { label: '12H', value: '12h' },
-      { label: '24H', value: '24h' },
-      { label: '7D', value: '7d' },
-      { label: 'Custom', value: 'custom' },
+      { label: '10S', value: '10s' },
+      { label: '15S', value: '15s' },
+      { label: '20S', value: '20s' },
+      { label: '1M', value: '1m' },
+      { label: '2M', value: '2m' },
     ];
 
     return (
@@ -1465,166 +1171,70 @@ export default function AnalyticsScreen() {
               {
                 backgroundColor: timeRange === range.value ? theme.primary : theme.surface,
                 borderColor: theme.border,
+                opacity: isLoading && timeRange === range.value ? 0.7 : 1, // Visual feedback when loading
               }
             ]}
             onPress={() => setTimeRange(range.value)}
+            disabled={isLoading} // Prevent rapid clicking while loading
           >
-            <Text
-              style={[
-                styles.timeRangeText,
-                {
-                  color: timeRange === range.value ? '#FFFFFF' : theme.text,
-                }
-              ]}
-            >
-              {range.label}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text
+                style={[
+                  styles.timeRangeText,
+                  {
+                    color: timeRange === range.value ? '#FFFFFF' : theme.text,
+                  }
+                ]}
+              >
+                {range.label}
+              </Text>
+              {isLoading && timeRange === range.value && (
+                <ActivityIndicator 
+                  size="small" 
+                  color="#FFFFFF" 
+                  style={{ marginLeft: 4 }} 
+                />
+              )}
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
     );
   };
 
-  // Date picker handlers
-  const onChangeDatePicker = useCallback((event: any, selectedDate?: Date) => {
-    // Hide the date picker immediately after selection on Android
-    if (Platform.OS === 'android') {
-    setShowDatePicker(false);
-    }
-    
-    // Only update the date if a date was actually selected (not canceled)
-    if (selectedDate) {
-      if (pickerMode === 'start') {
-        setCustomStartDate(selectedDate);
-        
-        // If the selected start date is after the end date, update end date too
-        if (selectedDate > customEndDate) {
-          setCustomEndDate(new Date(selectedDate.getTime() + (24 * 60 * 60 * 1000))); // Add 1 day
-        }
-      } else {
-        setCustomEndDate(selectedDate);
-        
-        // If the selected end date is before the start date, update start date too
-        if (selectedDate < customStartDate) {
-          setCustomStartDate(new Date(selectedDate.getTime() - (24 * 60 * 60 * 1000))); // Subtract 1 day
-        }
-      }
-      
-      // If we're in custom time range mode, fetch data with the new dates
-      if (timeRange === 'custom') {
-        fetchAlarmData();
-      }
-    }
-  }, [pickerMode, customStartDate, customEndDate, timeRange, fetchAlarmData]);
+  // Render error state
+  const renderError = () => (
+    <View style={[styles.loadingContainer, { backgroundColor: theme.surface }]}>
+      <Ionicons name="warning-outline" size={48} color={theme.subtext} />
+      <Text style={[styles.emptyStateTitle, { color: theme.text }]}>Error Loading Data</Text>
+      <Text style={[styles.emptyStateText, { color: theme.subtext }]}>
+        Unable to fetch analytics data for {timeRange.toUpperCase()}. Please check SCADA connection.
+      </Text>
+      <TouchableOpacity
+        style={[styles.retryButton, { backgroundColor: theme.primary }]}
+        onPress={onRefresh}
+      >
+        <Text style={styles.retryButtonText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
-  const openDatePicker = useCallback((mode: 'start' | 'end') => {
-    setPickerMode(mode);
-    setShowDatePicker(true);
-  }, []);
-
-  // Render custom date range selector
-  const renderCustomDateRange = () => {
-    if (timeRange !== 'custom') return null;
-
-    return (
-      <View style={styles.customDateContainer}>
-        <TouchableOpacity
-          style={[styles.dateButton, { backgroundColor: theme.surface }]}
-          onPress={() => openDatePicker('start')}
-        >
-          <Ionicons
-            name="calendar-outline"
-            size={18}
-            color={theme.text}
-            style={styles.dateIcon}
-          />
-          <Text style={[styles.dateText, { color: theme.text }]}>
-            From: {formatDate(customStartDate, 'yyyy-MM-dd HH:mm')}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.dateButton, { backgroundColor: theme.surface }]}
-          onPress={() => openDatePicker('end')}
-        >
-          <Ionicons
-            name="calendar-outline"
-            size={18}
-            color={theme.text}
-            style={styles.dateIcon}
-          />
-          <Text style={[styles.dateText, { color: theme.text }]}>
-            To: {formatDate(customEndDate, 'yyyy-MM-dd HH:mm')}
-          </Text>
-        </TouchableOpacity>
-
-        {showDatePicker && (
-          <>
-            {Platform.OS === 'android' ? (
-          <DateTimePicker
-                testID="dateTimePicker"
-            value={pickerMode === 'start' ? customStartDate : customEndDate}
-            mode="datetime"
-            display="default"
-            onChange={onChangeDatePicker}
-          />
-            ) : (
-              // iOS date picker with a modal approach
-              <View style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                backgroundColor: theme.surface,
-                padding: 16,
-                borderTopWidth: 1,
-                borderTopColor: theme.border,
-                zIndex: 1000,
-              }}>
-                <View style={{ 
-                  flexDirection: 'row', 
-                  justifyContent: 'space-between', 
-                  marginBottom: 16 
-                }}>
-                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                    <Text style={{ color: theme.primary }}>Cancel</Text>
-                  </TouchableOpacity>
-                <TouchableOpacity 
-                  onPress={() => {
-                      // No need to manually save the date as it's already being updated on change
-                      setShowDatePicker(false);
-                      // Trigger data fetch with new dates
-                      if (timeRange === 'custom') {
-                        fetchAlarmData();
-                      }
-                    }}
-                  >
-                    <Text style={{ color: theme.primary, fontWeight: '600' }}>Done</Text>
-                </TouchableOpacity>
-                </View>
-                <DateTimePicker
-                  testID="dateTimePicker"
-                  value={pickerMode === 'start' ? customStartDate : customEndDate}
-                  mode="datetime"
-                  display="spinner"
-                  onChange={onChangeDatePicker}
-                  style={{ height: 200 }}
-                />
-                </View>
-            )}
-          </>
-            )}
-      </View>
-    );
-  };
-
-  // Ensure we're properly updating data when the custom date range changes
-  useEffect(() => {
-    // Only fetch data when in custom mode if both dates are set
-    if (timeRange === 'custom' && customStartDate && customEndDate) {
-      fetchAlarmData();
-    }
-  }, [timeRange, customStartDate, customEndDate, fetchAlarmData]);
+  // Render empty state
+  const renderEmptyState = () => (
+    <View style={[styles.loadingContainer, { backgroundColor: theme.surface }]}>
+      <Ionicons name="analytics-outline" size={48} color={theme.subtext} />
+      <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No Data Available</Text>
+      <Text style={[styles.emptyStateText, { color: theme.subtext }]}>
+        No SCADA data found for the last {timeRange.toUpperCase()}. Try a different time range or pull to refresh.
+      </Text>
+      <TouchableOpacity
+        style={[styles.retryButton, { backgroundColor: theme.primary }]}
+        onPress={onRefresh}
+      >
+        <Text style={styles.retryButtonText}>Refresh</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -1652,27 +1262,47 @@ export default function AnalyticsScreen() {
         <View style={styles.headerTextContainer}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Analytics</Text>
           <Text style={[styles.headerSubtitle, { color: theme.subtext }]}>
-            Alarm Trends & Patterns
+            Real-time Alarm Trends & Patterns
           </Text>
         </View>
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[theme.primary]}
+            tintColor={theme.primary}
+          />
+        }
+      >
         {renderGraphToggle()}
         {renderTimeRangeSelector()}
-        {renderCustomDateRange()}
         
         {/* Main Content */}
         {isLoading ? (
           <View style={[styles.loadingContainer, { backgroundColor: theme.surface }]}>
             <ActivityIndicator size="large" color={theme.primary} />
-            <Text style={[styles.loadingText, { color: theme.subtext }]}>Loading data...</Text>
+            <Text style={[styles.loadingText, { color: theme.subtext }]}>Loading real-time data...</Text>
           </View>
+        ) : error ? (
+          renderError()
+        ) : !analyticsData || (!analyticsData.analogData?.length && !analyticsData.binaryData?.length) || analyticsData.message ? (
+          renderEmptyState()
         ) : (
           activeGraph === 'analog' ? (
-            <AnalogChart alarmData={alarmData} timeLabels={timeLabels} />
+            <AnalogChart 
+              alarmData={analyticsData.analogData || []} 
+              timeLabels={analyticsData.timeLabels || []} 
+            />
           ) : (
-            <BinaryChart alarmData={binaryAlarmData} timeLabels={timeLabels} />
+            <BinaryChart 
+              alarmData={analyticsData.binaryData || []} 
+              timeLabels={analyticsData.timeLabels || []} 
+            />
           )
         )}
       </ScrollView>
@@ -1743,22 +1373,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  customDateContainer: {
-    marginBottom: 16,
-  },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  dateIcon: {
-    marginRight: 8,
-  },
-  dateText: {
-    fontSize: 14,
-  },
+
   graphContainer: {
     borderRadius: 12,
     padding: 16,
@@ -1893,5 +1508,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     width: 60,
     transform: [{ skewX: '-20deg' }],
+  },
+  retryButton: {
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 

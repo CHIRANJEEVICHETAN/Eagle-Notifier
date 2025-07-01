@@ -12,6 +12,7 @@ export const ALARM_KEYS = {
   history: (params: Record<string, any>) => [...ALARM_KEYS.all, 'history', params] as const,
   detail: (id: string) => [...ALARM_KEYS.all, 'detail', id] as const,
   scada: (forceRefresh?: boolean) => ['scada-alarms', forceRefresh] as const,
+  analytics: (timeFilter: string) => ['scada-analytics', timeFilter] as const,
   alarmHistory: (params: { alarmId: string; status?: string; hours?: number; search?: string; startTime?: string; timeFilter?: string }) => 
     [...ALARM_KEYS.all, 'alarm-history', params.alarmId, params] as const,
 };
@@ -242,4 +243,33 @@ function getAccessToken() {
     console.error('Error getting access token:', error);
     return null;
   }
-} 
+}
+
+// Hook for fetching SCADA analytics data
+export const useAnalyticsData = (timeFilter: string) => {
+  return useQuery({
+    queryKey: ALARM_KEYS.analytics(timeFilter),
+    queryFn: async () => {
+      try {
+        const headers = await getAuthHeader();
+        const { data } = await axios.get(
+          `${apiConfig.apiUrl}/api/scada/analytics?timeFilter=${timeFilter}`,
+          { headers }
+        );
+        
+        return data;
+      } catch (error) {
+        console.error('Error fetching analytics data:', error);
+        throw error;
+      }
+    },
+    refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
+    staleTime: 500, // Reduced from 3000 to 500ms for faster filter switching
+    gcTime: 30000, // Keep cached data for 30 seconds (renamed from cacheTime)
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+    enabled: !!timeFilter, // Only fetch if timeFilter is provided
+    refetchOnMount: 'always', // Always refetch when component mounts
+    refetchOnWindowFocus: false, // Don't refetch on window focus to avoid unnecessary calls
+  });
+}; 

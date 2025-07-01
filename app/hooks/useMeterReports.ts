@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as IntentLauncher from 'expo-intent-launcher';
-import { Alert, Platform } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
 import { format as formatDate, subDays } from 'date-fns';
 import { 
   generateMeterReport, 
@@ -186,64 +186,95 @@ export function useMeterReports() {
     }
   };
 
-  const openReport = async (reportId: string): Promise<void> => {
-    try {
-      // 1️⃣ Download the file blob
-      const blob = await downloadMeterReport(reportId);
+  const handleOpenFile = useCallback(
+    async (filePath: string) => {
+      try {
+        // 1️⃣ Ensure filePath is a file:// URI on iOS
+        const uri =
+          Platform.OS === 'ios' && !filePath.startsWith('file://')
+            ? `file://${filePath}`
+            : filePath;
   
-      // 2️⃣ Retrieve metadata
-      const cached = queryClient.getQueryData<MeterReport[]>(['meterReports']);
-      const meta = cached?.find(r => r.id === reportId);
-      if (!meta) throw new Error('Report metadata not found');
-  
-      const fileUri = FileSystem.documentDirectory + meta.fileName;
-  
-      // 3️⃣ Convert blob to base64 and write to file
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = reader.result?.toString().split(',')[1];
-        if (!base64) throw new Error('Failed to convert file to base64');
-  
-        await FileSystem.writeAsStringAsync(fileUri, base64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-  
-        const mime =
-          meta.format === 'excel'
-            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            : 'application/pdf';
+        // 2️⃣ Infer MIME type from extension
+        const ext = uri.split('.').pop()?.toLowerCase();
+        let mime: string;
+        switch (ext) {
+          case 'xlsx':
+          case 'xls':
+            mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            break;
+          case 'pdf':
+            mime = 'application/pdf';
+            break;
+          default:
+            throw new Error(`Unsupported file type: .${ext}`);
+        }
   
         if (Platform.OS === 'android') {
-          // 4️⃣ Android: launch external app via IntentLauncher
-          try {
-            const contentUri = await FileSystem.getContentUriAsync(fileUri);
-            await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+          // 3️⃣ Android: get a content URI and launch the VIEW intent
+          const contentUri = await FileSystem.getContentUriAsync(uri);
+          await IntentLauncher.startActivityAsync(
+            'android.intent.action.VIEW',
+            {
               data: contentUri,
-              flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
               type: mime,
-            });
-          } catch (e) {
-            // Fallback: use Sharing
-            console.warn('IntentLauncher failed, using Sharing', e);
-            await Sharing.shareAsync(fileUri, { mimeType: mime });
-          }
+              flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+            }
+          );
         } else {
-          // ✅ iOS: use expo-sharing to open the file
-          const canShare = await Sharing.isAvailableAsync();
-          if (!canShare) {
-            throw new Error('Sharing is not available on this device');
+          // 4️⃣ iOS: hand off to the system via Linking
+          const supported = await Linking.canOpenURL(uri);
+          if (!supported) {
+            throw new Error('Cannot open this file on iOS');
           }
-          await Sharing.shareAsync(fileUri, {
-            mimeType: mime,
-            UTI: meta.format === 'excel' ? 'com.microsoft.excel.xlsx' : 'com.adobe.pdf',
-            dialogTitle: `Open Meter Readings Report`,
-          });
+          await Linking.openURL(uri);
         }
+      } catch (error: any) {
+        console.error('Error opening file:', error);
+        Alert.alert('Error', error.message || 'Failed to open file');
+      }
+    },
+    []
+  );
+
+  // Open a generated report
+  const openReport = async (reportId: string): Promise<void> => {
+    try {
+      // Download the report file
+      const blob = await downloadMeterReport(reportId);
+      
+      // Get the report metadata from cache if available
+      const cachedReports = queryClient.getQueryData<MeterReport[]>(['meterReports']);
+      const reportMetadata = cachedReports?.find(report => report.id === reportId);
+      
+      if (!reportMetadata) {
+        throw new Error('Report metadata not found');
+      }
+      
+      // Create a temporary file
+      const fileUri = FileSystem.documentDirectory + reportMetadata.fileName;
+      
+      // Convert blob to base64 and write to file
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64data = reader.result?.toString().split(',')[1];
+        
+        if (!base64data) {
+          throw new Error('Failed to convert file');
+        }
+        
+        await FileSystem.writeAsStringAsync(fileUri, base64data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        // Open the file
+        await handleOpenFile(fileUri);
       };
+      
       reader.readAsDataURL(blob);
-    } catch (err) {
-      console.error('Error opening report:', err);
-      Alert.alert('Error', err instanceof Error ? err.message : 'Unable to open report');
+    } catch (error) {
+      console.error('Error opening report:', error);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to open report');
     }
   };
 

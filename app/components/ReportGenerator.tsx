@@ -27,7 +27,19 @@ export type ReportFormat = 'excel' | 'pdf';
 interface ReportGeneratorProps {
   visible: boolean;
   onClose: () => void;
-  onGenerate: (format: ReportFormat, timeRange: ReportTimeRange) => Promise<string>;
+  onGenerate: (
+    format: ReportFormat, 
+    timeRange: ReportTimeRange,
+    filters: {
+      alarmTypes: string[];
+      severityLevels: string[];
+      zones: string[];
+      grouping: ColumnGrouping;
+      includeThresholds: boolean;
+      includeStatusFields: boolean;
+      shouldSplit?: boolean;
+    }
+  ) => Promise<string>;
   defaultTimeRange?: ReportTimeRange;
 }
 
@@ -45,13 +57,15 @@ export function ReportGenerator({
   
   // Time range state
   const [startDate, setStartDate] = useState<Date>(
-    defaultTimeRange?.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    defaultTimeRange?.startDate || new Date(Date.now() - 1 * 60 * 60 * 1000) // Default to 1 hour ago
   );
   const [endDate, setEndDate] = useState<Date>(
     defaultTimeRange?.endDate || new Date()
   );
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
   // Alarm filters state
   const [alarmTypes, setAlarmTypes] = useState<string[]>([]);
@@ -59,7 +73,7 @@ export function ReportGenerator({
   const [zones, setZones] = useState<string[]>([]);
   const [includeThresholds, setIncludeThresholds] = useState(true);
   const [includeStatusFields, setIncludeStatusFields] = useState(true);
-  const [grouping, setGrouping] = useState<ColumnGrouping>(ColumnGrouping.CHRONOLOGICAL);
+  const [grouping, setGrouping] = useState<ColumnGrouping>(ColumnGrouping.NEWEST_FIRST);
 
   // Report title
   const [reportTitle, setReportTitle] = useState('Alarm Report');
@@ -73,18 +87,44 @@ export function ReportGenerator({
     zones: zones.length > 0 ? zones : undefined
   }, false);
 
-  // Handle date change
+  // Handle date and time changes
   const handleStartDateChange = (event: any, selectedDate?: Date) => {
-    setShowStartPicker(false);
+    setShowStartDatePicker(false);
     if (selectedDate) {
-      setStartDate(selectedDate);
+      // Preserve the time when changing date
+      const newDate = new Date(selectedDate);
+      newDate.setHours(startDate.getHours(), startDate.getMinutes(), startDate.getSeconds());
+      setStartDate(newDate);
     }
   };
 
   const handleEndDateChange = (event: any, selectedDate?: Date) => {
-    setShowEndPicker(false);
+    setShowEndDatePicker(false);
     if (selectedDate) {
-      setEndDate(selectedDate);
+      // Preserve the time when changing date
+      const newDate = new Date(selectedDate);
+      newDate.setHours(endDate.getHours(), endDate.getMinutes(), endDate.getSeconds());
+      setEndDate(newDate);
+    }
+  };
+
+  const handleStartTimeChange = (event: any, selectedTime?: Date) => {
+    setShowStartTimePicker(false);
+    if (selectedTime) {
+      // Preserve the date when changing time
+      const newDate = new Date(startDate);
+      newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes(), selectedTime.getSeconds());
+      setStartDate(newDate);
+    }
+  };
+
+  const handleEndTimeChange = (event: any, selectedTime?: Date) => {
+    setShowEndTimePicker(false);
+    if (selectedTime) {
+      // Preserve the date when changing time
+      const newDate = new Date(endDate);
+      newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes(), selectedTime.getSeconds());
+      setEndDate(newDate);
     }
   };
 
@@ -125,37 +165,70 @@ export function ReportGenerator({
       return;
     }
 
+    // Calculate time difference in hours
+    const timeDifferenceMs = endDate.getTime() - startDate.getTime();
+    const timeDifferenceHours = timeDifferenceMs / (1000 * 60 * 60);
+
+    // Check if the time range is too large (>2 hours) and suggest splitting
+    if (timeDifferenceHours > 2) {
+      Alert.alert(
+        'Large Time Range Detected',
+        `You've selected ${timeDifferenceHours.toFixed(1)} hours of data. This will be automatically split into multiple reports for optimal performance.\n\nReports will be generated in 1-hour chunks to stay within Excel limits.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Proceed with Split Reports', 
+            onPress: () => proceedWithSplitReports() 
+          }
+        ]
+      );
+      return;
+    }
+
     try {
       setIsGenerating(true);
 
-      if (format === 'excel') {
-        // Fetch report data
-        const result = await fetchReportData();
-        
-        if (!result.data || !result.data.data || result.data.data.length === 0) {
-          Alert.alert('No Data', 'No data found for the specified filters.');
-          setIsGenerating(false);
-          return;
-        }
-
-        // Generate Excel report
-        const filePath = await ExcelReportService.generateExcelReport({
-          alarmData: result.data.data,
-          title: reportTitle,
-          grouping,
-          includeThresholds,
-          includeStatusFields
-        });
-
-        // Share the file
-        await ExcelReportService.shareExcelFile(filePath);
-      } else if (format === 'pdf') {
-        // Use the existing onGenerate for PDF (if implemented)
-        await onGenerate(format, { startDate, endDate });
-      }
+      // Call the parent's onGenerate function with the current state and filters
+      await onGenerate(format, { startDate, endDate }, {
+        alarmTypes,
+        severityLevels,
+        zones,
+        grouping,
+        includeThresholds,
+        includeStatusFields
+      });
+      
+      // Close the modal after successful generation
+      onClose();
     } catch (error) {
       console.error('Error generating report:', error);
-      Alert.alert('Error', 'Failed to generate report. Please try again.');
+      // Don't show alert here as it's handled in parent
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Handle split report generation
+  const proceedWithSplitReports = async () => {
+    try {
+      setIsGenerating(true);
+
+      // Call the parent's onGenerate function with split flag
+      await onGenerate(format, { startDate, endDate }, {
+        alarmTypes,
+        severityLevels,
+        zones,
+        grouping,
+        includeThresholds,
+        includeStatusFields,
+        shouldSplit: true
+      });
+      
+      // Close the modal after successful generation
+      onClose();
+    } catch (error) {
+      console.error('Error generating split reports:', error);
+      Alert.alert('Error', 'Failed to generate split reports. Please try a smaller time range.');
     } finally {
       setIsGenerating(false);
     }
@@ -347,60 +420,160 @@ export function ReportGenerator({
             >
               Date Range
             </Text>
-            <View style={styles.dateRangeContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.dateButton,
-                  { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
-                ]}
-                onPress={() => setShowStartPicker(true)}
-              >
-                <Text
-                  style={[
-                    styles.dateButtonLabel,
-                    { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
-                  ]}
-                >
-                  Start Date:
-                </Text>
-                <Text
-                  style={[
-                    styles.dateButtonText,
-                    { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
-                  ]}
-                >
-                  {formatDate(startDate, 'PPP')}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.dateButton,
-                  { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
-                ]}
-                onPress={() => setShowEndPicker(true)}
-              >
-                <Text
-                  style={[
-                    styles.dateButtonLabel,
-                    { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
-                  ]}
-                >
-                  End Date:
-                </Text>
-                <Text
-                  style={[
-                    styles.dateButtonText,
-                    { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
-                  ]}
-                >
-                  {formatDate(endDate, 'PPP')}
-                </Text>
-              </TouchableOpacity>
+            <View style={[
+              styles.warningContainer,
+              { backgroundColor: isDarkMode ? '#374151' : '#FEF3C7' }
+            ]}>
+              <Text style={[
+                styles.warningText,
+                { color: isDarkMode ? '#FCD34D' : '#D97706' }
+              ]}>
+                ⚠️ SCADA Data: Recommended maximum 30 minutes to 2 hours (3,600 records/hour)
+              </Text>
             </View>
 
-            {/* Date Pickers (Visible conditionally) */}
-            {showStartPicker && (
+            {/* Recommended Time Ranges */}
+            <View style={[
+              styles.recommendationsContainer,
+              { backgroundColor: isDarkMode ? '#1F2937' : '#F9FAFB' }
+            ]}>
+              <Text style={[
+                styles.recommendationTitle,
+                { color: isDarkMode ? '#E5E7EB' : '#1F2937' }
+              ]}>
+                📊 Recommended Time Ranges
+              </Text>
+              <View style={styles.recommendationRow}>
+                <Text style={[styles.recommendationLabel, { color: isDarkMode ? '#10B981' : '#059669' }]}>
+                  ✅ 30 minutes: Fast & Reliable (1,800 records)
+                </Text>
+              </View>
+              <View style={styles.recommendationRow}>
+                <Text style={[styles.recommendationLabel, { color: isDarkMode ? '#10B981' : '#059669' }]}>
+                  ✅ 1 hour: Good Performance (3,600 records)
+                </Text>
+              </View>
+              <View style={styles.recommendationRow}>
+                <Text style={[styles.recommendationLabel, { color: isDarkMode ? '#F59E0B' : '#D97706' }]}>
+                  ⚠️ 2 hours: Slower but works (7,200 records)
+                </Text>
+              </View>
+              <View style={styles.recommendationRow}>
+                <Text style={[styles.recommendationLabel, { color: isDarkMode ? '#EF4444' : '#DC2626' }]}>
+                  ❌ 3+ hours: May hit Excel limits
+                </Text>
+              </View>
+            </View>
+            <View style={styles.dateRangeContainer}>
+              {/* Start Date and Time */}
+              <View style={styles.dateTimeGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.dateButton,
+                    { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
+                  ]}
+                  onPress={() => setShowStartDatePicker(true)}
+                >
+                  <Text
+                    style={[
+                      styles.dateButtonLabel,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    ]}
+                  >
+                    Start Date:
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    ]}
+                  >
+                    {formatDate(startDate, 'PPP')}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.timeButton,
+                    { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
+                  ]}
+                  onPress={() => setShowStartTimePicker(true)}
+                >
+                  <Text
+                    style={[
+                      styles.dateButtonLabel,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    ]}
+                  >
+                    Time:
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    ]}
+                  >
+                    {formatDate(startDate, 'HH:mm')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* End Date and Time */}
+              <View style={styles.dateTimeGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.dateButton,
+                    { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
+                  ]}
+                  onPress={() => setShowEndDatePicker(true)}
+                >
+                  <Text
+                    style={[
+                      styles.dateButtonLabel,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    ]}
+                  >
+                    End Date:
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    ]}
+                  >
+                    {formatDate(endDate, 'PPP')}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.timeButton,
+                    { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
+                  ]}
+                  onPress={() => setShowEndTimePicker(true)}
+                >
+                  <Text
+                    style={[
+                      styles.dateButtonLabel,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    ]}
+                  >
+                    Time:
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    ]}
+                  >
+                    {formatDate(endDate, 'HH:mm')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Date and Time Pickers (Visible conditionally) */}
+            {showStartDatePicker && (
               <DateTimePicker
                 value={startDate}
                 mode="date"
@@ -408,12 +581,28 @@ export function ReportGenerator({
                 onChange={handleStartDateChange}
               />
             )}
-            {showEndPicker && (
+            {showStartTimePicker && (
+              <DateTimePicker
+                value={startDate}
+                mode="time"
+                display="default"
+                onChange={handleStartTimeChange}
+              />
+            )}
+            {showEndDatePicker && (
               <DateTimePicker
                 value={endDate}
                 mode="date"
                 display="default"
                 onChange={handleEndDateChange}
+              />
+            )}
+            {showEndTimePicker && (
+              <DateTimePicker
+                value={endDate}
+                mode="time"
+                display="default"
+                onChange={handleEndTimeChange}
               />
             )}
 
@@ -511,9 +700,14 @@ export function ReportGenerator({
                 </Text>
                 <View style={styles.filterContainer}>
                   {renderFilterButton(
-                    'Chronological', 
-                    grouping === ColumnGrouping.CHRONOLOGICAL, 
-                    () => setReportGrouping(ColumnGrouping.CHRONOLOGICAL)
+                    'Newest First', 
+                    grouping === ColumnGrouping.NEWEST_FIRST, 
+                    () => setReportGrouping(ColumnGrouping.NEWEST_FIRST)
+                  )}
+                  {renderFilterButton(
+                    'Oldest First', 
+                    grouping === ColumnGrouping.OLDEST_FIRST, 
+                    () => setReportGrouping(ColumnGrouping.OLDEST_FIRST)
                   )}
                   {renderFilterButton(
                     'By Type', 
@@ -699,15 +893,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   dateRangeContainer: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+  dateTimeGroup: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 8,
   },
   dateButton: {
+    flex: 2,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+  },
+  timeButton: {
     flex: 1,
     borderWidth: 1,
     borderRadius: 8,
     padding: 12,
-    marginHorizontal: 4,
   },
   dateButtonLabel: {
     fontSize: 12,
@@ -775,5 +979,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#FFFFFF',
+  },
+  warningContainer: {
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  warningText: {
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  recommendationsContainer: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(107, 114, 128, 0.2)',
+  },
+  recommendationTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  recommendationRow: {
+    marginVertical: 2,
+  },
+  recommendationLabel: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 }); 

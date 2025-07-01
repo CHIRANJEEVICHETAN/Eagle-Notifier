@@ -73,7 +73,7 @@ export function useReportGenerator(): ReportGeneratorReturnType {
         filePath = await ExcelReportService.generateExcelReport({
           alarmData: result.data.data,
           title: sanitizedTitle,
-          grouping: options.grouping || ColumnGrouping.CHRONOLOGICAL,
+          grouping: options.grouping || ColumnGrouping.NEWEST_FIRST,
           includeThresholds: options.includeThresholds ?? true,
           includeStatusFields: options.includeStatusFields ?? true
         });

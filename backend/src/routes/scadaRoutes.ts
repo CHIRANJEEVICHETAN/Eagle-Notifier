@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { processAndFormatAlarms, getScadaAlarmHistory, SCADA_POLLING_INTERVAL } from '../services/scadaService';
+import { processAndFormatAlarms, getScadaAlarmHistory, getScadaAnalyticsData, SCADA_POLLING_INTERVAL } from '../services/scadaService';
 import { authenticate } from '../middleware/authMiddleware';
 import { checkScadaHealth } from '../config/scadaDb';
 
@@ -97,6 +97,42 @@ router.get('/history', authenticate, async (req, res) => {
     console.error('🔴 Error fetching SCADA alarm history:', error);
     res.status(500).json({
       error: 'Failed to fetch SCADA alarm history',
+      details: process.env.NODE_ENV === 'development' ? 
+        (error instanceof Error ? error.message : 'Unknown error') : undefined,
+      timestamp: new Date().toISOString(),
+      code: error instanceof Error ? error.name : 'UnknownError'
+    });
+  }
+});
+
+// Get SCADA analytics data for charts
+router.get('/analytics', authenticate, async (req, res) => {
+  try {
+    if (DEBUG) console.log('📈 Fetching SCADA analytics data...');
+    
+    // Parse query parameters
+    const timeFilter = (req.query.timeFilter as string) || '20s'; // Default to 20 seconds
+    
+    if (DEBUG) {
+      console.log('🔍 Analytics Query Parameters:');
+      console.log(`Time Filter: ${timeFilter}`);
+    }
+    
+    // Get analytics data
+    const analyticsData = await getScadaAnalyticsData(timeFilter);
+    
+    if (DEBUG) {
+      console.log('📊 Analytics Response Stats:');
+      console.log(`Analog Data Points: ${analyticsData.analogData.length > 0 ? analyticsData.analogData[0].data.length : 0}`);
+      console.log(`Binary Data Points: ${analyticsData.binaryData.length > 0 ? analyticsData.binaryData[0].data.length : 0}`);
+      console.log(`Time Labels: ${analyticsData.timeLabels.length}`);
+    }
+    
+    res.json(analyticsData);
+  } catch (error) {
+    console.error('🔴 Error fetching SCADA analytics data:', error);
+    res.status(500).json({
+      error: 'Failed to fetch SCADA analytics data',
       details: process.env.NODE_ENV === 'development' ? 
         (error instanceof Error ? error.message : 'Unknown error') : undefined,
       timestamp: new Date().toISOString(),

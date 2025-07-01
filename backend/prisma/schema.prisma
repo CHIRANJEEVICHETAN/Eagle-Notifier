@@ -31,6 +31,7 @@ model User {
   resolvedHistoryAlarms AlarmHistory[] @relation("ResolvedBy")
   notifications   Notification[]
   reports         MeterReport[]
+  furnaceReports  FurnaceReport[]
   pushToken       String?
   notificationSettings NotificationSettings?
 }
@@ -200,4 +201,26 @@ model MeterReport {
   parameters      String[]  // Array of parameters included in report
   createdAt       DateTime  @default(now())
   metadata        Json?
+}
+
+// Model to store generated furnace reports
+model FurnaceReport {
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id])
+  title               String
+  format              String    // "excel", "pdf", etc
+  fileContent         Bytes     // Store the file content in bytea format
+  fileName            String
+  fileSize            Int
+  startDate           DateTime
+  endDate             DateTime
+  grouping            String    // "newest_first", "oldest_first"
+  includeThresholds   Boolean   @default(true)
+  includeStatusFields Boolean   @default(true)
+  alarmTypes          String[]  // Array of alarm types included
+  severityLevels      String[]  // Array of severity levels included
+  zones               String[]  // Array of zones included
+  createdAt           DateTime  @default(now())
+  metadata            Json?
 } 
