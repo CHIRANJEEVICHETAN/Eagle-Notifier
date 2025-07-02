@@ -12,6 +12,7 @@ import {
   Alert,
   GestureResponderEvent,
   PanResponder,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -502,6 +503,8 @@ export default function MeterReadingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTimeframe, setSelectedTimeframe] = useState<number>(1); // Default 1 hour
   const [graphView, setGraphView] = useState<'primary' | 'secondary'>('primary'); // New state for graph view
+  const [limitModalVisible, setLimitModalVisible] = useState(false);
+  const [selectedLimit, setSelectedLimit] = useState<MeterLimit | null>(null);
   
   // Get unread notifications count
   const { data: unreadCount = 0, isLoading: isUnreadLoading, error: unreadError } = useUnreadCount();
@@ -764,25 +767,25 @@ export default function MeterReadingsScreen() {
     const limit = limitsData?.find(l => l.parameter === parameterId);
     if (!limit) return;
     
-    Alert.alert(
-      `${limit.description} Limits`,
-      `Current High Limit: ${limit.highLimit} ${limit.unit}\n${
-        limit.lowLimit !== null
-          ? `Current Low Limit: ${limit.lowLimit} ${limit.unit}`
-          : 'No Low Limit set'
-      }`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Configure',
-          onPress: () =>
-            router.push({
-              pathname: `/(dashboard)/screens/admin/meter-limits/${limit.id}` as any,
-            }),
-        },
-      ]
-    );
-  }, [isAdmin, limitsData, router]);
+    setSelectedLimit(limit);
+    setLimitModalVisible(true);
+  }, [isAdmin, limitsData]);
+
+  // Handle limit configuration navigation
+  const handleConfigureLimit = useCallback(() => {
+    if (!selectedLimit) return;
+    
+    setLimitModalVisible(false);
+    router.push({
+      pathname: `/(dashboard)/screens/admin/meter-limits/${selectedLimit.id}` as any,
+    });
+  }, [selectedLimit, router]);
+
+  // Close limit modal
+  const handleCloseLimitModal = useCallback(() => {
+    setLimitModalVisible(false);
+    setSelectedLimit(null);
+  }, []);
 
   // Check if a value exceeds its limit
   const isValueExceeded = (value: number, parameter: string, limits: MeterLimit[] | undefined): boolean => {
@@ -857,9 +860,15 @@ export default function MeterReadingsScreen() {
             })}>
             <Ionicons
               name="notifications-outline"
-              size={22}
+              size={20}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
+            <Text style={[
+              styles.headerButtonLabel,
+              { color: isDarkMode ? '#94A3B8' : '#475569' }
+            ]}>
+              Alerts
+            </Text>
             {unreadCount > 0 && (
               <View
                 style={[
@@ -885,9 +894,15 @@ export default function MeterReadingsScreen() {
             onPress={() => router.push('/(dashboard)/operator')}>
             <Ionicons
               name="flame-outline"
-              size={22}
+              size={20}
               color={isDarkMode ? '#F87171' : '#EF4444'}
             />
+            <Text style={[
+              styles.headerButtonLabel,
+              { color: isDarkMode ? '#F87171' : '#EF4444' }
+            ]}>
+              Furnace
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -900,9 +915,15 @@ export default function MeterReadingsScreen() {
             onPress={() => toggleTheme()}>
             <Ionicons
               name={isDarkMode ? 'sunny-outline' : 'moon-outline'}
-              size={22}
+              size={20}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
+            <Text style={[
+              styles.headerButtonLabel,
+              { color: isDarkMode ? '#94A3B8' : '#475569' }
+            ]}>
+              Theme
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1368,6 +1389,164 @@ export default function MeterReadingsScreen() {
           ))}
         </View>
       </SafeAreaView>
+
+      {/* Parameter Limit Modal */}
+      <Modal
+        visible={limitModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseLimitModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[
+            styles.modalContent,
+            { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }
+          ]}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <View style={[
+                styles.modalIconContainer,
+                { backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)' }
+              ]}>
+                <Ionicons
+                  name="settings-outline"
+                  size={24}
+                  color={isDarkMode ? '#6EE7B7' : '#10B981'}
+                />
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.modalCloseButton,
+                  { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }
+                ]}
+                onPress={handleCloseLimitModal}
+              >
+                <Ionicons
+                  name="close"
+                  size={20}
+                  color={isDarkMode ? '#9CA3AF' : '#6B7280'}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Title */}
+            <Text style={[
+              styles.modalTitle,
+              { color: isDarkMode ? '#F9FAFB' : '#111827' }
+            ]}>
+              Parameter Limits
+            </Text>
+            
+            {selectedLimit && (
+              <>
+                {/* Parameter Name */}
+                <Text style={[
+                  styles.modalParameterName,
+                  { color: isDarkMode ? '#E5E7EB' : '#374151' }
+                ]}>
+                  {selectedLimit.description}
+                </Text>
+
+                {/* Limit Information */}
+                <View style={styles.modalLimitContainer}>
+                  {/* High Limit */}
+                  <View style={[
+                    styles.modalLimitItem,
+                    { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(254, 226, 226, 0.6)' }
+                  ]}>
+                    <View style={styles.modalLimitHeader}>
+                      <Ionicons
+                        name="arrow-up-circle"
+                        size={20}
+                        color={isDarkMode ? '#F87171' : '#DC2626'}
+                      />
+                      <Text style={[
+                        styles.modalLimitLabel,
+                        { color: isDarkMode ? '#F87171' : '#DC2626' }
+                      ]}>
+                        High Limit
+                      </Text>
+                    </View>
+                    <Text style={[
+                      styles.modalLimitValue,
+                      { color: isDarkMode ? '#F87171' : '#DC2626' }
+                    ]}>
+                      {selectedLimit.highLimit} {selectedLimit.unit}
+                    </Text>
+                  </View>
+
+                  {/* Low Limit */}
+                  <View style={[
+                    styles.modalLimitItem,
+                    { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(219, 234, 254, 0.6)' }
+                  ]}>
+                    <View style={styles.modalLimitHeader}>
+                      <Ionicons
+                        name="arrow-down-circle"
+                        size={20}
+                        color={isDarkMode ? '#60A5FA' : '#2563EB'}
+                      />
+                      <Text style={[
+                        styles.modalLimitLabel,
+                        { color: isDarkMode ? '#60A5FA' : '#2563EB' }
+                      ]}>
+                        Low Limit
+                      </Text>
+                    </View>
+                    <Text style={[
+                      styles.modalLimitValue,
+                      { color: isDarkMode ? '#60A5FA' : '#2563EB' }
+                    ]}>
+                      {selectedLimit.lowLimit !== null 
+                        ? `${selectedLimit.lowLimit} ${selectedLimit.unit}` 
+                        : 'Not Set'
+                      }
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Modal Actions */}
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalButton,
+                      styles.modalCancelButton,
+                      { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }
+                    ]}
+                    onPress={handleCloseLimitModal}
+                  >
+                    <Text style={[
+                      styles.modalButtonText,
+                      { color: isDarkMode ? '#E5E7EB' : '#374151' }
+                    ]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modalButton,
+                      styles.modalConfigureButton,
+                      { backgroundColor: isDarkMode ? '#10B981' : '#059669' }
+                    ]}
+                    onPress={handleConfigureLimit}
+                  >
+                    <Ionicons
+                      name="settings"
+                      size={16}
+                      color="#FFFFFF"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.modalConfigureButtonText}>
+                      Configure
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1419,20 +1598,27 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   headerButton: {
-    width: 38,
-    height: 38,
+    width: 52,
+    height: 52,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    paddingVertical: 4,
+  },
+  headerButtonLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 2,
+    textAlign: 'center',
   },
   notificationBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: -2,
+    right: -2,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
@@ -1714,6 +1900,108 @@ const styles = StyleSheet.create({
   },
   toggleText: {
     fontSize: 12,
+    fontWeight: '500',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalParameterName: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalLimitContainer: {
+    marginBottom: 24,
+  },
+  modalLimitItem: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  modalLimitHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalLimitLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  modalLimitValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(156, 163, 175, 0.3)',
+  },
+  modalConfigureButton: {
+    flexDirection: 'row',
+  },
+  modalButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  modalConfigureButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '500',
   },
 });

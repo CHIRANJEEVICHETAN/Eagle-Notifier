@@ -226,6 +226,7 @@ export default function OperatorDashboard() {
   // Memoized Values
   const analogAlarms = useMemo(() => alarmData?.analogAlarms || [], [alarmData]);
   const binaryAlarms = useMemo(() => alarmData?.binaryAlarms || [], [alarmData]);
+  const isScadaMaintenanceMode = useMemo(() => alarmData?.maintenanceMode || false, [alarmData]);
 
   const filteredAnalogAlarms = useMemo(() => {
     if (!alarmData?.analogAlarms) return [];
@@ -548,6 +549,26 @@ export default function OperatorDashboard() {
   const renderSummaryCards = () => {
     return (
       <View style={styles.summaryContainer}>
+        {isScadaMaintenanceMode && (
+          <View style={[
+            styles.maintenanceAlert,
+            { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.05)' }
+          ]}>
+            <Ionicons
+              name="construct"
+              size={16}
+              color={isDarkMode ? '#F87171' : '#EF4444'}
+            />
+            <Text style={[
+              styles.maintenanceAlertText,
+              { color: isDarkMode ? '#F87171' : '#EF4444' }
+            ]}>
+              SCADA in maintenance mode - showing last known data
+            </Text>
+                     </View>
+         )}
+         
+         <View style={styles.summaryCardsRow}>
         <TouchableOpacity
           onPress={() => handleSeverityFilter('critical')}
           style={[
@@ -649,6 +670,7 @@ export default function OperatorDashboard() {
             Info
           </Text>
         </TouchableOpacity>
+         </View>
       </View>
     );
   };
@@ -1075,6 +1097,19 @@ export default function OperatorDashboard() {
       marginTop: 2,
       fontWeight: '400',
     },
+    maintenanceBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      gap: 4,
+    },
+    maintenanceBadgeText: {
+      fontSize: 10,
+      fontWeight: '600',
+    },
     headerActions: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1117,11 +1152,29 @@ export default function OperatorDashboard() {
     },
     // New summary card styles
     summaryContainer: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      flexDirection: 'column',
       marginBottom: 12,
       marginTop: 8,
       paddingHorizontal: 4,
+    },
+    maintenanceAlert: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderRadius: 8,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: 'rgba(239, 68, 68, 0.2)',
+      gap: 8,
+    },
+    maintenanceAlertText: {
+      fontSize: 13,
+      fontWeight: '600',
+      flex: 1,
+    },
+    summaryCardsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
     },
     summaryCardItem: {
       width: '32%',
@@ -1495,16 +1548,8 @@ export default function OperatorDashboard() {
     </View>
   );
 
-  // Show maintenance screen for non-admin users when maintenance mode is active
-  if (isMaintenanceMode && !isAdmin) {
-    return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
-        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-        <MaintenanceScreen />
-      </SafeAreaView>
-    );
-  }
+  // Note: Removed separate maintenance screen for operators
+  // Now both admins and operators see the same interface with maintenance indicators
 
   return (
     <SafeAreaView
@@ -1555,6 +1600,24 @@ export default function OperatorDashboard() {
               ]}>
               {isAdmin ? 'Admin Dashboard' : 'Operator Dashboard'}
             </Text>
+            {isScadaMaintenanceMode && (
+              <View style={[
+                styles.maintenanceBadge,
+                { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)' }
+              ]}>
+                <Ionicons
+                  name="construct-outline"
+                  size={12}
+                  color={isDarkMode ? '#F87171' : '#EF4444'}
+                />
+                <Text style={[
+                  styles.maintenanceBadgeText,
+                  { color: isDarkMode ? '#F87171' : '#EF4444' }
+                ]}>
+                  SCADA Maintenance
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 

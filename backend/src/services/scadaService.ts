@@ -3,6 +3,7 @@ import { NotificationService } from './notificationService';
 import prisma from '../config/db';
 import { format } from 'date-fns';
 import { AlarmStatus } from './../generated/prisma-client';
+import { isMaintenanceModeActive } from '../controllers/maintenanceController';
 
 const DEBUG = process.env.NODE_ENV === 'development';
 
@@ -215,6 +216,20 @@ const calculateBinarySeverity = (isFailure: boolean): 'critical' | 'warning' | '
 export const getLatestScadaData = async (forceRefresh = false): Promise<ScadaData | null> => {
     const now = Date.now();
     
+    // Check if maintenance mode is active
+    const isMaintenanceActive = await isMaintenanceModeActive();
+    if (isMaintenanceActive && !forceRefresh) {
+        if (DEBUG) console.log('🔧 Maintenance mode active - returning cached SCADA data without fetching new data');
+        
+        // Return cached data if available, otherwise return null
+        if (cachedScadaData) {
+            return cachedScadaData;
+        } else {
+            console.log('⚠️ No cached SCADA data available during maintenance mode');
+            return null;
+        }
+    }
+    
     // If not forced and within polling interval, return cached data
     if (!forceRefresh && lastFetchTime > 0 && now - lastFetchTime < SCADA_POLLING_INTERVAL && cachedScadaData) {
         if (DEBUG) console.log(`📊 Using cached SCADA data (${Math.round((now - lastFetchTime) / 1000)}s old, refresh in ${Math.round((SCADA_POLLING_INTERVAL - (now - lastFetchTime)) / 1000)}s)`);
@@ -404,6 +419,9 @@ const createEnhancedNotification = async (
 // Process and format alarms
 export const processAndFormatAlarms = async (forceRefresh = false) => {
     try {
+        // Check if maintenance mode is active
+        const isMaintenanceActive = await isMaintenanceModeActive();
+        
         const scadaData = await getLatestScadaData(forceRefresh);
         if (DEBUG) console.log('📊 Latest SCADA Data:', scadaData);
 
@@ -414,7 +432,8 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
                 return {
                     ...cachedProcessedAlarms,
                     lastUpdate: new Date(),
-                    fromCache: true
+                    fromCache: true,
+                    maintenanceMode: isMaintenanceActive
                 };
             }
             throw new Error('No SCADA data available');
@@ -601,7 +620,8 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
                 alarmType: 'analog'
             });
 
-            if (severity !== 'info') {
+            // Only send notifications if not in maintenance mode
+            if (severity !== 'info' && !isMaintenanceActive) {
                 await createEnhancedNotification(
                     config.name,
                     `${config.name} Alert`,
@@ -688,7 +708,8 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
                 zone: config.zone
             });
 
-            if (value) {
+            // Only send notifications if binary alarm is active and not in maintenance mode
+            if (value && !isMaintenanceActive) {
                 await createEnhancedNotification(
                     config.name,
                     `${config.name} Status Change`,
@@ -706,7 +727,8 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
             analogAlarms,
             binaryAlarms,
             timestamp: alarmTimestamp, // Use current timestamp
-            lastUpdate: new Date()
+            lastUpdate: new Date(),
+            maintenanceMode: isMaintenanceActive
         };
 
         // Cache the processed alarms and update last processed timestamp
@@ -718,6 +740,7 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
             console.log(`Analog Alarms: ${analogAlarms.length}`);
             console.log(`Binary Alarms: ${binaryAlarms.length}`);
             console.log(`Cached timestamp: ${lastProcessedTimestamp}`);
+            console.log(`Maintenance Mode: ${isMaintenanceActive}`);
         }
 
         return result;

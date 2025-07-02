@@ -20,6 +20,10 @@ export const ALARM_KEYS = {
 export interface ScadaAlarmResponse {
   analogAlarms: Alarm[];
   binaryAlarms: Alarm[];
+  maintenanceMode?: boolean;
+  timestamp?: string;
+  lastUpdate?: string;
+  fromCache?: boolean;
 }
 
 // Hook for fetching active SCADA alarms
@@ -73,7 +77,11 @@ export const useActiveAlarms = (initialForceRefresh = false) => {
         
         return {
           analogAlarms: markedAnalogAlarms,
-          binaryAlarms: markedBinaryAlarms
+          binaryAlarms: markedBinaryAlarms,
+          maintenanceMode: data.maintenanceMode,
+          timestamp: data.timestamp,
+          lastUpdate: data.lastUpdate,
+          fromCache: data.fromCache
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to fetch alarms';

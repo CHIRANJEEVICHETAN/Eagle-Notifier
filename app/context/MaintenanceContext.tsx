@@ -38,6 +38,14 @@ export const MaintenanceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         { headers }
       );
       setIsMaintenanceMode(response.data.maintenanceMode);
+      
+      // Log maintenance mode change on frontend
+      console.log(`🔧 Maintenance mode ${response.data.maintenanceMode ? 'ENABLED' : 'DISABLED'}`);
+      if (response.data.maintenanceMode) {
+        console.log('🛑 SCADA data fetching will be stopped');
+      } else {
+        console.log('▶️ SCADA data fetching will resume');
+      }
     } catch (error) {
       console.error('Error toggling maintenance mode:', error);
       throw error;

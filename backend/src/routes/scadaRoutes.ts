@@ -25,6 +25,7 @@ router.get('/alarms', authenticate, async (req, res) => {
       console.log(`Analog Alarms: ${alarms.analogAlarms.length}`);
       console.log(`Binary Alarms: ${alarms.binaryAlarms.length}`);
       console.log(`Last Update: ${alarms.lastUpdate}`);
+      console.log(`Maintenance Mode: ${alarms.maintenanceMode || false}`);
       console.log(`SCADA polling interval: ${SCADA_POLLING_INTERVAL}ms`);
     }
 
