@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { Alarm, AlarmStatus } from '../types/alarm';
 import { useAlarmStore } from '../store/useAlarmStore';
 import axios from 'axios';
@@ -13,7 +13,7 @@ export const ALARM_KEYS = {
   detail: (id: string) => [...ALARM_KEYS.all, 'detail', id] as const,
   scada: (forceRefresh?: boolean) => ['scada-alarms', forceRefresh] as const,
   analytics: (timeFilter: string) => ['scada-analytics', timeFilter] as const,
-  alarmHistory: (params: { alarmId: string; status?: string; hours?: number; search?: string; startTime?: string; timeFilter?: string }) => 
+  alarmHistory: (params: { alarmId: string; status?: string; hours?: number; search?: string; startTime?: string; endTime?: string; timeFilter?: string }) => 
     [...ALARM_KEYS.all, 'alarm-history', params.alarmId, params] as const,
 };
 
@@ -129,6 +129,7 @@ export interface AlarmHistoryParams {
   type?: string;
   alarmId?: string;
   startTime?: string;
+  endTime?: string;
   timeFilter?: string;
 }
 
@@ -184,17 +185,18 @@ export function useAlarmHistory({
   });
 }
 
-// Hook for fetching history of a specific alarm
+// Hook for fetching history of a specific alarm with proper pagination
 export function useSpecificAlarmHistory(alarmId: string, params: Partial<AlarmHistoryParams> = {}) {
-  const { limit = 50, status, hours, search, startTime, timeFilter } = params;
+  const { limit = 50, status, hours, startTime, endTime, timeFilter } = params;
   
-  return useQuery({
-    queryKey: ALARM_KEYS.alarmHistory({ alarmId, status, hours, search, startTime, timeFilter }),
-    queryFn: async () => {
+  return useInfiniteQuery({
+    queryKey: ALARM_KEYS.alarmHistory({ alarmId, status, hours, startTime, endTime, timeFilter }),
+    queryFn: async ({ pageParam = 1 }) => {
       if (!alarmId) return null;
       
       try {
         const urlParams = new URLSearchParams();
+        urlParams.append('page', pageParam.toString());
         urlParams.append('limit', limit.toString());
         urlParams.append('alarmId', alarmId);
         urlParams.append('sortBy', 'timestamp');
@@ -203,8 +205,8 @@ export function useSpecificAlarmHistory(alarmId: string, params: Partial<AlarmHi
         // Add filter parameters if provided
         if (status && status !== 'all') urlParams.append('status', status);
         if (hours) urlParams.append('hours', hours.toString());
-        if (search) urlParams.append('search', search);
         if (startTime) urlParams.append('startTime', startTime);
+        if (endTime) urlParams.append('endTime', endTime);
         if (timeFilter) urlParams.append('timeFilter', timeFilter);
         
         const headers = await getAuthHeader();
@@ -223,9 +225,17 @@ export function useSpecificAlarmHistory(alarmId: string, params: Partial<AlarmHi
         throw error;
       }
     },
+    getNextPageParam: (lastPage) => {
+      if (!lastPage?.pagination) return undefined;
+      const { page, pages } = lastPage.pagination;
+      return page < pages ? page + 1 : undefined;
+    },
     enabled: !!alarmId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: false,
+    initialPageParam: 1,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 }
 

@@ -36,7 +36,7 @@ const ANALOG_ALARM_DESCRIPTIONS = [
   'CARBON POTENTIAL',
   'TEMPERING ZONE1 TEMPERATURE',
   'TEMPERING ZONE2 TEMPERATURE',
-  'OIL TEMPERATURE'
+  'OIL TEMPERATURE',
 ];
 
 const BINARY_ALARM_DESCRIPTIONS = [
@@ -48,27 +48,27 @@ const BINARY_ALARM_DESCRIPTIONS = [
   'HARDENING ZONE 1 FAN FAILURE',
   'HARDENING ZONE 2 FAN FAILURE',
   'TEMPERING ZONE 1 FAN FAILURE',
-  'TEMPERING ZONE 2 FAN FAILURE'
+  'TEMPERING ZONE 2 FAN FAILURE',
 ];
 
 export default function AlarmHistoryScreen() {
   const { isDarkMode } = useTheme();
   const router = useRouter();
-  
+
   // UI State
   const [refreshing, setRefreshing] = useState(false);
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [selectedAlarm, setSelectedAlarm] = useState<Alarm | null>(null);
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [limit] = useState(50); // Increased limit to fetch more alarms at once
 
   // Fetch alarm history
-  const { 
-    data: alarmHistoryData, 
-    isLoading, 
-    refetch, 
+  const {
+    data: alarmHistoryData,
+    isLoading,
+    refetch,
     isFetching,
   } = useAlarmHistory({
     page: currentPage,
@@ -76,18 +76,18 @@ export default function AlarmHistoryScreen() {
     status: 'all',
     hours: 168, // Default to 7 days
     sortBy: 'timestamp',
-    sortOrder: 'desc'
+    sortOrder: 'desc',
   });
-  
+
   // Extract and filter analog and binary alarms
   const { filteredAnalogAlarms, filteredBinaryAlarms } = useMemo(() => {
     if (!alarmHistoryData?.alarms) {
       return { filteredAnalogAlarms: [], filteredBinaryAlarms: [] };
     }
-    
+
     const analog: Alarm[] = [];
     const binary: Alarm[] = [];
-    
+
     alarmHistoryData.alarms.forEach((record: AlarmHistoryRecord) => {
       if (record.analogAlarms) {
         analog.push(...record.analogAlarms);
@@ -96,177 +96,199 @@ export default function AlarmHistoryScreen() {
         binary.push(...record.binaryAlarms);
       }
     });
-    
+
     // Filter to show only the specified alarms
     // For each description, find the most recent alarm (avoid duplicates)
-    const filteredAnalogAlarms = ANALOG_ALARM_DESCRIPTIONS.map(description => {
-      const matches = analog.filter(alarm => alarm.description === description);
+    const filteredAnalogAlarms = ANALOG_ALARM_DESCRIPTIONS.map((description) => {
+      const matches = analog.filter((alarm) => alarm.description === description);
       // Return the most recent one
-      return matches.sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      return matches.sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       )[0];
     }).filter(Boolean); // Remove undefined entries
-    
-    const filteredBinaryAlarms = BINARY_ALARM_DESCRIPTIONS.map(description => {
-      const matches = binary.filter(alarm => alarm.description === description);
+
+    const filteredBinaryAlarms = BINARY_ALARM_DESCRIPTIONS.map((description) => {
+      const matches = binary.filter((alarm) => alarm.description === description);
       // Return the most recent one
-      return matches.sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      return matches.sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       )[0];
     }).filter(Boolean); // Remove undefined entries
-    
+
     return { filteredAnalogAlarms, filteredBinaryAlarms };
   }, [alarmHistoryData]);
-  
+
   // Combine both alarm types for a single list view with sections
   const combinedAlarms = useMemo(() => {
     // Create a combined list with section headers
     const combined = [];
-    
+
     // Add analog alarms section header
     if (filteredAnalogAlarms.length > 0) {
       combined.push({
         id: 'analog-header',
         isHeader: true,
         title: 'Analog',
-        count: filteredAnalogAlarms.length
+        count: filteredAnalogAlarms.length,
       });
-      
+
       // Add analog alarms
-      combined.push(...filteredAnalogAlarms.map(alarm => ({
-        ...alarm,
-        isHeader: false
-      })));
+      combined.push(
+        ...filteredAnalogAlarms.map((alarm) => ({
+          ...alarm,
+          isHeader: false,
+        }))
+      );
     }
-    
+
     // Add binary alarms section header
     if (filteredBinaryAlarms.length > 0) {
       combined.push({
         id: 'binary-header',
         isHeader: true,
         title: 'Binary',
-        count: filteredBinaryAlarms.length
-    });
-    
+        count: filteredBinaryAlarms.length,
+      });
+
       // Add binary alarms
-      combined.push(...filteredBinaryAlarms.map(alarm => ({
-        ...alarm,
-        isHeader: false
-      })));
+      combined.push(
+        ...filteredBinaryAlarms.map((alarm) => ({
+          ...alarm,
+          isHeader: false,
+        }))
+      );
     }
-    
+
     return combined;
   }, [filteredAnalogAlarms, filteredBinaryAlarms]);
-  
+
   // Handle refresh
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-      await refetch();
+    await refetch();
     setRefreshing(false);
   }, [refetch]);
-  
+
   // Handle view alarm details
-  const handleViewAlarm = useCallback((alarm: Alarm) => {
-    // Navigate to the detail page with the alarm id
-    const baseId = alarm.id.split('-')[0]; // Get the base part of the ID
-    router.push(`/(dashboard)/alarms/${baseId}` as any);
-  }, [router]);
-  
+  const handleViewAlarm = useCallback(
+    (alarm: Alarm) => {
+      // Navigate to the detail page with the alarm id
+      const baseId = alarm.id.split('-')[0]; // Get the base part of the ID
+      router.push(`/(dashboard)/alarms/${baseId}` as any);
+    },
+    [router]
+  );
+
   // Handle close details
   const handleCloseDetails = useCallback(() => {
     setDetailsVisible(false);
   }, []);
-  
+
   // Render status badge
-  const renderStatusBadge = useCallback((status: string) => {
-    let bgColor = '';
-    let textColor = '#FFFFFF';
-    
-    switch (status) {
-      case 'active':
-        bgColor = isDarkMode ? '#EF4444' : '#F87171';
-        break;
-      case 'acknowledged':
-        bgColor = isDarkMode ? '#F59E0B' : '#FBBF24';
-        break;
-      case 'resolved':
-        bgColor = isDarkMode ? '#10B981' : '#34D399';
-        break;
-      default:
-        bgColor = isDarkMode ? '#6B7280' : '#9CA3AF';
-    }
-    
-    return (
-      <View style={[styles.statusBadge, { backgroundColor: bgColor }]}>
-        <Text style={[styles.statusText, { color: textColor }]}>
-          {status.charAt(0).toUpperCase() + status.slice(1)}
-        </Text>
-      </View>
-    );
-  }, [isDarkMode]);
-  
-  // Render list item - either header or alarm item
-  const renderItem = useCallback(({ item }: { item: any }) => {
-    if (item.isHeader) {
+  const renderStatusBadge = useCallback(
+    (status: string) => {
+      let bgColor = '';
+      let textColor = '#FFFFFF';
+
+      switch (status) {
+        case 'active':
+          bgColor = isDarkMode ? '#EF4444' : '#F87171';
+          break;
+        case 'acknowledged':
+          bgColor = isDarkMode ? '#F59E0B' : '#FBBF24';
+          break;
+        case 'resolved':
+          bgColor = isDarkMode ? '#10B981' : '#34D399';
+          break;
+        default:
+          bgColor = isDarkMode ? '#6B7280' : '#9CA3AF';
+      }
+
       return (
-        <View style={[styles.sectionHeader, {
-          backgroundColor: isDarkMode ? '#111827' : '#F1F5F9',
-        }]}>
-          <Text style={[styles.sectionTitle, {
-            color: isDarkMode ? '#E5E7EB' : '#1F2937',
-          }]}>
-            {item.title} Alarms ({item.count})
+        <View style={[styles.statusBadge, { backgroundColor: bgColor }]}>
+          <Text style={[styles.statusText, { color: textColor }]}>
+            {status.charAt(0).toUpperCase() + status.slice(1)}
           </Text>
         </View>
       );
-    }
-    
-    return (
-    <TouchableOpacity
-      style={[styles.alarmItem, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}
-      onPress={() => handleViewAlarm(item)}
-    >
-      <View style={styles.alarmHeader}>
-        <Text style={[styles.alarmName, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-          {item.description}
-        </Text>
-        {renderStatusBadge(item.status)}
-      </View>
-      
-      <View style={styles.alarmDetails}>
-        <View style={styles.detailRow}>
-          <Text style={[styles.detailLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Type:
-          </Text>
-          <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-            {item.type}{item.zone ? ` (${item.zone})` : ''}
-          </Text>
-        </View>
-        
-        <View style={styles.detailRow}>
-          <Text style={[styles.detailLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Value:
-          </Text>
-          <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-            {item.value} {item.unit}
-          </Text>
-        </View>
-        
-        <View style={styles.timeWrapper}>
-          <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
-          <Text style={[styles.timeText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            {formatDate(parseISO(item.timestamp), 'MMM d, yyyy HH:mm:ss')}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-    );
-  }, [isDarkMode, handleViewAlarm, renderStatusBadge]);
-  
+    },
+    [isDarkMode]
+  );
+
+  // Render list item - either header or alarm item
+  const renderItem = useCallback(
+    ({ item }: { item: any }) => {
+      if (item.isHeader) {
+        return (
+          <View
+            style={[
+              styles.sectionHeader,
+              {
+                backgroundColor: isDarkMode ? '#111827' : '#F1F5F9',
+              },
+            ]}>
+            <Text
+              style={[
+                styles.sectionTitle,
+                {
+                  color: isDarkMode ? '#E5E7EB' : '#1F2937',
+                },
+              ]}>
+              {item.title} Alarms ({item.count})
+            </Text>
+          </View>
+        );
+      }
+
+      return (
+        <TouchableOpacity
+          style={[styles.alarmItem, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}
+          onPress={() => handleViewAlarm(item)}>
+          <View style={styles.alarmHeader}>
+            <Text style={[styles.alarmName, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+              {item.description}
+            </Text>
+            {renderStatusBadge(item.status)}
+          </View>
+
+          <View style={styles.alarmDetails}>
+            <View style={styles.detailRow}>
+              <Text style={[styles.detailLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                Type:
+              </Text>
+              <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+                {item.type}
+                {item.zone ? ` (${item.zone})` : ''}
+              </Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={[styles.detailLabel, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                Value:
+              </Text>
+              <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+                {item.value} {item.unit}
+              </Text>
+            </View>
+
+            <View style={styles.timeWrapper}>
+              <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
+              <Text style={[styles.timeText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                {formatDate(parseISO(item.timestamp), 'MMM d, yyyy h:mm:ss a')}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      );
+    },
+    [isDarkMode, handleViewAlarm, renderStatusBadge]
+  );
+
   // Render loading state
   if (isLoading && !refreshing) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
         <StatusBar style={isDarkMode ? 'light' : 'dark'} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={isDarkMode ? '#60A5FA' : '#2563EB'} />
@@ -277,25 +299,21 @@ export default function AlarmHistoryScreen() {
       </SafeAreaView>
     );
   }
-  
+
   // Render the main view
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={[styles.backButton, { backgroundColor: isDarkMode ? '#1F2937' : '#F3F4F6' }]}
-          onPress={() => router.back()}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={20}
-            color={isDarkMode ? '#E5E7EB' : '#4B5563'}
-          />
+          onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={20} color={isDarkMode ? '#E5E7EB' : '#4B5563'} />
         </TouchableOpacity>
-        
+
         <View>
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
             Alarm History
@@ -305,38 +323,36 @@ export default function AlarmHistoryScreen() {
           </Text>
         </View>
       </View>
-      
+
       {/* Combined Alarms List */}
       <View style={styles.fullListContainer}>
-          <FlashList
+        <FlashList
           data={combinedAlarms}
           renderItem={renderItem}
-            estimatedItemSize={150}
-            contentContainerStyle={styles.listContainer}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                colors={['#3B82F6']}
-                tintColor={isDarkMode ? '#60A5FA' : '#3B82F6'}
-              />
-            }
-            ListEmptyComponent={
-              <View style={[styles.emptyState, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
-                <Text style={[styles.emptyStateSubtext, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+          estimatedItemSize={150}
+          contentContainerStyle={styles.listContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={['#3B82F6']}
+              tintColor={isDarkMode ? '#60A5FA' : '#3B82F6'}
+            />
+          }
+          ListEmptyComponent={
+            <View
+              style={[styles.emptyState, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
+              <Text
+                style={[styles.emptyStateSubtext, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
                 No alarms found
-                </Text>
-              </View>
-            }
-          />
+              </Text>
+            </View>
+          }
+        />
       </View>
-      
+
       {/* Alarm Details Modal */}
-      <AlarmDetails
-        alarm={selectedAlarm}
-        visible={detailsVisible}
-        onClose={handleCloseDetails}
-      />
+      <AlarmDetails alarm={selectedAlarm} visible={detailsVisible} onClose={handleCloseDetails} />
     </SafeAreaView>
   );
 }
@@ -471,4 +487,4 @@ const styles = StyleSheet.create({
   fullListContainer: {
     flex: 1,
   },
-}); 
+});

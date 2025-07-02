@@ -738,7 +738,8 @@ export const getScadaAlarmHistory = async (
   sortOrder = 'desc',
   alarmType?: string,  // Filter by specific alarm type (temperature, carbon, etc.)
   alarmId?: string,    // Filter for a specific alarm ID to get its history
-  startTime?: string   // Optional start time for custom date filtering
+  startTime?: string,  // Optional start time for custom date filtering
+  endTime?: string     // Optional end time for custom date filtering
 ) => {
   try {
     const offset = (page - 1) * limit;
@@ -747,17 +748,36 @@ export const getScadaAlarmHistory = async (
     let whereClause = "";
     const params: any[] = [];
     
-    // Add time filter - either using hours back or specific start time
-    if (startTime) {
-      // Use specific start date if provided
+    // Add time filter - either using hours back or specific start/end time
+    if (startTime && endTime) {
+      // Use specific date range if both start and end times are provided
+      whereClause += whereClause ? " AND " : " WHERE ";
+      whereClause += "created_timestamp >= $" + (params.length + 1) + " AND created_timestamp <= $" + (params.length + 2);
+      params.push(new Date(startTime));
+      params.push(new Date(endTime));
+      
+      if (DEBUG) {
+        console.log(`Using custom date range filter: ${startTime} -> ${new Date(startTime).toISOString()} to ${endTime} -> ${new Date(endTime).toISOString()}`);
+      }
+    } else if (startTime) {
+      // Use only start time if provided (for backward compatibility)
       whereClause += whereClause ? " AND " : " WHERE ";
       whereClause += "created_timestamp >= $" + (params.length + 1);
       params.push(new Date(startTime));
+      
+      if (DEBUG) {
+        console.log(`Using custom start time filter: ${startTime} -> ${new Date(startTime).toISOString()}`);
+      }
     } else if (timeFilter) {
       // Fall back to hours if no specific start time
+      const startDate = new Date(Date.now() - timeFilter * 60 * 60 * 1000);
       whereClause += whereClause ? " AND " : " WHERE ";
-      whereClause += "created_timestamp > $" + (params.length + 1);
-      params.push(new Date(Date.now() - timeFilter * 60 * 60 * 1000)); // Convert hours to ms
+      whereClause += "created_timestamp >= $" + (params.length + 1);
+      params.push(startDate);
+      
+      if (DEBUG) {
+        console.log(`Using hours-based filter: ${timeFilter} hours -> from ${startDate.toISOString()}`);
+      }
     }
     
     // Add search query if specified

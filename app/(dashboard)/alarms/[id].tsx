@@ -26,6 +26,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 // Filter types for alarm history
 type AlarmFilter = 'active' | 'acknowledged' | 'resolved' | 'all';
 type TimeFilter = '24h' | '3d' | '7d' | '30d' | 'custom';
+type SortOrder = 'desc' | 'asc';
 
 // Define the shape of alarm history records
 interface AlarmHistoryRecord {
@@ -52,6 +53,7 @@ export default function AlarmDetailScreen() {
   const [statusFilter, setStatusFilter] = useState<AlarmFilter>('active');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('7d');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   
   // Custom date range state
   const [startDate, setStartDate] = useState<Date>(subDays(new Date(), 7));
@@ -60,10 +62,40 @@ export default function AlarmDetailScreen() {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [dateRangeError, setDateRangeError] = useState<string | null>(null);
+  
+  // Validate date range and show error if invalid
+  const validateDateRange = useCallback(() => {
+    if (timeFilter === 'custom') {
+      if (endDate <= startDate) {
+        const error = 'End date must be after start date';
+        setDateRangeError(error);
+        return false;
+      }
+      
+      // Check if date range is too large (more than 90 days)
+      const diffDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays > 90) {
+        const error = 'Date range cannot exceed 90 days';
+        setDateRangeError(error);
+        return false;
+      }
+      
+      setDateRangeError(null);
+      return true;
+    }
+    
+    setDateRangeError(null);
+    return true;
+  }, [timeFilter, startDate, endDate]);
   
   // Convert date range to hours if using custom range
   const hoursDiff = useMemo(() => {
     if (timeFilter === 'custom') {
+      if (!validateDateRange()) {
+        return 168; // Fallback to 7 days
+      }
+      
       // Calculate hours between startDate and endDate
       const diffMs = endDate.getTime() - startDate.getTime();
       const diffHours = diffMs / (1000 * 60 * 60);
@@ -78,60 +110,94 @@ export default function AlarmDetailScreen() {
       case '30d': return 720;
       default: return 168; // Default to 7d
     }
-  }, [timeFilter, startDate, endDate]);
+  }, [timeFilter, startDate, endDate, validateDateRange]);
 
-  // Build startTime parameter for custom date range
-  const startTimeParam = useMemo(() => {
-    if (timeFilter === 'custom') {
-      return startDate.toISOString();
+  // Build startTime and endTime parameters for custom date range
+  const { startTimeParam, endTimeParam } = useMemo(() => {
+    if (timeFilter === 'custom' && validateDateRange()) {
+      return {
+        startTimeParam: startDate.toISOString(),
+        endTimeParam: endDate.toISOString()
+      };
     }
-    return undefined;
-  }, [timeFilter, startDate]);
+    return {
+      startTimeParam: undefined,
+      endTimeParam: undefined
+    };
+  }, [timeFilter, startDate, endDate, validateDateRange]);
 
-  // Fetch history for this specific alarm with all filter parameters
+  // Fetch history for this specific alarm with all filter parameters (excluding search)
   const {
     data: specificAlarmData,
     isLoading,
     refetch,
-    isFetching
+    isFetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
   } = useSpecificAlarmHistory(alarmId, {
-    limit: 100,
+    limit: 50,
     status: statusFilter,
     hours: hoursDiff,
-    search: searchQuery,
-    startTime: startTimeParam
+    startTime: startTimeParam,
+    endTime: endTimeParam
   });
 
-  // Process alarm history items - now fully from backend
+  // Process alarm history items - flatten all pages, filter by search, and apply sort
   const alarmHistoryItems = useMemo(() => {
-    if (!specificAlarmData?.alarms) {
+    if (!specificAlarmData?.pages) {
       return [];
     }
     
-    // Extract all instances of the selected alarm from all records
+    // Extract all instances of the selected alarm from all pages
     const items: Alarm[] = [];
-    specificAlarmData.alarms.forEach((record: AlarmHistoryRecord) => {
-      const findInAnalog = record.analogAlarms?.find(
-        (alarm: Alarm) => alarm.id.includes(alarmId)
-      );
-      const findInBinary = record.binaryAlarms?.find(
-        (alarm: Alarm) => alarm.id.includes(alarmId)
-      );
-      
-      if (findInAnalog) items.push(findInAnalog);
-      if (findInBinary) items.push(findInBinary);
+    specificAlarmData.pages.forEach((page) => {
+      if (page?.alarms) {
+        page.alarms.forEach((record: AlarmHistoryRecord) => {
+          const findInAnalog = record.analogAlarms?.find(
+            (alarm: Alarm) => alarm.id.includes(alarmId)
+          );
+          const findInBinary = record.binaryAlarms?.find(
+            (alarm: Alarm) => alarm.id.includes(alarmId)
+          );
+          
+          if (findInAnalog) items.push(findInAnalog);
+          if (findInBinary) items.push(findInBinary);
+        });
+      }
     });
     
-    // Sort by timestamp descending
-    return items.sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-  }, [specificAlarmData, alarmId]);
+    // Apply frontend search filter if search query exists
+    let filteredItems = items;
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filteredItems = items.filter((item) => {
+        // Search in value, description, and formatted timestamp
+        const valueStr = typeof item.value === 'string' ? item.value.toLowerCase() : String(item.value).toLowerCase();
+        const descriptionStr = item.description.toLowerCase();
+        const timestampStr = formatDate(parseISO(item.timestamp), 'MMM d, yyyy h:mm:ss a').toLowerCase();
+        
+        return valueStr.includes(query) || 
+               descriptionStr.includes(query) ||
+               timestampStr.includes(query);
+      });
+    }
+    
+    // Apply frontend sort order
+    const sortedItems = filteredItems.sort((a, b) => {
+      const aTime = new Date(a.timestamp).getTime();
+      const bTime = new Date(b.timestamp).getTime();
+      
+      return sortOrder === 'desc' ? bTime - aTime : aTime - bTime;
+    });
+    
+    return sortedItems;
+  }, [specificAlarmData, alarmId, searchQuery, sortOrder]);
 
-  // Get total count from pagination data
+  // Get total count of this specific alarm instances
   const totalCount = useMemo(() => {
-    return specificAlarmData?.pagination?.filteredTotal || alarmHistoryItems.length;
-  }, [specificAlarmData, alarmHistoryItems]);
+    return alarmHistoryItems.length;
+  }, [alarmHistoryItems]);
   
   // Get alarm summary information (first item to show details)
   const alarmSummary = useMemo(() => {
@@ -165,8 +231,11 @@ export default function AlarmDetailScreen() {
       // Preserve the existing time
       newDate.setHours(startDate.getHours(), startDate.getMinutes(), startDate.getSeconds());
       setStartDate(newDate);
+      
+      // Validate date range after change
+      setTimeout(() => validateDateRange(), 100);
     }
-  }, [startDate]);
+  }, [startDate, validateDateRange]);
   
   const handleEndDateChange = useCallback((event: any, selectedDate?: Date) => {
     setShowEndPicker(Platform.OS === 'ios');
@@ -175,8 +244,11 @@ export default function AlarmDetailScreen() {
       // Preserve the existing time
       newDate.setHours(endDate.getHours(), endDate.getMinutes(), endDate.getSeconds());
       setEndDate(newDate);
+      
+      // Validate date range after change
+      setTimeout(() => validateDateRange(), 100);
     }
-  }, [endDate]);
+  }, [endDate, validateDateRange]);
 
   // Time picker handlers
   const handleStartTimeChange = useCallback((event: any, selectedTime?: Date) => {
@@ -185,8 +257,11 @@ export default function AlarmDetailScreen() {
       const newDate = new Date(startDate);
       newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
       setStartDate(newDate);
+      
+      // Validate date range after change
+      setTimeout(() => validateDateRange(), 100);
     }
-  }, [startDate]);
+  }, [startDate, validateDateRange]);
   
   const handleEndTimeChange = useCallback((event: any, selectedTime?: Date) => {
     setShowEndTimePicker(Platform.OS === 'ios');
@@ -194,18 +269,16 @@ export default function AlarmDetailScreen() {
       const newDate = new Date(endDate);
       newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
       setEndDate(newDate);
+      
+      // Validate date range after change
+      setTimeout(() => validateDateRange(), 100);
     }
-  }, [endDate]);
+  }, [endDate, validateDateRange]);
   
-  // Reset page when filters change
+  // Reset filters when they change (but not search - search is frontend only now)
   useEffect(() => {
     refetch();
-  }, [statusFilter, timeFilter, startDate, endDate, searchQuery, refetch]);
-
-  // Handle search
-  const handleSearchSubmit = useCallback(() => {
-    refetch();
-  }, [refetch, searchQuery]);
+  }, [statusFilter, timeFilter, startDate, endDate, refetch]);
 
   // Handle status filter change
   const handleStatusFilterChange = useCallback((newStatus: AlarmFilter) => {
@@ -216,6 +289,28 @@ export default function AlarmDetailScreen() {
   const handleTimeFilterChange = useCallback((newTimeFilter: TimeFilter) => {
     setTimeFilter(newTimeFilter);
   }, []);
+
+  // Handle load more data
+  const handleLoadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Handle sort order change
+  const handleSortOrderChange = useCallback((newOrder: SortOrder) => {
+    setSortOrder(newOrder);
+  }, []);
+
+  // Auto-correct invalid date ranges
+  const handleDateRangeCorrection = useCallback(() => {
+    if (timeFilter === 'custom' && endDate <= startDate) {
+      // Auto-correct by setting end date to start date + 1 hour
+      const correctedEndDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+      setEndDate(correctedEndDate);
+      setDateRangeError(null);
+    }
+  }, [timeFilter, startDate, endDate]);
   
   // Render status badge
   const renderStatusBadge = useCallback((status: string) => {
@@ -283,7 +378,7 @@ export default function AlarmDetailScreen() {
               Ack by:
             </Text>
             <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-              {item.acknowledgedBy.name} • {item.acknowledgedAt ? formatDate(parseISO(item.acknowledgedAt), 'MMM d, HH:mm') : ''}
+              {item.acknowledgedBy.name} • {item.acknowledgedAt ? formatDate(parseISO(item.acknowledgedAt), 'MMM d, h:mm a') : ''}
             </Text>
           </View>
         )}
@@ -295,7 +390,7 @@ export default function AlarmDetailScreen() {
                 Resolved:
               </Text>
               <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                {item.resolvedBy.name} • {item.resolvedAt ? formatDate(parseISO(item.resolvedAt), 'MMM d, HH:mm') : ''}
+                {item.resolvedBy.name} • {item.resolvedAt ? formatDate(parseISO(item.resolvedAt), 'MMM d, h:mm a') : ''}
               </Text>
             </View>
             
@@ -315,7 +410,7 @@ export default function AlarmDetailScreen() {
         <View style={styles.timeWrapper}>
           <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
           <Text style={[styles.timeText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            {formatDate(parseISO(item.timestamp), 'MMM d, yyyy HH:mm:ss')}
+            {formatDate(parseISO(item.timestamp), 'MMM d, yyyy h:mm:ss a')}
           </Text>
         </View>
       </View>
@@ -354,6 +449,47 @@ export default function AlarmDetailScreen() {
                   color: isDarkMode
                     ? statusFilter === filter.value ? '#FFFFFF' : '#E5E7EB'
                     : statusFilter === filter.value ? '#FFFFFF' : '#4B5563' 
+                }
+              ]}
+            >
+              {filter.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+  
+  // Render sort order buttons
+  const renderSortFilters = () => {
+    const filters: { label: string; value: SortOrder }[] = [
+      { label: 'Newest First', value: 'desc' },
+      { label: 'Oldest First', value: 'asc' },
+    ];
+    
+    return (
+      <View style={styles.filtersRow}>
+        {filters.map((filter) => (
+          <TouchableOpacity
+            key={filter.value}
+            style={[
+              styles.filterButton,
+              sortOrder === filter.value && styles.filterButtonActive,
+              { 
+                backgroundColor: isDarkMode 
+                  ? sortOrder === filter.value ? '#10B981' : '#374151'
+                  : sortOrder === filter.value ? '#059669' : '#F3F4F6'
+              }
+            ]}
+            onPress={() => handleSortOrderChange(filter.value)}
+          >
+            <Text 
+              style={[
+                styles.filterButtonText,
+                { 
+                  color: isDarkMode
+                    ? sortOrder === filter.value ? '#FFFFFF' : '#E5E7EB'
+                    : sortOrder === filter.value ? '#FFFFFF' : '#4B5563' 
                 }
               ]}
             >
@@ -408,6 +544,23 @@ export default function AlarmDetailScreen() {
           ))}
         </View>
         
+        {dateRangeError && (
+          <View style={[styles.errorContainer, { 
+            backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.05)',
+            borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)'
+          }]}>
+            <Text style={[styles.errorText, { color: isDarkMode ? '#FCA5A5' : '#DC2626' }]}>
+              {dateRangeError}
+            </Text>
+            <TouchableOpacity 
+              style={[styles.correctButton, { backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB' }]}
+              onPress={handleDateRangeCorrection}
+            >
+              <Text style={styles.correctButtonText}>Auto-correct</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {timeFilter === 'custom' && (
           <View style={styles.datePickerContainer}>
             <View style={styles.datePickerRow}>
@@ -431,7 +584,7 @@ export default function AlarmDetailScreen() {
                 onPress={() => setShowStartTimePicker(true)}
               >
                 <Text style={{ color: isDarkMode ? '#E5E7EB' : '#1F2937' }}>
-                  {formatDate(startDate, 'HH:mm')}
+                  {formatDate(startDate, 'h:mm a')}
                 </Text>
               </TouchableOpacity>
               
@@ -527,7 +680,7 @@ export default function AlarmDetailScreen() {
                 onPress={() => setShowEndTimePicker(true)}
               >
                 <Text style={{ color: isDarkMode ? '#E5E7EB' : '#1F2937' }}>
-                  {formatDate(endDate, 'HH:mm')}
+                  {formatDate(endDate, 'h:mm a')}
                 </Text>
               </TouchableOpacity>
               
@@ -686,7 +839,7 @@ export default function AlarmDetailScreen() {
                 Acknowledged:
               </Text>
               <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                {alarmSummary.acknowledgedBy.name} • {alarmSummary.acknowledgedAt ? formatDate(parseISO(alarmSummary.acknowledgedAt), 'MMM d, HH:mm') : ''}
+                {alarmSummary.acknowledgedBy.name} • {alarmSummary.acknowledgedAt ? formatDate(parseISO(alarmSummary.acknowledgedAt), 'MMM d, h:mm a') : ''}
               </Text>
             </View>
           )}
@@ -708,13 +861,9 @@ export default function AlarmDetailScreen() {
           value={searchQuery}
           onChangeText={setSearchQuery}
           returnKeyType="search"
-          onSubmitEditing={handleSearchSubmit}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => {
-            setSearchQuery('');
-            setTimeout(refetch, 100);
-          }}>
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
             <Ionicons
               name="close-circle"
               size={20}
@@ -728,6 +877,7 @@ export default function AlarmDetailScreen() {
       <View style={styles.filters}>
         {renderStatusFilters()}
         {renderTimeFilters()}
+        {renderSortFilters()}
       </View>
       
       {/* History List */}
@@ -736,7 +886,7 @@ export default function AlarmDetailScreen() {
           <Text style={[styles.sectionTitle, {
             color: isDarkMode ? '#E5E7EB' : '#1F2937',
           }]}>
-            Value History ({isFetching ? '...' : totalCount})
+            Value History ({searchQuery ? `${totalCount} filtered` : totalCount})
           </Text>
           
           {(isLoading || isFetching) && 
@@ -761,6 +911,22 @@ export default function AlarmDetailScreen() {
               tintColor={isDarkMode ? '#60A5FA' : '#3B82F6'}
             />
           }
+          ListFooterComponent={() => {
+            if (isFetchingNextPage) {
+              return (
+                <View style={styles.footerLoader}>
+                  <ActivityIndicator 
+                    size="small" 
+                    color={isDarkMode ? '#60A5FA' : '#3B82F6'} 
+                  />
+                  <Text style={[styles.footerLoaderText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                    Loading more...
+                  </Text>
+                </View>
+              );
+            }
+            return null;
+          }}
           ListEmptyComponent={
             <View style={[styles.emptyState, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
               <Ionicons
@@ -780,6 +946,8 @@ export default function AlarmDetailScreen() {
               </Text>
             </View>
           }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
         />
       </View>
       
@@ -1026,5 +1194,38 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
+  },
+  footerLoader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  footerLoaderText: {
+    marginTop: 8,
+    fontSize: 14,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    marginVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  errorText: {
+    fontSize: 14,
+    flex: 1,
+    marginRight: 12,
+  },
+  correctButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  correctButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
 }); 

@@ -27,7 +27,7 @@ export const AlarmDetails: React.FC<AlarmDetailsProps> = ({
   const formattedTime = useMemo(() => {
     if (!alarm) return '';
     try {
-      return formatDate(new Date(alarm.timestamp), 'PPpp'); // e.g., "Apr 29, 2023, 1:30 PM"
+      return formatDate(new Date(alarm.timestamp), 'MMM d, yyyy h:mm:ss a'); // e.g., "Apr 29, 2023 1:30:45 PM"
     } catch (error) {
       return 'Unknown time';
     }
@@ -66,7 +66,7 @@ export const AlarmDetails: React.FC<AlarmDetailsProps> = ({
   
   const formatTimestamp = (timestamp: Date | string) => {
     if (!timestamp) return 'N/A';
-    return formatDate(new Date(timestamp), 'PPpp'); // e.g., "Apr 29, 2023, 1:30 PM"
+    return formatDate(new Date(timestamp), 'MMM d, yyyy h:mm:ss a'); // e.g., "Apr 29, 2023 1:30:45 PM"
   };
   
   if (!alarm) return null;

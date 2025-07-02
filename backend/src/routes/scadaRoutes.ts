@@ -57,6 +57,7 @@ router.get('/history', authenticate, async (req, res) => {
     const alarmType = (req.query.type as string) || undefined;
     const alarmId = (req.query.alarmId as string) || undefined;
     const startTime = req.query.startTime as string;
+    const endTime = req.query.endTime as string;
     
     if (DEBUG) {
       console.log('🔍 History Query Parameters:');
@@ -64,6 +65,7 @@ router.get('/history', authenticate, async (req, res) => {
       console.log(`Status Filter: ${statusFilter}`);
       console.log(`Time Filter: ${timeFilter} hours`);
       console.log(`Start Time: ${startTime || 'Not specified'}`);
+      console.log(`End Time: ${endTime || 'Not specified'}`);
       console.log(`Search Query: ${searchQuery || 'None'}`);
       console.log(`Sort By: ${sortBy}, Order: ${sortOrder}`);
       console.log(`Alarm Type: ${alarmType || 'All'}`);
@@ -81,7 +83,8 @@ router.get('/history', authenticate, async (req, res) => {
       sortOrder,
       alarmType,
       alarmId,
-      startTime
+      startTime,
+      endTime
     );
     
     if (DEBUG) {

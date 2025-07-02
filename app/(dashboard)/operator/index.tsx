@@ -41,8 +41,7 @@ type AlarmSeverityFilter = 'critical' | 'warning' | 'info' | 'all';
 
 // Add admin navigation functions after SCREEN_WIDTH constant
 const ADMIN_ROUTES = {
-  userManagement: '(dashboard)/screens/admin/users',
-  systemSettings: '(dashboard)/screens/admin/setpoints'
+  userManagement: '(dashboard)/screens/admin/users'
 } as const;
 
 // Theme Colors
@@ -131,7 +130,7 @@ interface AlarmData {
   zone?: string;
 }
 
-// Helper function to correctly format timestamps to show IST time consistently
+// Helper function to correctly format timestamps to show IST time consistently in 12-hour format
 const formatTimestamp = (timestamp: string): string => {
   try {
     // Always use a consistent approach for both development and production
@@ -160,12 +159,22 @@ const formatTimestamp = (timestamp: string): string => {
       istHours -= 24;
     }
     
+    // Convert to 12-hour format
+    let displayHours = istHours;
+    const ampm = istHours >= 12 ? 'PM' : 'AM';
+    
+    if (istHours === 0) {
+      displayHours = 12; // 12 AM
+    } else if (istHours > 12) {
+      displayHours = istHours - 12; // Convert to 12-hour format
+    }
+    
     // Format the time components
-    const hours = istHours.toString().padStart(2, '0');
+    const hours = displayHours.toString().padStart(2, '0');
     const minutes = istMinutes.toString().padStart(2, '0');
     const seconds = utcSeconds.toString().padStart(2, '0');
     
-    return `${hours}:${minutes}:${seconds}`;
+    return `${hours}:${minutes}:${seconds} ${ampm}`;
   } catch (error) {
     console.error('Error formatting timestamp:', error);
     return '';
@@ -329,13 +338,17 @@ export default function OperatorDashboard() {
     (alarm: Alarm) => {
       if (!isAdmin || !setpoints) return;
 
+      // Match by exact alarm description/name for precise setpoint selection
       const matchingSetpoint = setpoints.find(
-        (sp) => sp.type === alarm.type && (!alarm.zone || sp.zone === alarm.zone?.toLowerCase())
+        (sp) => sp.name.trim().toLowerCase() === alarm.description.trim().toLowerCase()
       );
 
       if (matchingSetpoint) {
         setSelectedSetpoint(matchingSetpoint);
         setSetpointModalVisible(true);
+      } else {
+        console.log(`No setpoint found for alarm: "${alarm.description}"`);
+        console.log('Available setpoints:', setpoints.map(sp => sp.name));
       }
     },
     [setpoints, isAdmin]
@@ -389,13 +402,7 @@ export default function OperatorDashboard() {
     if (isAdmin) {
       router.push(ADMIN_ROUTES.userManagement as any);
     }
-  }, [authState?.user?.role, router]);
-
-  const navigateToSettings = useCallback(() => {
-    if (isAdmin) {
-      router.push(ADMIN_ROUTES.systemSettings as any);
-    }
-  }, [authState?.user?.role, router]);
+  }, [isAdmin, router]);
 
   const scadaInterval = process.env.EXPO_PUBLIC_SCADA_INTERVAL
     ? parseInt(process.env.EXPO_PUBLIC_SCADA_INTERVAL, 10)
@@ -449,7 +456,7 @@ export default function OperatorDashboard() {
 
   // Render Functions
   const renderActionButtons = useCallback(
-    (alarm: Alarm) => (
+    (alarm: Alarm, isAnalogAlarm: boolean = false) => (
       <View style={styles.alarmCardActions}>
         {alarm.status === 'active' && (
           <TouchableOpacity
@@ -495,8 +502,8 @@ export default function OperatorDashboard() {
           </TouchableOpacity>
         )}
 
-        {/* Add Configure button for admins */}
-        {isAdmin && (
+        {/* Add Configure button for admins - only for analog alarms */}
+        {isAdmin && isAnalogAlarm && (
           <TouchableOpacity
             style={[
               styles.actionButton,
@@ -530,7 +537,7 @@ export default function OperatorDashboard() {
     ),
     [
       isDarkMode,
-      authState?.user?.role,
+      isAdmin,
       handleAcknowledge,
       openResolutionModal,
       handleConfigureSetpoint,
@@ -772,7 +779,7 @@ export default function OperatorDashboard() {
                       </Text>
                     )}
                   </View>
-                  {renderActionButtons(alarm)}
+                  {renderActionButtons(alarm, true)}
                 </View>
               </View>
             ))}
@@ -905,7 +912,7 @@ export default function OperatorDashboard() {
                       </View>
                     </View>
                   </View>
-                  {renderActionButtons(alarm)}
+                  {renderActionButtons(alarm, false)}
                 </View>
               </View>
             ))}
@@ -1015,48 +1022,7 @@ export default function OperatorDashboard() {
 
   // Functions are now declared at the top of the component using useCallback
 
-  // Add admin actions section to renderSummaryCards
-  const renderAdminActions = () => {
-    if (authState?.user?.role !== 'ADMIN') return null;
 
-    return (
-      <View style={styles.adminActions}>
-        <TouchableOpacity
-          style={[
-            styles.adminActionButton,
-            { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' },
-          ]}
-          onPress={navigateToUserManagement}>
-          <Ionicons
-            name="people-outline"
-            size={22}
-            color={isDarkMode ? '#60A5FA' : '#2563EB'}
-            style={styles.actionIcon}
-          />
-          <Text style={[styles.actionText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-            Manage Users
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.adminActionButton,
-            { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' },
-          ]}
-          onPress={navigateToSettings}>
-          <Ionicons
-            name="settings-outline"
-            size={22}
-            color={isDarkMode ? '#60A5FA' : '#2563EB'}
-            style={styles.actionIcon}
-          />
-          <Text style={[styles.actionText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-            System Settings
-          </Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
 
   // Handlers are now declared at the top of the component using useCallback
 
@@ -1112,20 +1078,27 @@ export default function OperatorDashboard() {
     headerActions: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 6,
     },
     headerButton: {
-      width: 38,
-      height: 38,
+      width: 52,
+      height: 52,
       borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
       position: 'relative',
+      paddingVertical: 4,
+    },
+    headerButtonLabel: {
+      fontSize: 10,
+      fontWeight: '500',
+      marginTop: 2,
+      textAlign: 'center',
     },
     notificationBadge: {
       position: 'absolute',
-      top: -4,
-      right: -4,
+      top: -2,
+      right: -2,
       minWidth: 18,
       height: 18,
       borderRadius: 9,
@@ -1427,41 +1400,7 @@ export default function OperatorDashboard() {
       fontSize: 11,
       fontWeight: '600',
     },
-    adminActions: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingHorizontal: 4,
-      marginBottom: 16,
-      marginTop: 8,
-      gap: 12,
-    },
-    adminActionButton: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 16,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: 'rgba(203, 213, 225, 0.3)',
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 3,
-        },
-        android: {
-          elevation: 2,
-        },
-      }),
-    },
-    actionIcon: {
-      marginRight: 6,
-    },
-    actionText: {
-      fontSize: 14,
-      fontWeight: '500',
-    },
+
     acknowledgedByContainer: {
       marginTop: 8,
       paddingTop: 8,
@@ -1633,9 +1572,15 @@ export default function OperatorDashboard() {
             })}>
             <Ionicons
               name="notifications-outline"
-              size={22}
+              size={20}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
+            <Text style={[
+              styles.headerButtonLabel,
+              { color: isDarkMode ? '#94A3B8' : '#475569' }
+            ]}>
+              Alerts
+            </Text>
             {unreadNotifications > 0 && (
               <View
                 style={[
@@ -1661,10 +1606,40 @@ export default function OperatorDashboard() {
             onPress={() => router.push('/(dashboard)/meter-readings' as any)}>
             <Ionicons
               name="speedometer-outline"
-              size={22}
+              size={20}
               color={isDarkMode ? '#6EE7B7' : '#10B981'}
             />
+            <Text style={[
+              styles.headerButtonLabel,
+              { color: isDarkMode ? '#6EE7B7' : '#10B981' }
+            ]}>
+              Meters
+            </Text>
           </TouchableOpacity>
+
+          {/* Admin Users Management Button */}
+          {isAdmin && (
+            <TouchableOpacity
+              style={[
+                styles.headerButton,
+                {
+                  backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)',
+                },
+              ]}
+              onPress={navigateToUserManagement}>
+              <Ionicons
+                name="people-outline"
+                size={20}
+                color={isDarkMode ? '#60A5FA' : '#2563EB'}
+              />
+              <Text style={[
+                styles.headerButtonLabel,
+                { color: isDarkMode ? '#60A5FA' : '#2563EB' }
+              ]}>
+                Users
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[
@@ -1676,9 +1651,15 @@ export default function OperatorDashboard() {
             onPress={toggleTheme}>
             <Ionicons
               name={isDarkMode ? 'sunny-outline' : 'moon-outline'}
-              size={22}
+              size={20}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
+            <Text style={[
+              styles.headerButtonLabel,
+              { color: isDarkMode ? '#94A3B8' : '#475569' }
+            ]}>
+              Theme
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1723,9 +1704,6 @@ export default function OperatorDashboard() {
           }>
           {/* Status Summary */}
           {renderSummaryCards()}
-
-          {/* Admin Actions */}
-          {renderAdminActions()}
 
           {/* Alarm Sections */}
           {renderAlarmSections()}
