@@ -35,6 +35,7 @@ import { useMaintenance } from '../../context/MaintenanceContext';
 import { useUnreadCount } from '../../hooks/useNotifications';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const DEVICE_WIDTH = Dimensions.get('window').width;
 
 // Add this type after the SCREEN_WIDTH constant
 type AlarmSeverityFilter = 'critical' | 'warning' | 'info' | 'all';
@@ -194,6 +195,7 @@ export default function OperatorDashboard() {
 
   // Setpoint Data and Mutations - Only for Admin
   const isAdmin = authState?.user?.role === 'ADMIN';
+  const isOperator = authState?.user?.role === 'OPERATOR';
   const isTestUser = authState?.user?.email === 'chetan@gmail.com';
   // Only fetch setpoints if user is admin
   const { data: setpoints } = useSetpoints();
@@ -1051,15 +1053,20 @@ export default function OperatorDashboard() {
   // Define styles inside the component to access isDarkMode
   const styles = StyleSheet.create({
     container: {
-      flex: 1,
+    flex: 1,
     },
     header: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
       borderBottomWidth: 1,
+      minHeight: 70,
+      maxWidth: DEVICE_WIDTH,
+      alignSelf: 'center',
+      width: '100%',
+      marginRight: 15,
       ...Platform.select({
         ios: {
           shadowColor: '#000',
@@ -1088,9 +1095,9 @@ export default function OperatorDashboard() {
       marginLeft: 14,
     },
     headerTitle: {
-      fontSize: 20,
-      fontWeight: '600',
-      letterSpacing: 0.3,
+      fontSize: 18,
+      fontWeight: 'bold',
+      flexWrap: 'wrap',
     },
     headerSubtitle: {
       fontSize: 13,
@@ -1635,7 +1642,7 @@ export default function OperatorDashboard() {
             })}>
             <Ionicons
               name="notifications-outline"
-              size={20}
+              size={16}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
             <Text style={[
@@ -1669,7 +1676,7 @@ export default function OperatorDashboard() {
             onPress={() => router.push('/(dashboard)/meter-readings' as any)}>
             <Ionicons
               name="speedometer-outline"
-              size={20}
+              size={16}
               color={isDarkMode ? '#6EE7B7' : '#10B981'}
             />
             <Text style={[
@@ -1692,7 +1699,7 @@ export default function OperatorDashboard() {
               onPress={navigateToUserManagement}>
               <Ionicons
                 name="people-outline"
-                size={20}
+                size={16}
                 color={isDarkMode ? '#60A5FA' : '#2563EB'}
               />
               <Text style={[
@@ -1703,7 +1710,8 @@ export default function OperatorDashboard() {
               </Text>
             </TouchableOpacity>
           )}
-
+          {/* Theme Button - Only for operators */}
+          {isOperator && (
           <TouchableOpacity
             style={[
               styles.headerButton,
@@ -1714,7 +1722,7 @@ export default function OperatorDashboard() {
             onPress={toggleTheme}>
             <Ionicons
               name={isDarkMode ? 'sunny-outline' : 'moon-outline'}
-              size={20}
+              size={16}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
             <Text style={[
@@ -1724,6 +1732,7 @@ export default function OperatorDashboard() {
               Theme
             </Text>
           </TouchableOpacity>
+          )}
         </View>
       </View>
 

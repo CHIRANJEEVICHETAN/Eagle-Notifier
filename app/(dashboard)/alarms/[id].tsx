@@ -38,6 +38,57 @@ interface AlarmHistoryRecord {
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+// Helper function to correctly format timestamps to show IST time consistently in 12-hour format
+const formatTimestamp = (timestamp: string): string => {
+  try {
+    // Always use a consistent approach for both development and production
+    // by manually calculating IST time from UTC
+    
+    // Parse the ISO string to Date object
+    const date = new Date(timestamp);
+    
+    // Get UTC components
+    const utcHours = date.getUTCHours();
+    const utcMinutes = date.getUTCMinutes();
+    const utcSeconds = date.getUTCSeconds();
+    
+    // Add IST offset (+5:30)
+    let istHours = utcHours + 5;
+    let istMinutes = utcMinutes + 30;
+    
+    // Handle minute overflow
+    if (istMinutes >= 60) {
+      istHours += 1;
+      istMinutes -= 60;
+    }
+    
+    // Handle hour overflow
+    if (istHours >= 24) {
+      istHours -= 24;
+    }
+    
+    // Convert to 12-hour format
+    let displayHours = istHours;
+    const ampm = istHours >= 12 ? 'PM' : 'AM';
+    
+    if (istHours === 0) {
+      displayHours = 12; // 12 AM
+    } else if (istHours > 12) {
+      displayHours = istHours - 12; // Convert to 12-hour format
+    }
+    
+    // Format the time components
+    const hours = displayHours.toString().padStart(2, '0');
+    const minutes = istMinutes.toString().padStart(2, '0');
+    const seconds = utcSeconds.toString().padStart(2, '0');
+    
+    return `${hours}:${minutes}:${seconds} ${ampm}`;
+  } catch (error) {
+    console.error('Error formatting timestamp:', error);
+    return '';
+  }
+};
+
 export default function AlarmDetailScreen() {
   const { isDarkMode } = useTheme();
   const router = useRouter();
@@ -175,7 +226,7 @@ export default function AlarmDetailScreen() {
         // Search in value, description, and formatted timestamp
         const valueStr = typeof item.value === 'string' ? item.value.toLowerCase() : String(item.value).toLowerCase();
         const descriptionStr = item.description.toLowerCase();
-        const timestampStr = formatDate(parseISO(item.timestamp), 'MMM d, yyyy h:mm:ss a').toLowerCase();
+        const timestampStr = (formatDate(parseISO(item.timestamp), 'MMM d, yyyy') + ' ' + formatTimestamp(item.timestamp)).toLowerCase();
         
         return valueStr.includes(query) || 
                descriptionStr.includes(query) ||
@@ -378,7 +429,7 @@ export default function AlarmDetailScreen() {
               Ack by:
             </Text>
             <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-              {item.acknowledgedBy.name} • {item.acknowledgedAt ? formatDate(parseISO(item.acknowledgedAt), 'MMM d, h:mm a') : ''}
+              {item.acknowledgedBy.name} • {item.acknowledgedAt ? formatDate(parseISO(item.acknowledgedAt), 'MMM d') + ', ' + formatTimestamp(item.acknowledgedAt).split(' ').slice(0, 2).join(' ') : ''}
             </Text>
           </View>
         )}
@@ -390,7 +441,7 @@ export default function AlarmDetailScreen() {
                 Resolved:
               </Text>
               <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                {item.resolvedBy.name} • {item.resolvedAt ? formatDate(parseISO(item.resolvedAt), 'MMM d, h:mm a') : ''}
+                {item.resolvedBy.name} • {item.resolvedAt ? formatDate(parseISO(item.resolvedAt), 'MMM d') + ', ' + formatTimestamp(item.resolvedAt).split(' ').slice(0, 2).join(' ') : ''}
               </Text>
             </View>
             
@@ -410,7 +461,7 @@ export default function AlarmDetailScreen() {
         <View style={styles.timeWrapper}>
           <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
           <Text style={[styles.timeText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            {formatDate(parseISO(item.timestamp), 'MMM d, yyyy h:mm:ss a')}
+            {formatDate(parseISO(item.timestamp), 'MMM d, yyyy')} {formatTimestamp(item.timestamp)}
           </Text>
         </View>
       </View>
@@ -839,7 +890,7 @@ export default function AlarmDetailScreen() {
                 Acknowledged:
               </Text>
               <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                {alarmSummary.acknowledgedBy.name} • {alarmSummary.acknowledgedAt ? formatDate(parseISO(alarmSummary.acknowledgedAt), 'MMM d, h:mm a') : ''}
+                {alarmSummary.acknowledgedBy.name} • {alarmSummary.acknowledgedAt ? formatDate(parseISO(alarmSummary.acknowledgedAt), 'MMM d') + ', ' + formatTimestamp(alarmSummary.acknowledgedAt).split(' ').slice(0, 2).join(' ') : ''}
               </Text>
             </View>
           )}
