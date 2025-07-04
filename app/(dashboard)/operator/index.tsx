@@ -1066,7 +1066,7 @@ export default function OperatorDashboard() {
       maxWidth: DEVICE_WIDTH,
       alignSelf: 'center',
       width: '100%',
-      marginRight: 15,
+      // marginRight: 15,
       ...Platform.select({
         ios: {
           shadowColor: '#000',
@@ -1121,6 +1121,7 @@ export default function OperatorDashboard() {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
+      marginRight: 12,
     },
     headerButton: {
       width: 52,
