@@ -1311,10 +1311,8 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
           pvField: 'hz1pv',
           svField: 'hz1sv',
           unit: '°C',
-          thresholds: {
-            critical: { low: 760, high: 840 },
-            warning: { low: 775, high: 825 }
-          }
+          type: 'hardening_temperature',
+          zone: 'zone1'
         },
         {
           name: 'HARDENING ZONE 2 TEMPERATURE',
@@ -1322,10 +1320,8 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
           pvField: 'hz2pv',
           svField: 'hz2sv',
           unit: '°C',
-          thresholds: {
-            critical: { low: 810, high: 880 },
-            warning: { low: 820, high: 870 }
-          }
+          type: 'hardening_temperature',
+          zone: 'zone2'
         },
         {
           name: 'CARBON POTENTIAL (CP %)',
@@ -1333,10 +1329,7 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
           pvField: 'cppv',
           svField: 'cpsv',
           unit: '%',
-          thresholds: {
-            critical: { low: 0.30, high: 0.50 },
-            warning: { low: 0.35, high: 0.45 }
-          }
+          type: 'carbon'
         },
         {
           name: 'OIL TEMPERATURE',
@@ -1344,10 +1337,7 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
           pvField: 'oilpv',
           svField: 'oilpv',
           unit: '°C',
-          thresholds: {
-            critical: { low: 50, high: 80 },
-            warning: { low: 55, high: 75 }
-          }
+          type: 'temperature'
         },
         {
           name: 'TEMPERING ZONE 1 TEMPERATURE',
@@ -1355,10 +1345,8 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
           pvField: 'tz1pv',
           svField: 'tz1sv',
           unit: '°C',
-          thresholds: {
-            critical: { low: 420, high: 460 },
-            warning: { low: 425, high: 455 }
-          }
+          type: 'tempering_temperature',
+          zone: 'zone1'
         },
         {
           name: 'TEMPERING ZONE 2 TEMPERATURE',
@@ -1366,26 +1354,83 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
           pvField: 'tz2pv',
           svField: 'tz2sv',
           unit: '°C',
-          thresholds: {
-            critical: { low: 450, high: 470 },
-            warning: { low: 452, high: 468 }
-          }
+          type: 'tempering_temperature',
+          zone: 'zone2'
         }
       ];
-      
-      const analogData = analogDataConfigs.map(config => ({
-        name: config.name,
-        color: config.color,
-        data: sampledData.map(row => {
-          const value = row[config.pvField as keyof ScadaData] as number;
-          // Handle null/undefined values by returning 0 or a reasonable default
-          if (value === null || value === undefined || isNaN(value)) {
-            console.warn(`⚠️ Invalid value for ${config.pvField}:`, value);
-            return 0;
+
+      // Fetch setpoint configurations from Prisma
+      const setpointConfigs = await prisma.setpoint.findMany();
+
+      // Process analog data with dynamic thresholds
+      const analogData = await Promise.all(analogDataConfigs.map(async config => {
+        // Find matching setpoint configuration
+        const setpoint = setpointConfigs.find(sp => {
+          const nameMatch = sp.name.trim().toLowerCase() === config.name.trim().toLowerCase();
+          const typeMatch = sp.type.toLowerCase() === config.type.toLowerCase();
+          const zoneMatch = (!sp.zone && !config.zone) || (sp.zone === config.zone);
+          return nameMatch && typeMatch && zoneMatch;
+        });
+
+        // Get default deviations based on type
+        const getDefaultDeviation = (type: string, isHigh: boolean = false) => {
+          switch (type.toLowerCase()) {
+            case 'carbon':
+              return isHigh ? 0.05 : -0.05;
+            case 'hardening_temperature':
+              return isHigh ? 10 : -10;
+            case 'tempering_temperature':
+              return isHigh ? 10 : -10;
+            case 'oil_temperature':
+              return isHigh ? 20 : -10;
+            default:
+              return isHigh ? 10 : -10;
           }
-          return parseFloat(value.toFixed(2));
-        }),
-        thresholds: config.thresholds
+        };
+
+        // Use setpoint config if available, otherwise use defaults
+        const lowDeviation = setpoint?.lowDeviation ?? getDefaultDeviation(config.type);
+        const highDeviation = setpoint?.highDeviation ?? getDefaultDeviation(config.type, true);
+
+        return {
+          name: config.name,
+          color: config.color,
+          data: sampledData.map(row => {
+            const value = row[config.pvField as keyof ScadaData] as number;
+            if (value === null || value === undefined || isNaN(value)) {
+              console.warn(`⚠️ Invalid value for ${config.pvField}:`, value);
+              return 0;
+            }
+            return parseFloat(value.toFixed(2));
+          }),
+          setpoint: sampledData.map(row => {
+            const value = row[config.svField as keyof ScadaData] as number;
+            return value || 0;
+          }),
+          thresholds: {
+            critical: { 
+              low: sampledData.map(row => {
+                const sv = row[config.svField as keyof ScadaData] as number;
+                return sv + lowDeviation;
+              }),
+              high: sampledData.map(row => {
+                const sv = row[config.svField as keyof ScadaData] as number;
+                return sv + highDeviation;
+              })
+            },
+            warning: {
+              low: sampledData.map(row => {
+                const sv = row[config.svField as keyof ScadaData] as number;
+                return sv + (lowDeviation * 0.8); // 80% of critical deviation for warning
+              }),
+              high: sampledData.map(row => {
+                const sv = row[config.svField as keyof ScadaData] as number;
+                return sv + (highDeviation * 0.8); // 80% of critical deviation for warning
+              })
+            }
+          },
+          unit: config.unit
+        };
       }));
       
       // Prepare binary data series with distinct colors
@@ -1410,14 +1455,14 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
           name: 'HARDENING ZONE 2 HEATER FAILURE',
           color: '#4BC0C0' // Teal
         },
+        // {
+        //   field: 'hardconfail',
+        //   name: 'HARDENING CONVEYOR FAILURE',
+        //   color: '#FFCE56' // Yellow
+        // },
         {
-          field: 'hardconfail',
-          name: 'HARDENING CONVEYOR FAILURE',
-          color: '#FFCE56' // Yellow
-        },
-        {
-          field: 'oilconfail',
-          name: 'OIL CONVEYOR FAILURE',
+          field: 'oiltemphigh',
+          name: 'OIL TEMPERATURE HIGH',
           color: '#9966FF' // Purple
         },
         {
@@ -1430,11 +1475,11 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
           name: 'HARDENING ZONE 2 FAN FAILURE',
           color: '#4CAF50' // Green
         },
-        {
-          field: 'tempconfail',
-          name: 'TEMPERING CONVEYOR FAILURE',
-          color: '#E91E63' // Pink
-        },
+        // {
+        //   field: 'tempconfail',
+        //   name: 'TEMPERING CONVEYOR FAILURE',
+        //   color: '#E91E63' // Pink
+        // },
         {
           field: 'tz1fanfail',
           name: 'TEMPERING ZONE 1 FAN FAILURE',

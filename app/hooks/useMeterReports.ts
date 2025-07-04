@@ -67,17 +67,23 @@ export function useMeterReports() {
                           error.response?.data?.error || 
                           error.message || 
                           'Unknown error';
-      
+      // Handle 404 (no data found) with a user-friendly message
+      if (error.response?.status === 404 && errorMessage?.toLowerCase().includes('no meter readings')) {
+        error.handled = true;
+        Alert.alert(
+          'No Data Found',
+          'No meter readings found for the selected date and time range. Please adjust your filters or Date & Time Range and try again.'
+        );
+        return;
+      }
       // Check if we have a more specific error about date range
       if (error.response?.data?.availableRange) {
         const { earliest, latest } = error.response.data.availableRange;
         const earliestDate = new Date(earliest);
         const latestDate = new Date(latest);
-        
         // Check if there's a suggested range
         if (error.response?.data?.suggestedRange) {
           const { startDate, endDate } = error.response.data.suggestedRange;
-          
           Alert.alert(
             'No Data in Selected Range',
             `No meter readings found in the selected date range. Available data is from ${formatDate(earliestDate, 'PPP')} to ${formatDate(latestDate, 'PPP')}.`,
@@ -85,19 +91,13 @@ export function useMeterReports() {
               { 
                 text: 'Use Suggested Range', 
                 onPress: () => {
-                  // Mark the error as handled
                   error.handled = true;
-                  
-                  // Try again with the suggested range
                   const suggestedStartDate = new Date(startDate);
                   const suggestedEndDate = new Date(endDate);
-                  
                   console.log('Using suggested date range:', {
                     startDate: suggestedStartDate,
                     endDate: suggestedEndDate
                   });
-                  
-                  // Retry with suggested range
                   generateReport(
                     ReportFormat.EXCEL, 
                     { startDate: suggestedStartDate, endDate: suggestedEndDate },
@@ -112,6 +112,8 @@ export function useMeterReports() {
               { text: 'Cancel' }
             ]
           );
+          error.handled = true;
+          return;
         } else {
           Alert.alert(
             'No Data in Selected Range',
@@ -120,12 +122,11 @@ export function useMeterReports() {
               { text: 'OK' }
             ]
           );
+          error.handled = true;
+          return;
         }
-      } else {
-        Alert.alert('Report Generation Failed', errorMessage);
       }
-      
-      // Mark the error as handled
+      Alert.alert('Report Generation Failed', errorMessage);
       error.handled = true;
     }
   });

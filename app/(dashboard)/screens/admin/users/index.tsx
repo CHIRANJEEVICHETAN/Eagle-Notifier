@@ -11,6 +11,7 @@ import {
   Alert,
   Switch,
   RefreshControl,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -25,6 +26,12 @@ import * as SecureStore from 'expo-secure-store';
 
 // API Base URL
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+const windowWidth = Dimensions.get('window').width;
+const windowHeight = Dimensions.get('window').height;
+
+const lowDPIPhones = 365;
+const highDPIPhones = 690;
 
 // Helper to get auth headers
 const getAuthHeader = async (token: string | null | undefined) => {
@@ -648,6 +655,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
+    paddingRight: windowWidth > lowDPIPhones ? 5 : 12,
   },
   addButtonText: {
     color: '#FFFFFF',

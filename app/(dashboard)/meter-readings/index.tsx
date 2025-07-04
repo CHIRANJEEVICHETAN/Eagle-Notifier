@@ -36,7 +36,11 @@ import {
   formatChartLabelIST 
 } from '../../utils/timezoneUtils';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
+const windowWidth = Dimensions.get('window').width;
+const windowHeight = Dimensions.get('window').height;
+
+const highDPIPhones = 380;
+const lowDPIPhones = 365;
 
 // Add interface for Line component props
 interface LineProps {
@@ -114,7 +118,7 @@ const CustomChart = ({ meterData, timeLabels, isDarkMode, axisRange }: CustomCha
     color: string;
   } | null>(null);
   
-  const chartWidth = SCREEN_WIDTH - 40;
+  const chartWidth = windowWidth - 40;
   const chartHeight = 220;
   
   const padding = { top: 20, right: 20, bottom: 40, left: 50 };
@@ -860,7 +864,7 @@ export default function MeterReadingsScreen() {
             })}>
             <Ionicons
               name="notifications-outline"
-              size={20}
+              size={windowWidth > highDPIPhones ? 20 : 18}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
             <Text style={[
@@ -894,7 +898,7 @@ export default function MeterReadingsScreen() {
             onPress={() => router.push('/(dashboard)/operator')}>
             <Ionicons
               name="flame-outline"
-              size={20}
+              size={windowWidth > highDPIPhones ? 20 : 18}
               color={isDarkMode ? '#F87171' : '#EF4444'}
             />
             <Text style={[
@@ -915,7 +919,7 @@ export default function MeterReadingsScreen() {
             onPress={() => toggleTheme()}>
             <Ionicons
               name={isDarkMode ? 'sunny-outline' : 'moon-outline'}
-              size={20}
+              size={windowWidth > highDPIPhones ? 20 : 18}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
             <Text style={[
@@ -1586,12 +1590,12 @@ const styles = StyleSheet.create({
     marginLeft: 14,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: windowWidth > highDPIPhones ? 20 : 18,
+    fontWeight: windowWidth > highDPIPhones ? 'bold' : '800',
     letterSpacing: 0.3,
   },
   headerSubtitle: {
-    fontSize: 13,
+    fontSize: windowWidth > highDPIPhones ? 13 : 11,
     marginTop: 2,
     fontWeight: '400',
   },
@@ -1599,10 +1603,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingRight: windowWidth > highDPIPhones ? 10 : 50,
+    paddingLeft: windowWidth < lowDPIPhones ? 5 : 12,
   },
   headerButton: {
-    width: 52,
-    height: 52,
+    width: windowWidth > highDPIPhones ? 52 : 48,
+    height: windowWidth > highDPIPhones ? 52 : 48,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1619,8 +1625,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -2,
     right: -2,
-    minWidth: 18,
-    height: 18,
+    minWidth: windowWidth > highDPIPhones ? 18 : 16,
+    height: windowWidth > highDPIPhones ? 18 : 16,
     borderRadius: 9,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1628,7 +1634,7 @@ const styles = StyleSheet.create({
   },
   notificationBadgeText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: windowWidth > highDPIPhones ? 10 : 9,
     fontWeight: '600',
   },
   scrollContent: {

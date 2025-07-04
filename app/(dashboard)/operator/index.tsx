@@ -33,6 +33,7 @@ import { useSetpoints, useUpdateSetpoint, Setpoint } from '../../hooks/useSetpoi
 import { SetpointConfigModal } from '../../components/SetpointConfigModal';
 import { useMaintenance } from '../../context/MaintenanceContext';
 import { useUnreadCount } from '../../hooks/useNotifications';
+import { RFValue } from 'react-native-responsive-fontsize';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const DEVICE_WIDTH = Dimensions.get('window').width;
@@ -88,6 +89,12 @@ const THEME = {
     shadow: 'rgba(0, 0, 0, 0.1)'
   }
 };
+
+const windowWidth = Dimensions.get('window').width;
+const windowHeight = Dimensions.get('window').height;
+
+const highDPIPhones = 380;
+const lowDPIPhones = 365;
 
 // Card Shadow Styles
 const CARD_SHADOW = Platform.select({
@@ -1042,13 +1049,6 @@ export default function OperatorDashboard() {
         : '#991B1B'; // More readable in light mode
   };
 
-  // Notification badge animation is handled above
-
-  // Functions are now declared at the top of the component using useCallback
-
-
-
-  // Handlers are now declared at the top of the component using useCallback
 
   // Define styles inside the component to access isDarkMode
   const styles = StyleSheet.create({
@@ -1095,12 +1095,12 @@ export default function OperatorDashboard() {
       marginLeft: 14,
     },
     headerTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
+      fontSize: windowWidth > highDPIPhones ? 18 : 16,
+      fontWeight: windowWidth > highDPIPhones ? 'bold' : '800',
       flexWrap: 'wrap',
     },
     headerSubtitle: {
-      fontSize: 13,
+      fontSize: windowWidth > highDPIPhones ? 12 : 12,
       marginTop: 2,
       fontWeight: '400',
     },
@@ -1121,11 +1121,12 @@ export default function OperatorDashboard() {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      marginRight: 12,
+      paddingRight: windowWidth > highDPIPhones ? 10 : 0,
+      paddingLeft: windowWidth < lowDPIPhones ? 10 : 0,
     },
     headerButton: {
-      width: 52,
-      height: 52,
+      width: windowWidth > highDPIPhones ? 52 : 48,
+      height: windowWidth > highDPIPhones ? 52 : 48,
       borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
@@ -1142,8 +1143,8 @@ export default function OperatorDashboard() {
       position: 'absolute',
       top: -2,
       right: -2,
-      minWidth: 18,
-      height: 18,
+      minWidth: windowWidth > highDPIPhones ? 18 : 16,
+      height: windowWidth > highDPIPhones ? 18 : 16,
       borderRadius: 9,
       justifyContent: 'center',
       alignItems: 'center',
@@ -1151,7 +1152,7 @@ export default function OperatorDashboard() {
     },
     notificationBadgeText: {
       color: '#FFFFFF',
-      fontSize: 10,
+      fontSize: windowWidth > highDPIPhones ? 10 : 9,
       fontWeight: '600',
     },
     scrollContent: {
@@ -1643,7 +1644,7 @@ export default function OperatorDashboard() {
             })}>
             <Ionicons
               name="notifications-outline"
-              size={16}
+              size={windowWidth > highDPIPhones ? 16 : 14}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
             <Text style={[
@@ -1677,7 +1678,7 @@ export default function OperatorDashboard() {
             onPress={() => router.push('/(dashboard)/meter-readings' as any)}>
             <Ionicons
               name="speedometer-outline"
-              size={16}
+              size={windowWidth > highDPIPhones ? 16 : 14}
               color={isDarkMode ? '#6EE7B7' : '#10B981'}
             />
             <Text style={[
@@ -1700,7 +1701,7 @@ export default function OperatorDashboard() {
               onPress={navigateToUserManagement}>
               <Ionicons
                 name="people-outline"
-                size={16}
+                size={windowWidth > highDPIPhones ? 16 : 14}
                 color={isDarkMode ? '#60A5FA' : '#2563EB'}
               />
               <Text style={[
@@ -1723,7 +1724,7 @@ export default function OperatorDashboard() {
             onPress={toggleTheme}>
             <Ionicons
               name={isDarkMode ? 'sunny-outline' : 'moon-outline'}
-              size={16}
+              size={windowWidth > highDPIPhones ? 16 : 14}
               color={isDarkMode ? '#94A3B8' : '#475569'}
             />
             <Text style={[

@@ -88,11 +88,35 @@ interface AlarmSeries {
   name: string;
   color: string;
   data: number[];
-  thresholds?: {
-    critical: { low: number; high: number };
-    warning: { low: number; high: number };
+  setpoint: number[]; // Add setpoint array
+  thresholds: {
+    critical: {
+      low: number[];
+      high: number[];
+    };
+    warning: {
+      low: number[];
+      high: number[];
+    };
   };
+  unit: string;
 }
+
+// Update the status calculation function
+const calculateStatus = (value: number, index: number, series: AlarmSeries): 'normal' | 'warning' | 'critical' => {
+  const criticalLow = series.thresholds.critical.low[index];
+  const criticalHigh = series.thresholds.critical.high[index];
+  const warningLow = series.thresholds.warning.low[index];
+  const warningHigh = series.thresholds.warning.high[index];
+
+  if (value <= criticalLow || value >= criticalHigh) {
+    return 'critical';
+  }
+  if (value <= warningLow || value >= warningHigh) {
+    return 'warning';
+  }
+  return 'normal';
+};
 
 // Update the AnalogChart component to accept props
 interface AnalogChartProps {
@@ -205,9 +229,9 @@ const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
       const series = alarmData[seriesIndex];
       if (series.thresholds) {
         const { critical, warning } = series.thresholds;
-        if (value <= critical.low || value >= critical.high) {
+        if (value <= critical.low[pointIndex] || value >= critical.high[pointIndex]) {
           status = 'critical';
-        } else if (value <= warning.low || value >= warning.high) {
+        } else if (value <= warning.low[pointIndex] || value >= warning.high[pointIndex]) {
           status = 'warning';
         }
       }
@@ -452,40 +476,51 @@ const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
                 <Ionicons name="close-circle" size={20} color={textColor} />
               </TouchableOpacity>
             </View>
-            
+
             {/* Status indicator */}
-            {touchedPoint.status && (
-              <View 
-                style={{ 
-                  paddingVertical: 4,
-                  paddingHorizontal: 8, 
-                  borderRadius: 4, 
-                  backgroundColor: touchedPoint.status === 'critical' ? 'rgba(239, 68, 68, 0.2)' : 
-                                 touchedPoint.status === 'warning' ? 'rgba(245, 158, 11, 0.2)' : 
-                                 'rgba(34, 197, 94, 0.2)',
-                  marginBottom: 10,
-                  alignSelf: 'flex-start'
-                }}
-              >
-                <Text 
+            {(() => {
+              const series = alarmData[touchedPoint.seriesIndex];
+              const status = calculateStatus(touchedPoint.value, touchedPoint.pointIndex, series);
+              return (
+                <View 
                   style={{ 
-                    color: touchedPoint.status === 'critical' ? '#EF4444' : 
-                         touchedPoint.status === 'warning' ? '#F59E0B' : 
-                         '#22C55E',
-                    fontWeight: '600',
-                    fontSize: 12,
-                    textTransform: 'uppercase'
+                    paddingVertical: 4,
+                    paddingHorizontal: 8, 
+                    borderRadius: 4, 
+                    backgroundColor: status === 'critical' ? 'rgba(239, 68, 68, 0.2)' : 
+                                   status === 'warning' ? 'rgba(245, 158, 11, 0.2)' : 
+                                   'rgba(34, 197, 94, 0.2)',
+                    marginBottom: 10,
+                    alignSelf: 'flex-start'
                   }}
                 >
-                  {touchedPoint.status}
-                </Text>
-              </View>
-            )}
+                  <Text 
+                    style={{ 
+                      color: status === 'critical' ? '#EF4444' : 
+                             status === 'warning' ? '#F59E0B' : 
+                             '#22C55E',
+                      fontWeight: '600',
+                      fontSize: 12,
+                      textTransform: 'uppercase'
+                    }}
+                  >
+                    {status}
+                  </Text>
+                </View>
+              );
+            })()}
 
             <View style={{ marginBottom: 8 }}>
               <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 12 }}>Current Value</Text>
               <Text style={{ color: textColor, fontSize: 18, fontWeight: '600' }}>
-                {touchedPoint.value.toFixed(1)}
+                {touchedPoint.value.toFixed(1)} {alarmData[touchedPoint.seriesIndex].unit}
+              </Text>
+            </View>
+
+            <View style={{ marginBottom: 8 }}>
+              <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 12 }}>Set Point</Text>
+              <Text style={{ color: textColor, fontSize: 14 }}>
+                {alarmData[touchedPoint.seriesIndex].setpoint[touchedPoint.pointIndex].toFixed(1)} {alarmData[touchedPoint.seriesIndex].unit}
               </Text>
             </View>
 
@@ -497,25 +532,21 @@ const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
             </View>
 
             {/* Threshold information */}
-            {alarmData[touchedPoint.seriesIndex].thresholds && (
-              <>
-                <View style={{ height: 1, backgroundColor: isDarkMode ? 'rgba(75, 85, 99, 0.4)' : 'rgba(229, 231, 235, 0.8)', marginVertical: 8 }} />
-                
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 12 }}>Warning Range:</Text>
-                  <Text style={{ color: textColor, fontSize: 12, fontWeight: '500' }}>
-                    {alarmData[touchedPoint.seriesIndex].thresholds?.warning.low.toFixed(1)} - {alarmData[touchedPoint.seriesIndex].thresholds?.warning.high.toFixed(1)}
-                  </Text>
-                </View>
+            <View style={{ height: 1, backgroundColor: isDarkMode ? 'rgba(75, 85, 99, 0.4)' : 'rgba(229, 231, 235, 0.8)', marginVertical: 8 }} />
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 12 }}>Warning Range:</Text>
+              <Text style={{ color: textColor, fontSize: 12, fontWeight: '500' }}>
+                {alarmData[touchedPoint.seriesIndex].thresholds.warning.low[touchedPoint.pointIndex].toFixed(1)} - {alarmData[touchedPoint.seriesIndex].thresholds.warning.high[touchedPoint.pointIndex].toFixed(1)} {alarmData[touchedPoint.seriesIndex].unit}
+              </Text>
+            </View>
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 12 }}>Critical Range:</Text>
-                  <Text style={{ color: textColor, fontSize: 12, fontWeight: '500' }}>
-                    {alarmData[touchedPoint.seriesIndex].thresholds?.critical.low.toFixed(1)} - {alarmData[touchedPoint.seriesIndex].thresholds?.critical.high.toFixed(1)}
-                  </Text>
-                </View>
-              </>
-            )}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 12 }}>Critical Range:</Text>
+              <Text style={{ color: textColor, fontSize: 12, fontWeight: '500' }}>
+                {alarmData[touchedPoint.seriesIndex].thresholds.critical.low[touchedPoint.pointIndex].toFixed(1)} - {alarmData[touchedPoint.seriesIndex].thresholds.critical.high[touchedPoint.pointIndex].toFixed(1)} {alarmData[touchedPoint.seriesIndex].unit}
+              </Text>
+            </View>
           </View>
         )}
         
@@ -933,7 +964,7 @@ const BinaryChart = ({ alarmData, timeLabels }: BinaryChartProps) => {
             <View style={{ marginBottom: 4 }}>
               <Text style={{ color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 10 }}>Status</Text>
               <Text style={{ color: textColor, fontSize: 12, fontWeight: '600' }}>
-                {touchedPoint.value === 1 ? 'Normal' : 'Failure'}
+                {touchedPoint.value === 1 ? 'Failure' : 'Normal'}
               </Text>
             </View>
             <View>

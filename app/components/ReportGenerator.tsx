@@ -579,6 +579,7 @@ export function ReportGenerator({
                 mode="date"
                 display="default"
                 onChange={handleStartDateChange}
+                maximumDate={new Date()} // Prevent future dates
               />
             )}
             {showStartTimePicker && (
@@ -587,6 +588,14 @@ export function ReportGenerator({
                 mode="time"
                 display="default"
                 onChange={handleStartTimeChange}
+                // Disable future times if startDate is today
+                maximumDate={(() => {
+                  const now = new Date();
+                  const isToday = startDate.getFullYear() === now.getFullYear() &&
+                    startDate.getMonth() === now.getMonth() &&
+                    startDate.getDate() === now.getDate();
+                  return isToday ? now : undefined;
+                })()}
               />
             )}
             {showEndDatePicker && (
@@ -595,6 +604,8 @@ export function ReportGenerator({
                 mode="date"
                 display="default"
                 onChange={handleEndDateChange}
+                maximumDate={new Date()} // Prevent future dates
+                minimumDate={startDate} // End date cannot be before start date
               />
             )}
             {showEndTimePicker && (
@@ -603,6 +614,15 @@ export function ReportGenerator({
                 mode="time"
                 display="default"
                 onChange={handleEndTimeChange}
+                // Disable future times if endDate is today
+                maximumDate={(() => {
+                  const now = new Date();
+                  const isToday = endDate.getFullYear() === now.getFullYear() &&
+                    endDate.getMonth() === now.getMonth() &&
+                    endDate.getDate() === now.getDate();
+                  return isToday ? now : undefined;
+                })()}
+                minimumDate={startDate}
               />
             )}
 

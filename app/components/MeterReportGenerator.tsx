@@ -30,6 +30,12 @@ export interface MeterReportGeneratorProps {
   defaultTimeRange?: ReportTimeRange;
 }
 
+// Helper to convert IST (UTC+5:30) to UTC
+function convertISTToUTC(date: Date): Date {
+  // Get the time in milliseconds and subtract 5.5 hours
+  return new Date(date.getTime() - (5.5 * 60 * 60 * 1000));
+}
+
 export function MeterReportGenerator({
   visible,
   onClose,
@@ -54,6 +60,10 @@ export function MeterReportGenerator({
   );
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+
+  // Add state for time pickers
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
   // Parameters to include in report
   const [selectedParameters, setSelectedParameters] = useState<string[]>([
@@ -103,6 +113,39 @@ export function MeterReportGenerator({
     }
   };
 
+  // Handle time change
+  const handleStartTimeChange = (event: any, selectedTime?: Date) => {
+    setShowStartTimePicker(false);
+    if (selectedTime) {
+      const newDate = new Date(startDate);
+      newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
+      setStartDate(newDate);
+      // If start time is after end time on the same day, update end time
+      if (
+        newDate.toDateString() === endDate.toDateString() &&
+        newDate > endDate
+      ) {
+        setEndDate(newDate);
+      }
+    }
+  };
+
+  const handleEndTimeChange = (event: any, selectedTime?: Date) => {
+    setShowEndTimePicker(false);
+    if (selectedTime) {
+      const newDate = new Date(endDate);
+      newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
+      // If end time is before start time on the same day, update start time
+      if (
+        newDate.toDateString() === startDate.toDateString() &&
+        newDate < startDate
+      ) {
+        setStartDate(newDate);
+      }
+      setEndDate(newDate);
+    }
+  };
+
   // Toggle parameter selection
   const toggleParameter = (parameter: string) => {
     setSelectedParameters(prev => 
@@ -121,24 +164,28 @@ export function MeterReportGenerator({
 
     // Must select at least one parameter
     if (selectedParameters.length === 0) {
-      Alert.alert('Invalid Parameters', 'Please select at least one parameter to include in the report.');
+      Alert.alert('Invalid Parameters', 'Please select at least one parameter.');
       return;
     }
 
+    setIsGenerating(true);
     try {
-      setIsGenerating(true);
-      console.log('Generating report with parameters:', {
+      // Convert IST to UTC before sending to backend
+      const utcStart = convertISTToUTC(startDate);
+      const utcEnd = convertISTToUTC(endDate);
+      await onGenerate(
         format,
-        timeRange: { startDate, endDate },
-        parameters: selectedParameters,
+        { startDate: utcStart, endDate: utcEnd },
+        selectedParameters,
         sortOrder,
-        title: reportTitle
-      });
-      await onGenerate(format, { startDate, endDate }, selectedParameters, sortOrder, reportTitle);
+        reportTitle
+      );
       onClose();
-    } catch (error) {
-      console.error('Error generating report:', error);
-      Alert.alert('Error', 'Failed to generate report. Please try again.');
+    } catch (error: any) {
+      // Only show generic error if not already handled
+      if (!error.handled) {
+        Alert.alert('Report Generation Failed', error.message || 'An unexpected error occurred');
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -345,68 +392,118 @@ export function MeterReportGenerator({
               </TouchableOpacity>
             </View>
 
-            {/* Date Range */}
+            {/* Date & Time Range */}
             <Text
               style={[
                 styles.sectionTitle,
                 { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
               ]}
             >
-              Date Range
+              Date & Time Range
             </Text>
             <View style={styles.dateRangeContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.dateButton,
-                  { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
-                ]}
-                onPress={() => setShowStartPicker(true)}
-              >
-                <Text
+              <View style={{ flex: 1 }}>
+                <TouchableOpacity
                   style={[
-                    styles.dateButtonLabel,
-                    { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    styles.dateButton,
+                    { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
                   ]}
+                  onPress={() => setShowStartPicker(true)}
                 >
-                  Start Date:
-                </Text>
-                <Text
+                  <Text
+                    style={[
+                      styles.dateButtonLabel,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    ]}
+                  >
+                    Start Date:
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    ]}
+                  >
+                    {formatDate(startDate, 'PPP')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   style={[
-                    styles.dateButtonText,
-                    { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    styles.dateButton,
+                    { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB', marginTop: 6 },
                   ]}
+                  onPress={() => setShowStartTimePicker(true)}
                 >
-                  {formatDate(startDate, 'PPP')} ({formatDate(startDate, 'p')})
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.dateButton,
-                  { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
-                ]}
-                onPress={() => setShowEndPicker(true)}
-              >
-                <Text
+                  <Text
+                    style={[
+                      styles.dateButtonLabel,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    ]}
+                  >
+                    Start Time:
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    ]}
+                  >
+                    {formatDate(startDate, 'p')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flex: 1 }}>
+                <TouchableOpacity
                   style={[
-                    styles.dateButtonLabel,
-                    { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    styles.dateButton,
+                    { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB' },
                   ]}
+                  onPress={() => setShowEndPicker(true)}
                 >
-                  End Date:
-                </Text>
-                <Text
+                  <Text
+                    style={[
+                      styles.dateButtonLabel,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    ]}
+                  >
+                    End Date:
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    ]}
+                  >
+                    {formatDate(endDate, 'PPP')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   style={[
-                    styles.dateButtonText,
-                    { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    styles.dateButton,
+                    { borderColor: isDarkMode ? '#4B5563' : '#D1D5DB', marginTop: 6 },
                   ]}
+                  onPress={() => setShowEndTimePicker(true)}
                 >
-                  {formatDate(endDate, 'PPP')} ({formatDate(endDate, 'p')})
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={[
+                      styles.dateButtonLabel,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                    ]}
+                  >
+                    End Time:
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      { color: isDarkMode ? '#E5E7EB' : '#1F2937' },
+                    ]}
+                  >
+                    {formatDate(endDate, 'p')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-
-            {/* Date Pickers (Visible conditionally) */}
+            {/* Date and Time Pickers (Visible conditionally) */}
             {showStartPicker && (
               <DateTimePicker
                 value={startDate}
@@ -416,6 +513,22 @@ export function MeterReportGenerator({
                 maximumDate={today}
               />
             )}
+            {showStartTimePicker && (
+              <DateTimePicker
+                value={startDate}
+                mode="time"
+                display="default"
+                onChange={handleStartTimeChange}
+                // Disable future times if startDate is today
+                maximumDate={(() => {
+                  const now = new Date();
+                  const isToday = startDate.getFullYear() === now.getFullYear() &&
+                    startDate.getMonth() === now.getMonth() &&
+                    startDate.getDate() === now.getDate();
+                  return isToday ? now : undefined;
+                })()}
+              />
+            )}
             {showEndPicker && (
               <DateTimePicker
                 value={endDate}
@@ -423,6 +536,23 @@ export function MeterReportGenerator({
                 display="default"
                 onChange={handleEndDateChange}
                 maximumDate={today}
+                minimumDate={startDate}
+              />
+            )}
+            {showEndTimePicker && (
+              <DateTimePicker
+                value={endDate}
+                mode="time"
+                display="default"
+                onChange={handleEndTimeChange}
+                // Disable future times if endDate is today
+                maximumDate={(() => {
+                  const now = new Date();
+                  const isToday = endDate.getFullYear() === now.getFullYear() &&
+                    endDate.getMonth() === now.getMonth() &&
+                    endDate.getDate() === now.getDate();
+                  return isToday ? now : undefined;
+                })()}
                 minimumDate={startDate}
               />
             )}
