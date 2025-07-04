@@ -66,6 +66,7 @@ export default function AlarmDetailScreen() {
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [selectedAlarm, setSelectedAlarm] = useState<Alarm | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
   
   // Filter and search state
   const [statusFilter, setStatusFilter] = useState<AlarmFilter>('active');
@@ -73,9 +74,16 @@ export default function AlarmDetailScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   
+  // Temporary filter states for modal (only applied on "Apply")
+  const [tempStatusFilter, setTempStatusFilter] = useState<AlarmFilter>('active');
+  const [tempTimeFilter, setTempTimeFilter] = useState<TimeFilter>('7d');
+  const [tempSortOrder, setTempSortOrder] = useState<SortOrder>('desc');
+  
   // Custom date range state
   const [startDate, setStartDate] = useState<Date>(subDays(new Date(), 7));
   const [endDate, setEndDate] = useState<Date>(new Date());
+  const [tempStartDate, setTempStartDate] = useState<Date>(subDays(new Date(), 7));
+  const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
@@ -84,15 +92,20 @@ export default function AlarmDetailScreen() {
   
   // Validate date range and show error if invalid
   const validateDateRange = useCallback(() => {
-    if (timeFilter === 'custom') {
-      if (endDate <= startDate) {
+    // Check both temp and regular states depending on modal visibility
+    const currentTimeFilter = filterModalVisible ? tempTimeFilter : timeFilter;
+    const currentStartDate = filterModalVisible ? tempStartDate : startDate;
+    const currentEndDate = filterModalVisible ? tempEndDate : endDate;
+    
+    if (currentTimeFilter === 'custom') {
+      if (currentEndDate <= currentStartDate) {
         const error = 'End date must be after start date';
         setDateRangeError(error);
         return false;
       }
       
       // Check if date range is too large (more than 90 days)
-      const diffDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+      const diffDays = (currentEndDate.getTime() - currentStartDate.getTime()) / (1000 * 60 * 60 * 24);
       if (diffDays > 90) {
         const error = 'Date range cannot exceed 90 days';
         setDateRangeError(error);
@@ -105,7 +118,7 @@ export default function AlarmDetailScreen() {
     
     setDateRangeError(null);
     return true;
-  }, [timeFilter, startDate, endDate]);
+  }, [timeFilter, startDate, endDate, tempTimeFilter, tempStartDate, tempEndDate, filterModalVisible]);
   
   // Convert date range to hours if using custom range
   const hoursDiff = useMemo(() => {
@@ -201,7 +214,7 @@ export default function AlarmDetailScreen() {
       });
     }
     
-    // Apply frontend sort order
+    // Apply frontend sort order - ensure this works locally for already fetched data
     const sortedItems = filteredItems.sort((a, b) => {
       const aTime = new Date(a.timestamp).getTime();
       const bTime = new Date(b.timestamp).getTime();
@@ -241,71 +254,125 @@ export default function AlarmDetailScreen() {
     setDetailsVisible(false);
   }, []);
   
-  // Date picker handlers
+  // Date picker handlers - update to use temp states
   const handleStartDateChange = useCallback((event: any, selectedDate?: Date) => {
     setShowStartPicker(Platform.OS === 'ios');
     if (selectedDate) {
       const newDate = new Date(selectedDate);
       // Preserve the existing time
-      newDate.setHours(startDate.getHours(), startDate.getMinutes(), startDate.getSeconds());
-      setStartDate(newDate);
+      newDate.setHours(tempStartDate.getHours(), tempStartDate.getMinutes(), tempStartDate.getSeconds());
+      setTempStartDate(newDate);
       
       // Validate date range after change
       setTimeout(() => validateDateRange(), 100);
     }
-  }, [startDate, validateDateRange]);
+  }, [tempStartDate, validateDateRange]);
   
   const handleEndDateChange = useCallback((event: any, selectedDate?: Date) => {
     setShowEndPicker(Platform.OS === 'ios');
     if (selectedDate) {
       const newDate = new Date(selectedDate);
       // Preserve the existing time
-      newDate.setHours(endDate.getHours(), endDate.getMinutes(), endDate.getSeconds());
-      setEndDate(newDate);
+      newDate.setHours(tempEndDate.getHours(), tempEndDate.getMinutes(), tempEndDate.getSeconds());
+      setTempEndDate(newDate);
       
       // Validate date range after change
       setTimeout(() => validateDateRange(), 100);
     }
-  }, [endDate, validateDateRange]);
+  }, [tempEndDate, validateDateRange]);
 
-  // Time picker handlers
+  // Time picker handlers - update to use temp states
   const handleStartTimeChange = useCallback((event: any, selectedTime?: Date) => {
     setShowStartTimePicker(Platform.OS === 'ios');
     if (selectedTime) {
-      const newDate = new Date(startDate);
+      const newDate = new Date(tempStartDate);
       newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
-      setStartDate(newDate);
+      setTempStartDate(newDate);
       
       // Validate date range after change
       setTimeout(() => validateDateRange(), 100);
     }
-  }, [startDate, validateDateRange]);
+  }, [tempStartDate, validateDateRange]);
   
   const handleEndTimeChange = useCallback((event: any, selectedTime?: Date) => {
     setShowEndTimePicker(Platform.OS === 'ios');
     if (selectedTime) {
-      const newDate = new Date(endDate);
+      const newDate = new Date(tempEndDate);
       newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
-      setEndDate(newDate);
+      setTempEndDate(newDate);
       
       // Validate date range after change
       setTimeout(() => validateDateRange(), 100);
     }
-  }, [endDate, validateDateRange]);
+  }, [tempEndDate, validateDateRange]);
   
-  // Reset filters when they change (but not search - search is frontend only now)
+  // Reset filters when they change (but not search and sort order - these are frontend only)
   useEffect(() => {
     refetch();
   }, [statusFilter, timeFilter, startDate, endDate, refetch]);
 
-  // Handle status filter change
-  const handleStatusFilterChange = useCallback((newStatus: AlarmFilter) => {
-    setStatusFilter(newStatus);
+  // Handle opening filter modal
+  const handleOpenFilterModal = useCallback(() => {
+    // Sync temp states with current states
+    setTempStatusFilter(statusFilter);
+    setTempTimeFilter(timeFilter);
+    setTempSortOrder(sortOrder);
+    setTempStartDate(startDate);
+    setTempEndDate(endDate);
+    setFilterModalVisible(true);
+  }, [statusFilter, timeFilter, sortOrder, startDate, endDate]);
+
+  // Handle applying filters
+  const handleApplyFilters = useCallback(() => {
+    // Check if status, time range, or date range changed (these need a refetch)
+    const needsRefetch = 
+      statusFilter !== tempStatusFilter || 
+      timeFilter !== tempTimeFilter || 
+      (timeFilter === 'custom' && (
+        startDate.getTime() !== tempStartDate.getTime() || 
+        endDate.getTime() !== tempEndDate.getTime()
+      ));
+    
+    // Apply all temporary filter states
+    setStatusFilter(tempStatusFilter);
+    setTimeFilter(tempTimeFilter);
+    setSortOrder(tempSortOrder);
+    setStartDate(tempStartDate);
+    setEndDate(tempEndDate);
+    
+    // Only refetch if necessary
+    if (needsRefetch) {
+      refetch();
+    }
+    
+    setFilterModalVisible(false);
+  }, [tempStatusFilter, tempTimeFilter, tempSortOrder, tempStartDate, tempEndDate, 
+      statusFilter, timeFilter, startDate, endDate, refetch]);
+
+  // Handle resetting filters
+  const handleResetFilters = useCallback(() => {
+    // Reset to default values
+    setTempStatusFilter('active');
+    setTempTimeFilter('7d');
+    setTempSortOrder('desc');
+    setTempStartDate(subDays(new Date(), 7));
+    setTempEndDate(new Date());
+    setDateRangeError(null);
   }, []);
 
-  // Handle time filter change
+  // Handle status filter change in modal
+  const handleStatusFilterChange = useCallback((newStatus: AlarmFilter) => {
+    setTempStatusFilter(newStatus);
+  }, []);
+
+  // Handle time filter change in modal
   const handleTimeFilterChange = useCallback((newTimeFilter: TimeFilter) => {
-    setTimeFilter(newTimeFilter);
+    setTempTimeFilter(newTimeFilter);
+  }, []);
+
+  // Handle sort order change in modal
+  const handleSortOrderChange = useCallback((newOrder: SortOrder) => {
+    setTempSortOrder(newOrder);
   }, []);
 
   // Handle load more data
@@ -315,20 +382,15 @@ export default function AlarmDetailScreen() {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // Handle sort order change
-  const handleSortOrderChange = useCallback((newOrder: SortOrder) => {
-    setSortOrder(newOrder);
-  }, []);
-
   // Auto-correct invalid date ranges
   const handleDateRangeCorrection = useCallback(() => {
-    if (timeFilter === 'custom' && endDate <= startDate) {
+    if (tempTimeFilter === 'custom' && tempEndDate <= tempStartDate) {
       // Auto-correct by setting end date to start date + 1 hour
-      const correctedEndDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-      setEndDate(correctedEndDate);
+      const correctedEndDate = new Date(tempStartDate.getTime() + 60 * 60 * 1000);
+      setTempEndDate(correctedEndDate);
       setDateRangeError(null);
     }
-  }, [timeFilter, startDate, endDate]);
+  }, [tempTimeFilter, tempStartDate, tempEndDate]);
   
   // Render status badge
   const renderStatusBadge = useCallback((status: string) => {
@@ -435,7 +497,7 @@ export default function AlarmDetailScreen() {
     </TouchableOpacity>
   ), [isDarkMode, handleViewAlarm, renderStatusBadge]);
   
-  // Render status filter buttons
+  // Render status filter buttons - update to use temp states
   const renderStatusFilters = () => {
     const filters: { label: string; value: AlarmFilter }[] = [
       { label: 'Active', value: 'active' },
@@ -451,11 +513,11 @@ export default function AlarmDetailScreen() {
             key={filter.value}
             style={[
               styles.filterButton,
-              statusFilter === filter.value && styles.filterButtonActive,
+              tempStatusFilter === filter.value && styles.filterButtonActive,
               { 
                 backgroundColor: isDarkMode 
-                  ? statusFilter === filter.value ? '#3B82F6' : '#374151'
-                  : statusFilter === filter.value ? '#2563EB' : '#F3F4F6'
+                  ? tempStatusFilter === filter.value ? '#3B82F6' : '#374151'
+                  : tempStatusFilter === filter.value ? '#2563EB' : '#F3F4F6'
               }
             ]}
             onPress={() => handleStatusFilterChange(filter.value)}
@@ -465,8 +527,8 @@ export default function AlarmDetailScreen() {
                 styles.filterButtonText,
                 { 
                   color: isDarkMode
-                    ? statusFilter === filter.value ? '#FFFFFF' : '#E5E7EB'
-                    : statusFilter === filter.value ? '#FFFFFF' : '#4B5563' 
+                    ? tempStatusFilter === filter.value ? '#FFFFFF' : '#E5E7EB'
+                    : tempStatusFilter === filter.value ? '#FFFFFF' : '#4B5563' 
                 }
               ]}
             >
@@ -478,7 +540,7 @@ export default function AlarmDetailScreen() {
     );
   };
   
-  // Render sort order buttons
+  // Render sort order buttons - update to use temp states
   const renderSortFilters = () => {
     const filters: { label: string; value: SortOrder }[] = [
       { label: 'Newest First', value: 'desc' },
@@ -492,11 +554,11 @@ export default function AlarmDetailScreen() {
             key={filter.value}
             style={[
               styles.filterButton,
-              sortOrder === filter.value && styles.filterButtonActive,
+              tempSortOrder === filter.value && styles.filterButtonActive,
               { 
                 backgroundColor: isDarkMode 
-                  ? sortOrder === filter.value ? '#10B981' : '#374151'
-                  : sortOrder === filter.value ? '#059669' : '#F3F4F6'
+                  ? tempSortOrder === filter.value ? '#10B981' : '#374151'
+                  : tempSortOrder === filter.value ? '#059669' : '#F3F4F6'
               }
             ]}
             onPress={() => handleSortOrderChange(filter.value)}
@@ -506,8 +568,8 @@ export default function AlarmDetailScreen() {
                 styles.filterButtonText,
                 { 
                   color: isDarkMode
-                    ? sortOrder === filter.value ? '#FFFFFF' : '#E5E7EB'
-                    : sortOrder === filter.value ? '#FFFFFF' : '#4B5563' 
+                    ? tempSortOrder === filter.value ? '#FFFFFF' : '#E5E7EB'
+                    : tempSortOrder === filter.value ? '#FFFFFF' : '#4B5563' 
                 }
               ]}
             >
@@ -519,7 +581,7 @@ export default function AlarmDetailScreen() {
     );
   };
   
-  // Render time filter buttons
+  // Render time filter buttons - update to use temp states
   const renderTimeFilters = () => {
     const filters: { label: string; value: TimeFilter }[] = [
       { label: '24h', value: '24h' },
@@ -537,11 +599,11 @@ export default function AlarmDetailScreen() {
               key={filter.value}
               style={[
                 styles.filterButton,
-                timeFilter === filter.value && styles.filterButtonActive,
+                tempTimeFilter === filter.value && styles.filterButtonActive,
                 { 
                   backgroundColor: isDarkMode 
-                    ? timeFilter === filter.value ? '#3B82F6' : '#374151'
-                    : timeFilter === filter.value ? '#2563EB' : '#F3F4F6'
+                    ? tempTimeFilter === filter.value ? '#3B82F6' : '#374151'
+                    : tempTimeFilter === filter.value ? '#2563EB' : '#F3F4F6'
                 }
               ]}
               onPress={() => handleTimeFilterChange(filter.value)}
@@ -551,8 +613,8 @@ export default function AlarmDetailScreen() {
                   styles.filterButtonText,
                   { 
                     color: isDarkMode
-                      ? timeFilter === filter.value ? '#FFFFFF' : '#E5E7EB'
-                      : timeFilter === filter.value ? '#FFFFFF' : '#4B5563' 
+                      ? tempTimeFilter === filter.value ? '#FFFFFF' : '#E5E7EB'
+                      : tempTimeFilter === filter.value ? '#FFFFFF' : '#4B5563' 
                   }
                 ]}
               >
@@ -579,7 +641,7 @@ export default function AlarmDetailScreen() {
           </View>
         )}
 
-        {timeFilter === 'custom' && (
+        {tempTimeFilter === 'custom' && (
           <View style={styles.datePickerContainer}>
             <View style={styles.datePickerRow}>
               <Text style={[styles.datePickerLabel, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>
@@ -590,7 +652,7 @@ export default function AlarmDetailScreen() {
                 onPress={() => setShowStartPicker(true)}
               >
                 <Text style={{ color: isDarkMode ? '#E5E7EB' : '#1F2937' }}>
-                  {formatDate(startDate, 'MMM d, yyyy')}
+                  {formatDate(tempStartDate, 'MMM d, yyyy')}
                 </Text>
               </TouchableOpacity>
               
@@ -602,7 +664,7 @@ export default function AlarmDetailScreen() {
                 onPress={() => setShowStartTimePicker(true)}
               >
                 <Text style={{ color: isDarkMode ? '#E5E7EB' : '#1F2937' }}>
-                  {formatDate(startDate, 'h:mm a')}
+                  {formatDate(tempStartDate, 'h:mm a')}
                 </Text>
               </TouchableOpacity>
               
@@ -616,7 +678,7 @@ export default function AlarmDetailScreen() {
                     <View style={styles.centeredView}>
                       <View style={[styles.modalView, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
                         <DateTimePicker
-                          value={startDate}
+                          value={tempStartDate}
                           mode="date"
                           display="spinner"
                           onChange={handleStartDateChange}
@@ -633,7 +695,7 @@ export default function AlarmDetailScreen() {
                   </Modal>
                 ) : (
                   <DateTimePicker
-                    value={startDate}
+                    value={tempStartDate}
                     mode="date"
                     display="default"
                     onChange={handleStartDateChange}
@@ -651,7 +713,7 @@ export default function AlarmDetailScreen() {
                     <View style={styles.centeredView}>
                       <View style={[styles.modalView, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
                         <DateTimePicker
-                          value={startDate}
+                          value={tempStartDate}
                           mode="time"
                           display="spinner"
                           onChange={handleStartTimeChange}
@@ -668,7 +730,7 @@ export default function AlarmDetailScreen() {
                   </Modal>
                 ) : (
                   <DateTimePicker
-                    value={startDate}
+                    value={tempStartDate}
                     mode="time"
                     display="default"
                     onChange={handleStartTimeChange}
@@ -686,7 +748,7 @@ export default function AlarmDetailScreen() {
                 onPress={() => setShowEndPicker(true)}
               >
                 <Text style={{ color: isDarkMode ? '#E5E7EB' : '#1F2937' }}>
-                  {formatDate(endDate, 'MMM d, yyyy')}
+                  {formatDate(tempEndDate, 'MMM d, yyyy')}
                 </Text>
               </TouchableOpacity>
               
@@ -698,7 +760,7 @@ export default function AlarmDetailScreen() {
                 onPress={() => setShowEndTimePicker(true)}
               >
                 <Text style={{ color: isDarkMode ? '#E5E7EB' : '#1F2937' }}>
-                  {formatDate(endDate, 'h:mm a')}
+                  {formatDate(tempEndDate, 'h:mm a')}
                 </Text>
               </TouchableOpacity>
               
@@ -712,7 +774,7 @@ export default function AlarmDetailScreen() {
                     <View style={styles.centeredView}>
                       <View style={[styles.modalView, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
                         <DateTimePicker
-                          value={endDate}
+                          value={tempEndDate}
                           mode="date"
                           display="spinner"
                           onChange={handleEndDateChange}
@@ -729,7 +791,7 @@ export default function AlarmDetailScreen() {
                   </Modal>
                 ) : (
                   <DateTimePicker
-                    value={endDate}
+                    value={tempEndDate}
                     mode="date"
                     display="default"
                     onChange={handleEndDateChange}
@@ -747,7 +809,7 @@ export default function AlarmDetailScreen() {
                     <View style={styles.centeredView}>
                       <View style={[styles.modalView, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
                         <DateTimePicker
-                          value={endDate}
+                          value={tempEndDate}
                           mode="time"
                           display="spinner"
                           onChange={handleEndTimeChange}
@@ -764,7 +826,7 @@ export default function AlarmDetailScreen() {
                   </Modal>
                 ) : (
                   <DateTimePicker
-                    value={endDate}
+                    value={tempEndDate}
                     mode="time"
                     display="default"
                     onChange={handleEndTimeChange}
@@ -881,7 +943,7 @@ export default function AlarmDetailScreen() {
           returnKeyType="search"
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
+          <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
             <Ionicons
               name="close-circle"
               size={20}
@@ -889,14 +951,33 @@ export default function AlarmDetailScreen() {
             />
           </TouchableOpacity>
         )}
+        <View style={{ alignItems: 'center', marginLeft: 8 }}>
+          <TouchableOpacity 
+            onPress={handleOpenFilterModal}
+            style={[styles.filterIconButton, { 
+              backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB',
+              borderColor: isDarkMode ? '#60A5FA' : '#3B82F6' 
+            }]}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="options-outline"
+              size={20}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
+          {/* <Text style={{ 
+            fontSize: 10, 
+            marginTop: 4, 
+            fontWeight: '600',
+            color: isDarkMode ? '#9CA3AF' : '#6B7280' 
+          }}>
+            Filter
+          </Text> */}
+        </View>
       </View>
       
-      {/* Filters */}
-      <View style={styles.filters}>
-        {renderStatusFilters()}
-        {renderTimeFilters()}
-        {renderSortFilters()}
-      </View>
+      {/* Filters - REMOVED FROM HERE */}
       
       {/* History List */}
       <View style={styles.listSection}>
@@ -975,6 +1056,84 @@ export default function AlarmDetailScreen() {
         visible={detailsVisible}
         onClose={handleCloseDetails}
       />
+
+      {/* Filter Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={filterModalVisible}
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <View style={styles.filterModalOverlay}>
+          <View style={[styles.filterModalContent, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
+            {/* Modal Header */}
+            <View style={styles.filterModalHeader}>
+              <Text style={[styles.filterModalTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+                Filters
+              </Text>
+              <TouchableOpacity
+                onPress={() => setFilterModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons
+                  name="close"
+                  size={24}
+                  color={isDarkMode ? '#E5E7EB' : '#4B5563'}
+                />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Filter Content */}
+            <View style={styles.filterModalBody}>
+              {/* Status Filter */}
+              <View style={styles.filterSection}>
+                <Text style={[styles.filterSectionTitle, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>
+                  Status
+                </Text>
+                {renderStatusFilters()}
+              </View>
+              
+              {/* Time Filter */}
+              <View style={styles.filterSection}>
+                <Text style={[styles.filterSectionTitle, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>
+                  Time Range
+                </Text>
+                {renderTimeFilters()}
+              </View>
+              
+              {/* Sort Order */}
+              <View style={styles.filterSection}>
+                <Text style={[styles.filterSectionTitle, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>
+                  Sort Order
+                </Text>
+                {renderSortFilters()}
+              </View>
+            </View>
+            
+            {/* Action Buttons */}
+            <View style={styles.filterModalFooter}>
+              <TouchableOpacity
+                style={[styles.resetButton, { 
+                  backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
+                  borderColor: isDarkMode ? '#4B5563' : '#E5E7EB'
+                }]}
+                onPress={handleResetFilters}
+              >
+                <Text style={[styles.resetButtonText, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
+                  Reset
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.applyButton, { backgroundColor: isDarkMode ? '#3B82F6' : '#2563EB' }]}
+                onPress={handleApplyFilters}
+              >
+                <Text style={styles.applyButtonText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1020,6 +1179,17 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     fontSize: 16,
+  },
+  clearButton: {
+    marginRight: 8,
+  },
+  filterIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
   },
   filters: {
     padding: 16,
@@ -1244,6 +1414,80 @@ const styles = StyleSheet.create({
   correctButtonText: {
     color: '#FFFFFF',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  filterModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  filterModalContent: {
+    borderRadius: 20,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    width: '95%',
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  filterModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  filterModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  filterModalBody: {
+    marginBottom: 20,
+  },
+  filterSection: {
+    marginBottom: 20,
+  },
+  filterSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  filterModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  resetButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  resetButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  applyButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  applyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
   },
 }); 
