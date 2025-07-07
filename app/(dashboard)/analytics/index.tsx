@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useRouter } from 'expo-router';
 import { useAnalyticsData } from '../../hooks/useAlarms';
+import { formatTimestampIST } from '../../utils/timezoneUtils';
 import { useQueryClient } from '@tanstack/react-query';
 
 // Types
@@ -1077,6 +1078,11 @@ export default function AnalyticsScreen() {
     }).start();
   }, [activeGraph, animatedValue]);
 
+  // Compute IST time labels
+  const istTimeLabels = useMemo(() => {
+    return (analyticsData?.timeLabels || []).map((t: string) => formatTimestampIST(t));
+  }, [analyticsData?.timeLabels]);
+
   // Render graph toggle button
   const renderGraphToggle = () => {
     // Calculate animated values for the button
@@ -1327,12 +1333,12 @@ export default function AnalyticsScreen() {
           activeGraph === 'analog' ? (
             <AnalogChart 
               alarmData={analyticsData.analogData || []} 
-              timeLabels={analyticsData.timeLabels || []} 
+              timeLabels={istTimeLabels} 
             />
           ) : (
             <BinaryChart 
               alarmData={analyticsData.binaryData || []} 
-              timeLabels={analyticsData.timeLabels || []} 
+              timeLabels={istTimeLabels} 
             />
           )
         )}

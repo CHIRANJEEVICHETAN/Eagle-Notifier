@@ -16,56 +16,75 @@
  * @returns Date object in IST
  */
 export const convertToIST = (utcDateString: string): Date => {
-  // Ensure the string is treated as UTC by formatting it properly
-  let utcString = utcDateString;
-  
-  // Check if the string already has timezone information
-  const hasTimezone = utcString.includes('Z') || utcString.includes('+') || utcString.includes('-');
-  
-  // If no timezone info is present, treat as UTC
-  if (!hasTimezone) {
-    // Convert space to 'T' for ISO format and append 'Z' for UTC
-    utcString = utcString.replace(' ', 'T') + 'Z';
-  }
-  
-  // Parse the date in UTC
-  const date = new Date(utcString);
-  
-  // Validate the date
-  if (isNaN(date.getTime())) {
-    console.error('Invalid date string:', utcDateString);
+  try {
+    // Ensure the string is treated as UTC by formatting it properly
+    let utcString = utcDateString;
+    
+    // Check if the string already has timezone information
+    const hasTimezone = utcString.includes('Z') || utcString.includes('+') || utcString.includes('-');
+    
+    // If no timezone info is present, treat as UTC
+    if (!hasTimezone) {
+      // Convert space to 'T' for ISO format and append 'Z' for UTC
+      utcString = utcString.replace(' ', 'T') + 'Z';
+    }
+    
+    // Parse the date in UTC
+    const date = new Date(utcString);
+    
+    // Validate the date
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date string:', utcDateString);
+      return new Date(); // Return current date as fallback
+    }
+
+    // Check if the timestamp already includes IST offset (+5:30)
+    // by comparing with current time
+    const currentIST = new Date();
+    const timeDiff = Math.abs(currentIST.getTime() - date.getTime());
+    const hoursDiff = timeDiff / (1000 * 60 * 60);
+
+    // If the difference is close to 5.5 hours (with 15 min margin),
+    // the timestamp might already include IST offset
+    if (Math.abs(hoursDiff - 5.5) <= 0.25) {
+      // Remove the IST offset by subtracting 5:30
+      date.setHours(date.getHours() - 5);
+      date.setMinutes(date.getMinutes() - 30);
+    }
+    
+    // Get UTC time components
+    const utcHours = date.getUTCHours();
+    const utcMinutes = date.getUTCMinutes();
+    const utcSeconds = date.getUTCSeconds();
+    const utcMilliseconds = date.getUTCMilliseconds();
+    
+    // Create a new date with IST offset
+    const istDate = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    
+    // Add IST offset (+5:30)
+    let istHours = utcHours + 5;
+    let istMinutes = utcMinutes + 30;
+    
+    // Handle minute overflow
+    if (istMinutes >= 60) {
+      istHours += 1;
+      istMinutes -= 60;
+    }
+    
+    // Handle hour overflow
+    if (istHours >= 24) {
+      istHours -= 24;
+      istDate.setDate(istDate.getDate() + 1);
+    }
+    
+    // Set the time components
+    istDate.setHours(istHours, istMinutes, utcSeconds, utcMilliseconds);
+    
+    return istDate;
+  } catch (error) {
+    console.error('Error converting to IST:', error);
     return new Date(); // Return current date as fallback
   }
-  
-  // Get UTC time components
-  const utcHours = date.getUTCHours();
-  const utcMinutes = date.getUTCMinutes();
-  const utcSeconds = date.getUTCSeconds();
-  const utcMilliseconds = date.getUTCMilliseconds();
-  
-  // Create a new date with IST offset
-  const istDate = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  
-  // Add IST offset (+5:30)
-  let istHours = utcHours + 5;
-  let istMinutes = utcMinutes + 30;
-  
-  // Handle minute overflow
-  if (istMinutes >= 60) {
-    istHours += 1;
-    istMinutes -= 60;
-  }
-  
-  // Handle hour overflow
-  if (istHours >= 24) {
-    istHours -= 24;
-    istDate.setDate(istDate.getDate() + 1);
-  }
-  
-  // Set the time components
-  istDate.setHours(istHours, istMinutes, utcSeconds, utcMilliseconds);
-  
-  return istDate;
 };
 
 /**
@@ -172,6 +191,11 @@ export const debugTimezoneConversion = (utcDateString: string): void => {
   console.log('=== Timezone Conversion Debug ===');
   console.log('Input UTC string:', utcDateString);
   
+  const date = new Date(utcDateString);
+  console.log('Initial Date object:', date);
+  console.log('Initial Hours (local):', date.getHours());
+  console.log('Initial Hours (UTC):', date.getUTCHours());
+  
   const istDate = convertToIST(utcDateString);
   console.log('Converted IST Date object:', istDate);
   console.log('IST Hours:', istDate.getHours());
@@ -180,5 +204,13 @@ export const debugTimezoneConversion = (utcDateString: string): void => {
   console.log('Formatted Time (24h):', formatTimeIST(utcDateString));
   console.log('Formatted Time (12h):', formatTimestampIST(utcDateString));
   console.log('Formatted Full:', formatFullTimestampIST(utcDateString));
+
+  // Check for potential timezone offset issues
+  const currentIST = new Date();
+  const timeDiff = Math.abs(currentIST.getTime() - date.getTime());
+  const hoursDiff = timeDiff / (1000 * 60 * 60);
+  console.log('Hours difference from current time:', hoursDiff);
+  console.log('Potential IST offset already present:', Math.abs(hoursDiff - 5.5) <= 0.25);
+  
   console.log('===================================');
 }; 

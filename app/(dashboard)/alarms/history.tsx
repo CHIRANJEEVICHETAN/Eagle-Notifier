@@ -19,65 +19,12 @@ import { AlarmDetails } from '../../components/AlarmDetails';
 import { useAlarmHistory } from '../../hooks/useAlarms';
 import { Alarm } from '../../types/alarm';
 
-// Define the shape of alarm history records
-interface AlarmHistoryRecord {
-  analogAlarms: Alarm[];
-  binaryAlarms: Alarm[];
-  timestamp: string;
-  id: string;
-}
+// Centralised timezone utilities
+import { formatTimestampIST } from '../../utils/timezoneUtils';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-
-// Helper function to correctly format timestamps to show IST time consistently in 12-hour format
+// Helper function wrapper to keep existing function calls intact
 const formatTimestamp = (timestamp: string): string => {
-  try {
-    // Always use a consistent approach for both development and production
-    // by manually calculating IST time from UTC
-    
-    // Parse the ISO string to Date object
-    const date = new Date(timestamp);
-    
-    // Get UTC components
-    const utcHours = date.getUTCHours();
-    const utcMinutes = date.getUTCMinutes();
-    const utcSeconds = date.getUTCSeconds();
-    
-    // Add IST offset (+5:30)
-    let istHours = utcHours + 5;
-    let istMinutes = utcMinutes + 30;
-    
-    // Handle minute overflow
-    if (istMinutes >= 60) {
-      istHours += 1;
-      istMinutes -= 60;
-    }
-    
-    // Handle hour overflow
-    if (istHours >= 24) {
-      istHours -= 24;
-    }
-    
-    // Convert to 12-hour format
-    let displayHours = istHours;
-    const ampm = istHours >= 12 ? 'PM' : 'AM';
-    
-    if (istHours === 0) {
-      displayHours = 12; // 12 AM
-    } else if (istHours > 12) {
-      displayHours = istHours - 12; // Convert to 12-hour format
-    }
-    
-    // Format the time components
-    const hours = displayHours.toString().padStart(2, '0');
-    const minutes = istMinutes.toString().padStart(2, '0');
-    const seconds = utcSeconds.toString().padStart(2, '0');
-    
-    return `${hours}:${minutes}:${seconds} ${ampm}`;
-  } catch (error) {
-    console.error('Error formatting timestamp:', error);
-    return '';
-  }
+  return formatTimestampIST(timestamp);
 };
 
 // List of specific alarm descriptions we want to display
@@ -101,6 +48,15 @@ const BINARY_ALARM_DESCRIPTIONS = [
   'TEMPERING ZONE 1 FAN FAILURE',
   'TEMPERING ZONE 2 FAN FAILURE',
 ];
+
+interface AlarmHistoryRecord {
+  analogAlarms: Alarm[];
+  binaryAlarms: Alarm[];
+  timestamp: string;
+  id: string;
+}
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function AlarmHistoryScreen() {
   const { isDarkMode } = useTheme();
