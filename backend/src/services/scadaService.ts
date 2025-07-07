@@ -1,3 +1,26 @@
+/**
+ * SCADA Service - Timezone Handling Documentation
+ * 
+ * CRITICAL: This service handles timezone conversion consistently across environments.
+ * 
+ * DATABASE BEHAVIOR:
+ * - Date objects: Already in UTC format (e.g., 2025-07-07T05:38:17.527Z) ✅
+ * - String format: IST timestamps (e.g., "2025-07-07 10:54:17.533") that need conversion
+ * 
+ * CONVERSION LOGIC:
+ * 1. Date objects → Use as-is (already UTC)
+ * 2. String timestamps → Parse as UTC, then subtract 5:30 to get correct UTC representation
+ * 3. All output via .toISOString() ensures consistent UTC format to frontend
+ * 4. Frontend adds IST offset (+5:30) for display
+ * 
+ * EXAMPLE:
+ * - DB string: "2025-07-07 10:54:17.533" (IST)
+ * - Backend converts to: "2025-07-07T05:24:17.533Z" (UTC)
+ * - Frontend displays: "10:54:17 AM IST" (05:24 + 5:30 = 10:54)
+ * 
+ * This ensures consistent IST display regardless of server timezone or DB format.
+ */
+
 import { getClientWithRetry } from '../config/scadaDb';
 import { NotificationService } from './notificationService';
 import prisma from '../config/db';
@@ -7,7 +30,7 @@ import { isMaintenanceModeActive } from '../controllers/maintenanceController';
 
 const DEBUG = process.env.NODE_ENV === 'development';
 
-// Helper function to safely parse IST timestamp from database
+// Helper function to safely parse timestamp from database
 const parseISTTimestamp = (dbTimestamp: any): Date => {
     try {
         if (!dbTimestamp) {
@@ -15,32 +38,55 @@ const parseISTTimestamp = (dbTimestamp: any): Date => {
             return new Date();
         }
         
-        // If it's already a Date object, use it directly
+        // If it's already a Date object, return as-is (database likely returns UTC)
         if (dbTimestamp instanceof Date) {
+            if (DEBUG) {
+                console.log(`🕐 DB timestamp (Date object): ${dbTimestamp.toISOString()}`);
+            }
             return dbTimestamp;
         }
         
         // If it's a string, parse it carefully
         if (typeof dbTimestamp === 'string') {
-            // Database timestamps are in IST format like "2025-07-01 11:48:17.527"
-            // We need to parse this as local time (IST) not UTC
+            // Check if it's already in ISO format (UTC)
+            if (dbTimestamp.includes('T') && dbTimestamp.includes('Z')) {
+                const date = new Date(dbTimestamp);
+                if (DEBUG) {
+                    console.log(`🕐 DB timestamp (ISO UTC): ${dbTimestamp} -> ${date.toISOString()}`);
+                }
+                return date;
+            }
             
-            // Remove any timezone info and treat as local
+            // If it's in format "2025-07-07 10:54:17.533", assume it's IST format from database
+            // This matches the user's original description of database format
             const cleanTimestamp = dbTimestamp.replace(/[Z\+\-]\d{2}:?\d{2}?$/, '');
             
-            // Parse as local time (which will be IST since database is in IST)
-            const date = new Date(cleanTimestamp);
+            // Parse as UTC first to avoid server timezone interpretation issues
+            const utcTimestamp = cleanTimestamp.includes('T') ? cleanTimestamp + 'Z' : cleanTimestamp.replace(' ', 'T') + 'Z';
+            const parsedAsUTC = new Date(utcTimestamp);
             
-            if (isNaN(date.getTime())) {
+            if (isNaN(parsedAsUTC.getTime())) {
                 console.error('🔴 Invalid timestamp format:', dbTimestamp);
                 return new Date();
             }
             
+            // Since the database timestamp represents IST time, but we parsed it as UTC,
+            // we need to subtract IST offset to get the correct UTC time
+            const istOffsetMs = (5 * 60 + 30) * 60 * 1000; // IST is UTC+5:30
+            const correctedUTCTime = parsedAsUTC.getTime() - istOffsetMs;
+            const correctedUTCDate = new Date(correctedUTCTime);
+            
             if (DEBUG) {
-                console.log(`🕐 Parsed IST timestamp: ${cleanTimestamp} -> ${date.toISOString()}`);
+                console.log(`🕐 Raw DB timestamp (IST): ${cleanTimestamp}`);
+                console.log(`🕐 Parsed as UTC: ${parsedAsUTC.toISOString()}`);
+                console.log(`🕐 Corrected UTC: ${correctedUTCDate.toISOString()}`);
+                
+                // Verify: convert back to IST for display check
+                const verifyISTTime = new Date(correctedUTCDate.getTime() + istOffsetMs);
+                console.log(`🕐 Verify IST display: ${verifyISTTime.toISOString().replace('T', ' ').replace('Z', '')}`);
             }
             
-            return date;
+            return correctedUTCDate;
         }
         
         // Fallback: try to convert to Date
@@ -52,7 +98,7 @@ const parseISTTimestamp = (dbTimestamp: any): Date => {
         
         return date;
     } catch (error) {
-        console.error('🔴 Error parsing IST timestamp:', error, 'Input:', dbTimestamp);
+        console.error('🔴 Error parsing timestamp:', error, 'Input:', dbTimestamp);
         return new Date();
     }
 };
@@ -143,17 +189,21 @@ const formatValue = (value: number, unit?: string): string => {
 
 // Helper function to format timestamp in IST with AM/PM format
 const formatTimestamp = (date: Date): string => {
-    // Since the database timestamps are already in IST, we need to handle them carefully
-    // to avoid double timezone conversion
+    // The date is now properly converted to UTC that represents IST time
+    // We need to convert it back to IST for display
     
     try {
-        // Extract the components manually to ensure we're working with IST time
-        const year = date.getFullYear();
-        const month = date.getMonth() + 1; // getMonth() returns 0-11
-        const day = date.getDate();
-        let hours = date.getHours();
-        const minutes = date.getMinutes();
-        const seconds = date.getSeconds();
+        // Convert UTC back to IST for formatting
+        const istOffsetMs = (5 * 60 + 30) * 60 * 1000; // IST is UTC+5:30
+        const istTime = new Date(date.getTime() + istOffsetMs);
+        
+        // Extract the components from IST time
+        const year = istTime.getUTCFullYear();
+        const month = istTime.getUTCMonth() + 1; // getUTCMonth() returns 0-11
+        const day = istTime.getUTCDate();
+        let hours = istTime.getUTCHours();
+        const minutes = istTime.getUTCMinutes();
+        const seconds = istTime.getUTCSeconds();
         
         // Convert to 12-hour format with AM/PM
         const ampm = hours >= 12 ? 'PM' : 'AM';
@@ -173,14 +223,17 @@ const formatTimestamp = (date: Date): string => {
         const result = `${monthNames[month - 1]} ${formattedDay}, ${year} ${formattedHours}:${formattedMinutes}:${formattedSeconds} ${ampm}`;
         
         if (DEBUG) {
-            console.log(`🕐 Timestamp formatting: ${date.toISOString()} -> ${result}`);
+            console.log(`🕐 UTC timestamp: ${date.toISOString()} -> IST formatted: ${result}`);
         }
         
         return result;
     } catch (error) {
         console.error('Error formatting timestamp:', error);
-        // Fallback to a safe format
-        return `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+        // Fallback to a safe format in IST
+        const now = new Date();
+        const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
+        const istNow = new Date(now.getTime() + istOffsetMs);
+        return istNow.toISOString().replace('T', ' ').replace('Z', '');
     }
 };
 
@@ -615,7 +668,7 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
                 setPoint: formattedSetPoint,
                 lowLimit: formatValue(lowLimit, config.unit),
                 highLimit: formatValue(highLimit, config.unit),
-                timestamp: alarmTimestamp.toISOString(), // Use current timestamp
+                timestamp: parseISTTimestamp(scadaData.created_timestamp).toISOString(), // Use SCADA timestamp properly converted
                 zone: config.zone,
                 alarmType: 'analog'
             });
@@ -704,7 +757,7 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
                 type: config.type,
                 value: status,
                 setPoint: 'NORMAL',
-                timestamp: alarmTimestamp.toISOString(), // Use current timestamp
+                timestamp: parseISTTimestamp(scadaData.created_timestamp).toISOString(), // Use SCADA timestamp properly converted
                 zone: config.zone
             });
 
@@ -1091,7 +1144,7 @@ async function processScadaDataRow(scadaData: ScadaData) {
       setPoint: formattedSetPoint,
       lowLimit: formatValue(lowLimit, config.unit),
       highLimit: formatValue(highLimit, config.unit),
-      timestamp: scadaData.created_timestamp.toISOString(),
+      timestamp: parseISTTimestamp(scadaData.created_timestamp).toISOString(),
       zone: config.zone,
       alarmType: 'analog'
     });
@@ -1166,7 +1219,7 @@ async function processScadaDataRow(scadaData: ScadaData) {
       type: config.type,
       value: status,
       setPoint: 'NORMAL',
-      timestamp: scadaData.created_timestamp.toISOString(),
+      timestamp: parseISTTimestamp(scadaData.created_timestamp).toISOString(),
       zone: config.zone
     });
   }
@@ -1174,7 +1227,7 @@ async function processScadaDataRow(scadaData: ScadaData) {
   return {
     analogAlarms,
     binaryAlarms,
-    timestamp: scadaData.created_timestamp,
+    timestamp: parseISTTimestamp(scadaData.created_timestamp).toISOString(),
     id: scadaData.id
   };
 }
@@ -1292,16 +1345,21 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
         console.log(`📊 Using ${sampledData.length} sampled data points from ${result.rows.length} total`);
       }
       
-      // Generate time labels
-      const timeLabels = sampledData.map(row => {
-        const timestamp = new Date(row.created_timestamp);
-        // Format based on time range
-        if (durationMs <= 60000) { // Less than 1 minute - show seconds
-          return format(timestamp, 'HH:mm:ss');
-        } else { // More than 1 minute - show minutes
-          return format(timestamp, 'HH:mm');
-        }
-      });
+              // Generate time labels
+        const timeLabels = sampledData.map(row => {
+          const timestamp = parseISTTimestamp(row.created_timestamp);
+          
+          // Convert to IST for display
+          const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
+          const istTime = new Date(timestamp.getTime() + istOffsetMs);
+          
+          // Format based on time range
+          if (durationMs <= 60000) { // Less than 1 minute - show seconds
+            return format(istTime, 'HH:mm:ss');
+          } else { // More than 1 minute - show minutes
+            return format(istTime, 'HH:mm');
+          }
+        });
       
       // Prepare analog data series with highly distinct colors
       const analogDataConfigs = [
@@ -1537,4 +1595,41 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
     console.error('🔴 Error fetching SCADA analytics data:', error);
     throw error;
   }
+};
+
+// Test function to verify timezone conversion is working correctly
+export const testTimezoneConversion = () => {
+    console.log('\n=== TIMEZONE CONVERSION TEST (UPDATED) ===');
+    
+    // Test with sample database timestamps (both formats we might encounter)
+    console.log('\n📋 Test 1: String format timestamp');
+    const sampleDBTimestamp1 = '2025-07-07 10:54:17.533';
+    console.log(`Sample DB timestamp: ${sampleDBTimestamp1}`);
+    
+    const parsedDate1 = parseISTTimestamp(sampleDBTimestamp1);
+    console.log(`Parsed as UTC: ${parsedDate1.toISOString()}`);
+    
+    // Convert to IST for display
+    const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
+    const istDisplay1 = new Date(parsedDate1.getTime() + istOffsetMs);
+    console.log(`Display in IST: ${istDisplay1.toISOString().replace('T', ' ').replace('Z', '')}`);
+    
+    const formatted1 = formatTimestamp(parsedDate1);
+    console.log(`Formatted for notifications: ${formatted1}`);
+    
+    console.log('\n📋 Test 2: ISO UTC timestamp');
+    const sampleDBTimestamp2 = '2025-07-07T05:24:17.533Z';
+    console.log(`Sample DB timestamp (UTC): ${sampleDBTimestamp2}`);
+    
+    const parsedDate2 = parseISTTimestamp(sampleDBTimestamp2);
+    console.log(`Parsed as UTC: ${parsedDate2.toISOString()}`);
+    
+    const istDisplay2 = new Date(parsedDate2.getTime() + istOffsetMs);
+    console.log(`Display in IST: ${istDisplay2.toISOString().replace('T', ' ').replace('Z', '')}`);
+    
+    const formatted2 = formatTimestamp(parsedDate2);
+    console.log(`Formatted for notifications: ${formatted2}`);
+    
+    console.log('\n✅ Both should show 10:54:17 AM IST if working correctly');
+    console.log('==========================================\n');
 }; 
