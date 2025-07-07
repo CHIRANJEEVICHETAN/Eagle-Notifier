@@ -38,13 +38,34 @@ interface AlarmHistoryRecord {
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+/**
+ * TIMEZONE HANDLING - CONSISTENT IST DISPLAY
+ * 
+ * The backend now sends UTC timestamps that correctly represent IST time.
+ * This function adds the IST offset (+5:30) to display the time in IST format.
+ * This approach works consistently across all environments (dev/prod).
+ */
+
 // Helper function to correctly format timestamps to show IST time consistently in 12-hour format
 const formatTimestamp = (timestamp: string): string => {
   try {
-    // Always display in IST (Asia/Kolkata), regardless of device timezone
+    // The backend now sends UTC timestamps that represent IST time correctly
+    // We just need to add the IST offset to display properly
     const date = new Date(timestamp);
-    return date.toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata',
+    
+    // Verify the date is valid
+    if (isNaN(date.getTime())) {
+      console.error('Invalid timestamp:', timestamp);
+      return '';
+    }
+    
+    // Convert to IST by adding the offset
+    const istOffsetMs = (5 * 60 + 30) * 60 * 1000; // IST is UTC+5:30
+    const istDate = new Date(date.getTime() + istOffsetMs);
+    
+    // Format as IST time
+    return istDate.toLocaleString('en-IN', {
+      timeZone: 'UTC', // Use UTC since we already added the IST offset
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',

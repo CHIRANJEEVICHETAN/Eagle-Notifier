@@ -12,20 +12,13 @@
  * Convert UTC timestamp to IST (Indian Standard Time)
  * Handles timezone conversion consistently across all environments
  * 
- * @param utcDateString - UTC timestamp string from database
+ * @param utcDateString - UTC timestamp string from backend (already normalized)
  * @returns Date object in IST
  */
 export const convertToIST = (utcDateString: string): Date => {
-  // Ensure the string is treated as UTC by formatting it properly
-  let utcString = utcDateString;
-  
-  // If no timezone info is present, treat as UTC
-  if (!utcString.includes('Z') && !utcString.includes('+') && !utcString.includes('-')) {
-    // Convert space to 'T' for ISO format and append 'Z' for UTC
-    utcString = utcString.replace(' ', 'T') + 'Z';
-  }
-  
-  const utcDate = new Date(utcString);
+  // The backend now sends properly normalized UTC timestamps
+  // We just need to parse and add IST offset
+  const utcDate = new Date(utcDateString);
   
   // Validate the date
   if (isNaN(utcDate.getTime())) {
@@ -135,12 +128,56 @@ export const getCurrentIST = (): Date => {
 };
 
 /**
+ * Format timestamp for UI display in 12-hour IST format
+ * This function should be used consistently across the app for UI display
+ * 
+ * @param timestamp - UTC timestamp string from backend
+ * @returns Formatted time string in IST (HH:MM:SS AM/PM)
+ */
+export const formatTimestampForUI = (timestamp: string): string => {
+  try {
+    // The backend now sends UTC timestamps that represent IST time correctly
+    const date = new Date(timestamp);
+    
+    // Verify the date is valid
+    if (isNaN(date.getTime())) {
+      console.error('Invalid timestamp:', timestamp);
+      return '';
+    }
+    
+    // Convert to IST by adding the offset
+    const istOffsetMs = (5 * 60 + 30) * 60 * 1000; // IST is UTC+5:30
+    const istDate = new Date(date.getTime() + istOffsetMs);
+    
+    // Format as IST time using UTC methods since we already added offset
+    let hours = istDate.getUTCHours();
+    const minutes = istDate.getUTCMinutes().toString().padStart(2, '0');
+    const seconds = istDate.getUTCSeconds().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    
+    // Convert to 12-hour format
+    hours = hours % 12;
+    hours = hours ? hours : 12; // 0 should be 12
+    const formattedHours = hours.toString().padStart(2, '0');
+    
+    return `${formattedHours}:${minutes}:${seconds} ${ampm}`;
+  } catch (error) {
+    console.error('Error formatting timestamp for UI:', error);
+    return '';
+  }
+};
+
+/**
  * Debug function to test timezone conversion
  * Use this to verify the conversion is working correctly
+ * Updated for new backend timestamp format
  */
 export const debugTimezoneConversion = (utcDateString: string): void => {
-  console.log('=== Timezone Conversion Debug ===');
-  console.log('Input UTC string:', utcDateString);
+  console.log('=== Timezone Conversion Debug (Updated) ===');
+  console.log('Input UTC string from backend:', utcDateString);
+  
+  const inputDate = new Date(utcDateString);
+  console.log('Parsed as UTC Date:', inputDate.toISOString());
   
   const istDate = convertToIST(utcDateString);
   console.log('Converted IST Date object:', istDate);
@@ -150,5 +187,5 @@ export const debugTimezoneConversion = (utcDateString: string): void => {
   console.log('Formatted Time (24h):', formatTimeIST(utcDateString));
   console.log('Formatted Time (12h):', formatTimestampIST(utcDateString));
   console.log('Formatted Full:', formatFullTimestampIST(utcDateString));
-  console.log('===================================');
+  console.log('=====================================');
 }; 
