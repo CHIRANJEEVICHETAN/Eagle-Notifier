@@ -25,6 +25,7 @@ import { apiConfig } from '../../api/config';
 import { 
   convertToIST, 
   formatTimeIST, 
+  formatTimestampIST,
   formatFullTimestampIST 
 } from '../../utils/timezoneUtils';
 
@@ -161,7 +162,12 @@ export default function MeterReadingsHistoryScreen() {
     return String(Math.round(value * factor) / factor);
   };
 
-  // Timezone conversion functions are now imported from utils/timezoneUtils
+  // Render timestamp in IST format
+  const renderTimestamp = useCallback((timestamp: string) => {
+    const dateStr = formatDate(parseISO(timestamp), 'MMM d, yyyy');
+    const timeStr = formatTimestampIST(timestamp);
+    return `${dateStr} ${timeStr}`;
+  }, []);
   
   // Handle refresh
   const handleRefresh = useCallback(async () => {

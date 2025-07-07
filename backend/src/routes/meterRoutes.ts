@@ -84,7 +84,8 @@ router.get('/latest', asyncHandler(async (req: Request, res: Response) => {
   try {
     // Simply get the latest reading, regardless of when it was created
     const result = await client.query(
-      `SELECT meter_id, voltage, current, frequency, pf, energy, power, created_at
+      `SELECT meter_id, voltage, current, frequency, pf, energy, power, 
+       created_at AT TIME ZONE 'UTC' as created_at
        FROM meter_readings
        ORDER BY created_at DESC
        LIMIT 1`
@@ -140,7 +141,8 @@ router.get('/history', asyncHandler(async (req: Request, res: Response) => {
     if (startTime) {
       // If startTime is provided, use it as the reference point
       query = `
-        SELECT meter_id, voltage, current, frequency, pf, energy, power, created_at
+        SELECT meter_id, voltage, current, frequency, pf, energy, power, 
+        created_at AT TIME ZONE 'UTC' as created_at
         FROM meter_readings
         WHERE created_at >= $1 AND created_at <= NOW()
         ORDER BY created_at DESC
@@ -157,7 +159,8 @@ router.get('/history', asyncHandler(async (req: Request, res: Response) => {
     } else {
       // Otherwise use the hours parameter
       query = `
-        SELECT meter_id, voltage, current, frequency, pf, energy, power, created_at
+        SELECT meter_id, voltage, current, frequency, pf, energy, power, 
+        created_at AT TIME ZONE 'UTC' as created_at
         FROM meter_readings
         WHERE created_at >= NOW() - INTERVAL '${hours} hours'
         ORDER BY created_at DESC
@@ -183,7 +186,8 @@ router.get('/history', asyncHandler(async (req: Request, res: Response) => {
     // If no data found in the requested time frame, get the most recent readings anyway
     if (result.rows.length === 0 && page === 1) {
       result = await client.query(
-        `SELECT meter_id, voltage, current, frequency, pf, energy, power, created_at
+        `SELECT meter_id, voltage, current, frequency, pf, energy, power, 
+         created_at AT TIME ZONE 'UTC' as created_at
          FROM meter_readings
          ORDER BY created_at DESC
          LIMIT $1`,

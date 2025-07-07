@@ -19,23 +19,53 @@ export const convertToIST = (utcDateString: string): Date => {
   // Ensure the string is treated as UTC by formatting it properly
   let utcString = utcDateString;
   
+  // Check if the string already has timezone information
+  const hasTimezone = utcString.includes('Z') || utcString.includes('+') || utcString.includes('-');
+  
   // If no timezone info is present, treat as UTC
-  if (!utcString.includes('Z') && !utcString.includes('+') && !utcString.includes('-')) {
+  if (!hasTimezone) {
     // Convert space to 'T' for ISO format and append 'Z' for UTC
     utcString = utcString.replace(' ', 'T') + 'Z';
   }
   
-  const utcDate = new Date(utcString);
+  // Parse the date in UTC
+  const date = new Date(utcString);
   
   // Validate the date
-  if (isNaN(utcDate.getTime())) {
+  if (isNaN(date.getTime())) {
     console.error('Invalid date string:', utcDateString);
     return new Date(); // Return current date as fallback
   }
   
-  // Add 5 hours and 30 minutes for IST (UTC+5:30)
-  const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
-  return new Date(utcDate.getTime() + istOffsetMs);
+  // Get UTC time components
+  const utcHours = date.getUTCHours();
+  const utcMinutes = date.getUTCMinutes();
+  const utcSeconds = date.getUTCSeconds();
+  const utcMilliseconds = date.getUTCMilliseconds();
+  
+  // Create a new date with IST offset
+  const istDate = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  
+  // Add IST offset (+5:30)
+  let istHours = utcHours + 5;
+  let istMinutes = utcMinutes + 30;
+  
+  // Handle minute overflow
+  if (istMinutes >= 60) {
+    istHours += 1;
+    istMinutes -= 60;
+  }
+  
+  // Handle hour overflow
+  if (istHours >= 24) {
+    istHours -= 24;
+    istDate.setDate(istDate.getDate() + 1);
+  }
+  
+  // Set the time components
+  istDate.setHours(istHours, istMinutes, utcSeconds, utcMilliseconds);
+  
+  return istDate;
 };
 
 /**
