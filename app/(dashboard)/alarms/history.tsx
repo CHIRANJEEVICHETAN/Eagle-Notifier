@@ -274,7 +274,7 @@ export default function AlarmHistoryScreen() {
                 Value:
               </Text>
               <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                {item.value} {item.unit}
+                {item.value}
               </Text>
             </View>
 

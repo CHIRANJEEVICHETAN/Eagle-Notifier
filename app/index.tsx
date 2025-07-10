@@ -8,6 +8,8 @@ import * as Notifications from 'expo-notifications';
 import { useTheme } from './context/ThemeContext';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
+import { UpdateModal } from './components/UpdateModal';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -31,6 +33,8 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [isLoading, setLoading] = useState(false);
+  const [updateModalVisible, setUpdateModalVisible] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -114,6 +118,51 @@ export default function OnboardingScreen() {
       setLoading(false);
     }
   }, [router]);
+
+  // Update the manual check function
+  const checkForUpdates = useCallback(async () => {
+    try {
+      // Only check for updates in production
+      if (!__DEV__ && Updates.isEnabled) {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          setUpdateModalVisible(true);
+        } else {
+          Alert.alert(
+            "No Updates",
+            "You are running the latest version."
+          );
+        }
+      } else {
+        Alert.alert(
+          "Development Mode",
+          "Updates are only available in production builds."
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        "Failed to check for updates. Please try again later."
+      );
+      console.log('Error checking for updates:', error);
+    }
+  }, []);
+
+  const handleUpdate = async () => {
+    try {
+      setIsDownloading(true);
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+    } catch (error) {
+      console.log('Error fetching or reloading update:', error);
+      setIsDownloading(false);
+      setUpdateModalVisible(false);
+      Alert.alert(
+        "Error",
+        "Failed to download the update. Please try again later."
+      );
+    }
+  };
 
   return (
     <View
@@ -203,10 +252,27 @@ export default function OnboardingScreen() {
           )}
         </TouchableOpacity>
 
+        {/* Add update check button */}
+        <TouchableOpacity
+          style={[styles.updateButton, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}
+          onPress={checkForUpdates}
+          activeOpacity={0.8}>
+          <Text style={[styles.updateButtonText, { color: isDarkMode ? '#F3F4F6' : '#1F2937' }]}>
+            Check for Updates
+          </Text>
+        </TouchableOpacity>
+
         <Text style={[styles.poweredBy, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
           Powered by Tecosoft.ai
         </Text>
       </View>
+
+      <UpdateModal
+        visible={updateModalVisible}
+        isDownloading={isDownloading}
+        onUpdate={handleUpdate}
+        onCancel={() => setUpdateModalVisible(false)}
+      />
     </View>
   );
 }
@@ -323,5 +389,19 @@ const styles = StyleSheet.create({
   poweredBy: {
     fontSize: 14,
     marginTop: 8,
+  },
+  updateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  updateButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 }); 

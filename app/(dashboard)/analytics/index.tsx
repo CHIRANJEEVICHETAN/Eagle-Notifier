@@ -119,14 +119,33 @@ const calculateStatus = (value: number, index: number, series: AlarmSeries): 'no
   return 'normal';
 };
 
-// Update the AnalogChart component to accept props
+// Add this helper function before the AnalogChart component
+const getTimeIntervalConfig = (timeRange: TimeRange) => {
+  switch (timeRange) {
+    case '10s':
+      return { interval: 5, total: 3 }; // 5 second intervals
+    case '15s':
+      return { interval: 5, total: 4 }; // 5 second intervals
+    case '20s':
+      return { interval: 5, total: 5 }; // 5 second intervals
+    case '1m':
+      return { interval: 15, total: 5 }; // 15 second intervals
+    case '2m':
+      return { interval: 30, total: 5 }; // 30 second intervals
+    default:
+      return { interval: 5, total: 5 };
+  }
+};
+
+// Update AnalogChart component props to include timeRange
 interface AnalogChartProps {
   alarmData: AlarmSeries[];
   timeLabels: string[];
+  timeRange: TimeRange;
 }
 
-// Update the AnalogChart component to include proper touch handling
-const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
+// Update the AnalogChart component to accept timeRange
+const AnalogChart = ({ alarmData, timeLabels, timeRange }: AnalogChartProps) => {
   const { isDarkMode } = useTheme();
   const textColor = isDarkMode ? '#F3F4F6' : '#1F2937';
   const gridColor = isDarkMode ? 'rgba(156, 163, 175, 0.2)' : 'rgba(107, 114, 128, 0.2)';
@@ -275,21 +294,25 @@ const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
     },
   }), [alarmData, timeLabels]);
   
-  // Add logic to manage time labels display based on chart width
+  // Replace the existing getVisibleTimeLabels function with this updated version
   const getVisibleTimeLabels = () => {
-    // Calculate how many labels can fit without overlapping
-    // Assuming each label needs about 50px of space
-    const labelWidth = 50;
-    const maxLabels = Math.floor(graphWidth / labelWidth);
+    const { interval, total } = getTimeIntervalConfig(timeRange);
+    const labelCount = Math.min(total, timeLabels.length);
+    const step = Math.floor(timeLabels.length / labelCount);
     
-    // If we have more labels than can fit, select evenly distributed labels
-    if (timeLabels.length > maxLabels) {
-      const step = Math.ceil(timeLabels.length / maxLabels);
-      return timeLabels.filter((_, i) => i % step === 0);
+    const visibleLabels: string[] = [];
+    for (let i = 0; i < timeLabels.length; i += step) {
+      if (visibleLabels.length < labelCount) {
+        visibleLabels.push(timeLabels[i]);
+      }
     }
     
-    // If all labels can fit, show them all
-    return timeLabels;
+    // Ensure we always show the last label
+    if (visibleLabels[visibleLabels.length - 1] !== timeLabels[timeLabels.length - 1]) {
+      visibleLabels[visibleLabels.length - 1] = timeLabels[timeLabels.length - 1];
+    }
+    
+    return visibleLabels;
   };
 
   return (
@@ -617,9 +640,10 @@ const AnalogChart = ({ alarmData, timeLabels }: AnalogChartProps) => {
 interface BinaryChartProps {
   alarmData: BinaryAlarmSeries[];
   timeLabels: string[];
+  timeRange: TimeRange;
 }
 
-const BinaryChart = ({ alarmData, timeLabels }: BinaryChartProps) => {
+const BinaryChart = ({ alarmData, timeLabels, timeRange }: BinaryChartProps) => {
   const { isDarkMode } = useTheme();
   const textColor = isDarkMode ? '#F3F4F6' : '#1F2937';
   const gridColor = isDarkMode ? 'rgba(156, 163, 175, 0.2)' : 'rgba(107, 114, 128, 0.2)';
@@ -726,17 +750,25 @@ const BinaryChart = ({ alarmData, timeLabels }: BinaryChartProps) => {
     },
   }), [alarmData, timeLabels]);
   
-  // Get visible time labels (same logic as AnalogChart)
+  // Replace the existing getVisibleTimeLabels function with this updated version
   const getVisibleTimeLabels = () => {
-    const labelWidth = 50;
-    const maxLabels = Math.floor(graphWidth / labelWidth);
+    const { interval, total } = getTimeIntervalConfig(timeRange);
+    const labelCount = Math.min(total, timeLabels.length);
+    const step = Math.floor(timeLabels.length / labelCount);
     
-    if (timeLabels.length > maxLabels) {
-      const step = Math.ceil(timeLabels.length / maxLabels);
-      return timeLabels.filter((_, i) => i % step === 0);
+    const visibleLabels: string[] = [];
+    for (let i = 0; i < timeLabels.length; i += step) {
+      if (visibleLabels.length < labelCount) {
+        visibleLabels.push(timeLabels[i]);
+      }
     }
     
-    return timeLabels;
+    // Ensure we always show the last label
+    if (visibleLabels[visibleLabels.length - 1] !== timeLabels[timeLabels.length - 1]) {
+      visibleLabels[visibleLabels.length - 1] = timeLabels[timeLabels.length - 1];
+    }
+    
+    return visibleLabels;
   };
 
   return (
@@ -1080,7 +1112,14 @@ export default function AnalyticsScreen() {
 
   // Compute IST time labels
   const istTimeLabels = useMemo(() => {
-    return (analyticsData?.timeLabels || []).map((t: string) => formatTimestampIST(t));
+    // Only format if the label looks like a date, otherwise use as-is
+    return (analyticsData?.timeLabels || []).map((t: string) => {
+      // Simple check: if it contains '-' or 'T', treat as date, else use as-is
+      if (t.includes('-') || t.includes('T')) {
+        return formatTimestampIST(t);
+      }
+      return t;
+    });
   }, [analyticsData?.timeLabels]);
 
   // Render graph toggle button
@@ -1333,12 +1372,14 @@ export default function AnalyticsScreen() {
           activeGraph === 'analog' ? (
             <AnalogChart 
               alarmData={analyticsData.analogData || []} 
-              timeLabels={istTimeLabels} 
+              timeLabels={istTimeLabels}
+              timeRange={timeRange}
             />
           ) : (
             <BinaryChart 
               alarmData={analyticsData.binaryData || []} 
-              timeLabels={istTimeLabels} 
+              timeLabels={istTimeLabels}
+              timeRange={timeRange}
             />
           )
         )}

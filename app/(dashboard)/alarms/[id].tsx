@@ -434,7 +434,7 @@ export default function AlarmDetailScreen() {
             Value:
           </Text>
           <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-            {item.value} {item.unit}
+            {item.value}
           </Text>
         </View>
         
@@ -879,7 +879,7 @@ export default function AlarmDetailScreen() {
               Current Value:
             </Text>
             <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-              {alarmSummary.value} {alarmSummary.unit}
+              {alarmSummary.value}
             </Text>
           </View>
           
