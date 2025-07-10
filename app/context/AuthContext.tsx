@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { User, AuthState, LoginCredentials, AuthResponse } from '../types/auth';
 import axios from 'axios';
 import { Alert } from 'react-native';
-import { apiConfig } from '../api/config';
+import { apiConfig, PROJECT_ID } from '../api/config';
 
 // Token storage keys
 const AUTH_TOKEN_KEY = 'eagle_auth_token';
@@ -501,7 +501,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const tokenAlreadyRegistered = user.pushToken === tempPushToken;
           if (!tokenAlreadyRegistered) {
-            console.log('Getting push token for project ID:', process.env.EXPO_PUBLIC_PROJECT_ID);
+            console.log('Getting push token for project ID:', PROJECT_ID);
             console.log('Push token:', tempPushToken);
             console.log('Updating push token:', tempPushToken);
             

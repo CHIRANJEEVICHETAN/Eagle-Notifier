@@ -28,6 +28,7 @@ import { UserRole } from '../../types/auth';
 import { NotificationSettings } from '../../types/notification';
 import { BlurView } from 'expo-blur';
 import { useMaintenance } from '../../context/MaintenanceContext';
+import { APP_VERSION } from '../../api/config';
 
 // Types for profile API responses
 interface ProfileResponse {
@@ -1230,7 +1231,7 @@ export default function ProfileScreen() {
         <View style={styles.footer}>
           <Text style={styles.footerText}>© 2025 Tecosoft.ai. All rights reserved.</Text>
           <Text style={[styles.footerText, { marginTop: 5, paddingBottom: 10 }]}>
-            Version {process.env.EXPO_PUBLIC_APP_VERSION}
+            Version {APP_VERSION}
           </Text>
         </View>
       </ScrollView>

@@ -19,6 +19,7 @@ import { updateNotificationSettings, updatePushToken, sendTestNotification } fro
 import { useUpdateNotificationSettings } from '../../hooks/useNotifications';
 import TimeRangePicker from '../../components/TimeRangePicker';
 import * as SecureStore from 'expo-secure-store';
+import { PROJECT_ID } from '../../api/config';
 
 export default function NotificationSettingsScreen() {
   const { isDarkMode } = useTheme();
@@ -61,7 +62,7 @@ export default function NotificationSettingsScreen() {
         
         // Get push token and update on server
         const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
+          projectId: PROJECT_ID,
         });
         
         if (tokenData.data) {

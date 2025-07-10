@@ -10,6 +10,7 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { UpdateModal } from './components/UpdateModal';
+import { apiConfig, PROJECT_ID } from './api/config';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -19,6 +20,17 @@ Notifications.setNotificationHandler({
     shouldSetBadge: true,
   }),
 });
+
+// Debug environment variables and API config
+console.log('=== ONBOARDING SCREEN DEBUG ===');
+console.log('Environment Variables:', {
+  EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+  EXPO_PUBLIC_APP_VERSION: process.env.EXPO_PUBLIC_APP_VERSION,
+  EXPO_PUBLIC_PROJECT_ID: process.env.EXPO_PUBLIC_PROJECT_ID,
+  NODE_ENV: process.env.NODE_ENV,
+});
+console.log('API Config:', apiConfig);
+console.log('==================================');
 
 // Define interface for FeatureItem props
 interface FeatureItemProps {
@@ -80,9 +92,7 @@ export default function OnboardingScreen() {
         // Get push token
         try {
           const tokenData = await Notifications.getExpoPushTokenAsync({
-            projectId:
-              process.env.EXPO_PUBLIC_PROJECT_ID ||
-              (Constants.expoConfig?.extra as any)?.eas?.projectId,
+            projectId: PROJECT_ID as string,
           });
 
           console.log('Expo push token:', tokenData.data);

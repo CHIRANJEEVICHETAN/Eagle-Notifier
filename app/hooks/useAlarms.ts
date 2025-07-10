@@ -3,7 +3,7 @@ import { Alarm, AlarmStatus } from '../types/alarm';
 import { useAlarmStore } from '../store/useAlarmStore';
 import axios from 'axios';
 import { getAuthHeader } from '../api/auth';
-import { apiConfig } from '../api/config';
+import { apiConfig, SCADA_INTERVAL } from '../api/config';
 
 // Query keys
 export const ALARM_KEYS = {
@@ -31,8 +31,8 @@ export const useActiveAlarms = (initialForceRefresh = false) => {
   const { setAlarms, setLoading, setError } = useAlarmStore();
 
   // Get interval from environment variable or use default value (120000 ms = 2 minutes)
-  const scadaInterval = process.env.EXPO_PUBLIC_SCADA_INTERVAL 
-    ? parseInt(process.env.EXPO_PUBLIC_SCADA_INTERVAL, 10) 
+  const scadaInterval = SCADA_INTERVAL
+    ? parseInt(SCADA_INTERVAL, 10) 
     : 30000;
 
   console.log('scadaInterval', scadaInterval);

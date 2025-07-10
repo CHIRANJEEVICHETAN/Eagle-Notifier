@@ -1,9 +1,17 @@
 /**
  * API configuration
  */
+
+// Debug environment variables (remove in production)
+console.log('Environment variables check:', {
+  EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+  EXPO_PUBLIC_APP_VERSION: process.env.EXPO_PUBLIC_APP_VERSION,
+  NODE_ENV: process.env.NODE_ENV,
+});
+
 export const apiConfig = {
-  // Base URL for API calls
-  apiUrl: process.env.EXPO_PUBLIC_API_URL || 'http://172.27.0.1:3000',
+  // Base URL for API calls - use production URL as fallback instead of local IP
+  apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://eagle-notifier-server-eyckc9gmbvf7bqgq.centralindia-01.azurewebsites.net',
   
   // Default request timeout in milliseconds
   timeout: 15000,
@@ -14,6 +22,12 @@ export const apiConfig = {
     'Accept': 'application/json',
   },
 };
+
+// Log the final API URL being used
+console.log('API Configuration:', {
+  apiUrl: apiConfig.apiUrl,
+  timeout: apiConfig.timeout,
+});
 
 /**
  * Error handler for API calls
@@ -34,11 +48,13 @@ export const handleApiError = (error: any): string => {
   }
 };
 
-export const APP_VERSION = process.env.EXPO_PUBLIC_APP_VERSION || '1.0.0';
+export const APP_VERSION = process.env.EXPO_PUBLIC_APP_VERSION || '1.1.8';
 
-export const PROJECT_ID = process.env.EXPO_PUBLIC_PROJECT_ID || 'your-project-id';
+export const PROJECT_ID = process.env.EXPO_PUBLIC_PROJECT_ID || '72e44855-a2b8-4fb2-bacb-2a39760c6ccd';
 
-export const PUSH_NOTIFICATION_ENDPOINT = process.env.EXPO_PUBLIC_PUSH_NOTIFICATION_ENDPOINT || 'Push Notification Endpoint';
+export const PUSH_NOTIFICATION_ENDPOINT = process.env.EXPO_PUBLIC_PUSH_NOTIFICATION_ENDPOINT || '/api/notifications/token';
+
+export const SCADA_INTERVAL = process.env.EXPO_PUBLIC_SCADA_INTERVAL || '30000';
 
 // Common request timeout in milliseconds
 export const REQUEST_TIMEOUT = 30000; 

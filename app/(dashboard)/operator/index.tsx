@@ -26,14 +26,13 @@ import { Alarm, AlarmSeverity } from '../../types/alarm';
 import * as Notifications from 'expo-notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { apiConfig } from '../../api/config';
+import { apiConfig, SCADA_INTERVAL } from '../../api/config';
 import { getAuthHeader } from '../../api/auth';
 import { ResolutionModal } from '../../components/ResolutionModal';
 import { useSetpoints, useUpdateSetpoint, Setpoint } from '../../hooks/useSetpoints';
 import { SetpointConfigModal } from '../../components/SetpointConfigModal';
 import { useMaintenance } from '../../context/MaintenanceContext';
 import { useUnreadCount } from '../../hooks/useNotifications';
-import { RFValue } from 'react-native-responsive-fontsize';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const DEVICE_WIDTH = Dimensions.get('window').width;
@@ -414,8 +413,8 @@ export default function OperatorDashboard() {
     }
   }, [isAdmin, router]);
 
-  const scadaInterval = process.env.EXPO_PUBLIC_SCADA_INTERVAL
-    ? parseInt(process.env.EXPO_PUBLIC_SCADA_INTERVAL, 10)
+  const scadaInterval = SCADA_INTERVAL
+    ? parseInt(SCADA_INTERVAL, 10)
     : 30000;
 
   // Effects

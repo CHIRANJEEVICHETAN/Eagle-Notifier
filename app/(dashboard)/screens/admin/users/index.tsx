@@ -23,9 +23,10 @@ import { useAuth } from '../../../../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { apiConfig } from '../../../../api/config';
 
 // API Base URL
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
+const API_URL = apiConfig.apiUrl;
 
 const windowWidth = Dimensions.get('window').width;
 const windowHeight = Dimensions.get('window').height;

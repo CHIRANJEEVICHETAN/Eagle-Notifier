@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import { useAuth } from './context/AuthContext';
 import { updatePushToken } from './api/notificationsApi';
+import { PROJECT_ID } from './api/config';
 
 // Set up notification handler with non-deprecated properties
 Notifications.setNotificationHandler({
@@ -54,7 +55,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
 
         // Get Expo push token for this device
-        const projectId = process.env.EXPO_PUBLIC_PROJECT_ID;
+        const projectId = PROJECT_ID;
         if (!projectId) {
           console.error('Project ID is not configured in environment');
           return;
