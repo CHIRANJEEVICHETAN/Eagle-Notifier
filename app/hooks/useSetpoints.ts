@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { getAuthHeader } from '../api/auth';
+import { getOrgHeaders } from '../api/auth';
 import { apiConfig } from '../api/config';
 import { useAuth } from '../context/AuthContext';
 
@@ -35,7 +35,11 @@ export const useSetpoints = () => {
         return [];
       }
       
-      const headers = await getAuthHeader();
+      const organizationId = authState?.user?.organizationId;
+      if (!organizationId) {
+        throw new Error("Organization ID not found in user context.");
+      }
+      const headers = await getOrgHeaders(organizationId);
       const { data } = await axios.get<Setpoint[]>(
         `${apiConfig.apiUrl}/api/admin/setpoints`,
         { headers }
@@ -66,7 +70,11 @@ export const useUpdateSetpoint = () => {
         throw new Error("Unauthorized: Only admins can update setpoints");
       }
       
-      const headers = await getAuthHeader();
+      const organizationId = authState?.user?.organizationId;
+      if (!organizationId) {
+        throw new Error("Organization ID not found in user context.");
+      }
+      const headers = await getOrgHeaders(organizationId);
       const { data } = await axios.put(
         `${apiConfig.apiUrl}/api/admin/setpoints/${id}`,
         { lowDeviation, highDeviation },

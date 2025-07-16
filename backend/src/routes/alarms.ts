@@ -38,7 +38,8 @@ router.post('/notification', authenticate, asyncHandler(async (req: Request, res
       title: `${alarm.severity} Alarm: ${alarm.description}`,
       body: `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
       severity: alarm.severity,
-      type: 'ALARM'
+      type: 'ALARM',
+      organizationId: req.user?.organizationId || undefined,
     });
 
     res.status(200).json({ 

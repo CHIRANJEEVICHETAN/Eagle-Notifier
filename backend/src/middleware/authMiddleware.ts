@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { createError } from './errorHandler';
+import prisma from '../config/db';
 
 // Extend Express Request to include user information
 declare global {
@@ -10,6 +11,7 @@ declare global {
         id: string;
         email: string;
         role: string;
+        organizationId?: string | null;
       };
     }
   }
@@ -46,11 +48,21 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         process.env.JWT_SECRET
       ) as { id: string; email: string; role: string };
       
+      // Look up user in DB to get organizationId
+      const dbUser = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: { id: true, email: true, role: true, organizationId: true }
+      });
+      if (!dbUser) {
+        throw createError('User not found', 401);
+      }
+      
       // Attach user info to the request
       req.user = {
-        id: decoded.id,
-        email: decoded.email,
-        role: decoded.role,
+        id: dbUser.id,
+        email: dbUser.email,
+        role: dbUser.role,
+        organizationId: dbUser.organizationId ?? null,
       };
       
       next();
@@ -89,3 +101,17 @@ export const authorize = (roles: string[]) => {
     }
   };
 }; 
+
+export function getRequestOrgId(req: Request): string {
+  // If SUPER_ADMIN, allow specifying org via query/body
+  if (req.user?.role === 'SUPER_ADMIN') {
+    const orgId = req.query.organizationId || req.body.organizationId || req.user.organizationId;
+    if (typeof orgId === 'string' && orgId) return orgId;
+    throw createError('organizationId is required for SUPER_ADMIN actions', 400);
+  }
+  // For regular users, require org from user context
+  if (typeof req.user?.organizationId === 'string' && req.user.organizationId) {
+    return req.user.organizationId;
+  }
+  throw createError('Organization context missing. Please contact support.', 400);
+} 

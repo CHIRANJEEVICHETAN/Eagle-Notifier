@@ -12,6 +12,7 @@ import {
   MeterReport,
   MeterReportParams
 } from '../api/meterApi';
+import { useAuth } from '../context/AuthContext';
 
 export interface ReportTimeRange {
   startDate: Date;
@@ -38,6 +39,7 @@ export function useMeterReports() {
   const queryClient = useQueryClient();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedReportId, setGeneratedReportId] = useState<string | null>(null);
+  const { organizationId } = useAuth();
 
   // Get all reports for the current user
   const {
@@ -47,13 +49,13 @@ export function useMeterReports() {
     refetch: refetchReports
   } = useQuery({
     queryKey: ['meterReports'],
-    queryFn: getMeterReports,
+    queryFn: () => getMeterReports(organizationId ?? undefined),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   // Generate report mutation
   const generateReportMutation = useMutation({
-    mutationFn: generateMeterReport,
+    mutationFn: ({ params, organizationId }: { params: MeterReportParams; organizationId?: string }) => generateMeterReport(params, organizationId ?? undefined),
     onSuccess: (data) => {
       // Save the generated report ID
       setGeneratedReportId(data.id);
@@ -163,7 +165,7 @@ export function useMeterReports() {
       console.log('Generating report with params:', JSON.stringify(params));
 
       // Generate the report
-      const report = await generateReportMutation.mutateAsync(params);
+      const report = await generateReportMutation.mutateAsync({ params, organizationId: organizationId ?? undefined });
       
       if (!report || !report.id) {
         throw new Error('Failed to generate report - no report ID returned');

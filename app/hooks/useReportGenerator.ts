@@ -31,7 +31,7 @@ interface ReportGeneratorOptions {
 export function useReportGenerator(): ReportGeneratorReturnType {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedFilePath, setGeneratedFilePath] = useState<string | null>(null);
-  
+
   // Create a wrapper hook with the needed filters
   const { refetch } = useAlarmReportData({}, false);
   
@@ -54,13 +54,7 @@ export function useReportGenerator(): ReportGeneratorReturnType {
       
       if (format === 'excel') {
         // Create a new instance of the hook with the specific filters
-        const alarmReportHook = useAlarmReportData({
-          startDate: timeRange.startDate,
-          endDate: timeRange.endDate,
-          alarmTypes: options.alarmTypes,
-          severityLevels: options.severityLevels,
-          zones: options.zones
-        }, true); // Enable this instance
+        const alarmReportHook = useAlarmReportData({ startDate: timeRange.startDate, endDate: timeRange.endDate, alarmTypes: options.alarmTypes, severityLevels: options.severityLevels, zones: options.zones }, true); // Enable this instance
         
         // Fetch the data
         const result = await alarmReportHook.refetch();

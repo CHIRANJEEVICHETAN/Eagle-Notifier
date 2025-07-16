@@ -4,6 +4,7 @@ import { logError } from '../utils/logger';
 import prisma from '../config/db';
 import { NotificationService } from '../services/notificationService';
 import { authenticate, authorize } from '../middleware/authMiddleware';
+import { getRequestOrgId } from '../middleware/authMiddleware';
 import ExcelJS from 'exceljs';
 import { format as formatDate } from 'date-fns';
 
@@ -35,7 +36,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Get database client
-  const client = await getClientWithRetry();
+  const client = await getClientWithRetry(getRequestOrgId(req));
   
   try {
     // Insert data into meter_readings table
@@ -50,7 +51,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
     const meterId = result.rows[0].meter_id;
     
     // Check for threshold violations and send notifications
-    await checkThresholdViolations({ voltage, current, frequency, pf, energy, power });
+    await checkThresholdViolations({ voltage, current, frequency, pf, energy, power }, getRequestOrgId(req));
     
     // Return success response
     return res.status(201).json({
@@ -79,7 +80,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
  * @access  Private
  */
 router.get('/latest', asyncHandler(async (req: Request, res: Response) => {
-  const client = await getClientWithRetry();
+  const client = await getClientWithRetry(getRequestOrgId(req));
   
   try {
     // Simply get the latest reading, regardless of when it was created
@@ -122,7 +123,7 @@ router.get('/latest', asyncHandler(async (req: Request, res: Response) => {
  * @access  Private
  */
 router.get('/history', asyncHandler(async (req: Request, res: Response) => {
-  const client = await getClientWithRetry();
+  const client = await getClientWithRetry(getRequestOrgId(req));
   
   // Parse pagination parameters
   const page = parseInt(req.query.page as string) || 1;
@@ -315,7 +316,7 @@ async function checkThresholdViolations(readings: {
   pf: number, 
   energy: number, 
   power: number 
-}): Promise<void> {
+}, organizationId?: string): Promise<void> {
   try {
     // Get all limits
     const limits = await prisma.meterLimit.findMany();
@@ -362,7 +363,8 @@ async function checkThresholdViolations(readings: {
           value: violation.value,
           limit: violation.limit,
           type: violation.type
-        }
+        },
+        organizationId
       });
     }
     
@@ -408,7 +410,7 @@ router.post('/reports', authenticate, asyncHandler(async (req: Request, res: Res
 
     // Get database client for SCADA DB
     console.log('🔄 Attempting to get database client...');
-    const client = await getClientWithRetry();
+    const client = await getClientWithRetry(getRequestOrgId(req));
     console.log('✅ Database client acquired successfully');
     
     try {
@@ -737,9 +739,11 @@ router.post('/reports', authenticate, asyncHandler(async (req: Request, res: Res
         // Save report to database
         console.log('📊 Saving report to database...');
         try {
+          const organizationId = getRequestOrgId(req);
           const meterReport = await prisma.meterReport.create({
             data: {
               userId,
+              organizationId,
               title: reportTitle,
               format: 'excel',
               fileContent: Buffer.from(buffer),
@@ -813,10 +817,12 @@ router.get('/reports', authenticate, asyncHandler(async (req: Request, res: Resp
   }
 
   try {
+    const organizationId = getRequestOrgId(req);
     // Get all reports for the user, sorted by most recent first
     const reports = await prisma.meterReport.findMany({
       where: {
-        userId
+        userId,
+        organizationId
       },
       select: {
         id: true,
@@ -865,11 +871,13 @@ router.get('/reports/:id', authenticate, asyncHandler(async (req: Request, res: 
   }
 
   try {
+    const organizationId = getRequestOrgId(req);
     // Get the report including file content
     const report = await prisma.meterReport.findFirst({
       where: {
         id,
-        userId // Ensure the report belongs to the requesting user
+        userId, // Ensure the report belongs to the requesting user
+        organizationId
       }
     });
 

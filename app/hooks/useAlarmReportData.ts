@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { getAuthHeader } from '../api/auth';
+import { getOrgHeaders } from '../api/auth';
 import { apiConfig } from '../api/config';
+import { useAuth } from '../context/AuthContext';
 
 export interface AlarmReportFilters {
   startDate?: Date;
@@ -69,10 +70,12 @@ export interface AlarmReportResponse {
 }
 
 export const useAlarmReportData = (filters: AlarmReportFilters = {}, enabled = true) => {
+  const { organizationId } = useAuth();
+
   return useQuery<AlarmReportResponse>({
     queryKey: ['alarmReport', filters],
     queryFn: async () => {
-      const headers = await getAuthHeader();
+      const headers = await getOrgHeaders(organizationId ?? undefined);
       
       // Build query parameters
       const params = new URLSearchParams();

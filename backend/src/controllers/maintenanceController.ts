@@ -1,9 +1,13 @@
 import { Request, Response } from 'express';
 import prisma from '../config/db';
+import { getRequestOrgId } from '../middleware/authMiddleware';
 
 export const getMaintenanceStatus = async (req: Request, res: Response) => {
   try {
-    const settings = await prisma.systemSettings.findFirst();
+    const organizationId = getRequestOrgId(req);
+    const settings = await prisma.systemSettings.findUnique({
+      where: { organizationId: organizationId },
+    });
     res.json({
       maintenanceMode: settings?.maintenanceMode || false,
       enabledAt: settings?.enabledAt,
@@ -22,47 +26,44 @@ export const toggleMaintenanceMode = async (req: Request, res: Response) => {
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
-
+    const organizationId = getRequestOrgId(req);
     // Check if user is admin
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
-
     if (!user || user.role !== 'ADMIN') {
       res.status(403).json({ message: 'Only admins can toggle maintenance mode' });
       return;
     }
-
     // Get current settings or create new
-    let settings = await prisma.systemSettings.findFirst();
+    let settings = await prisma.systemSettings.findUnique({
+      where: { organizationId: organizationId },
+    });
     if (!settings) {
       settings = await prisma.systemSettings.create({
         data: {
+          organizationId: organizationId,
           maintenanceMode: false,
         },
       });
     }
-
     const newMaintenanceMode = !settings.maintenanceMode;
-
     // Toggle maintenance mode
     const updatedSettings = await prisma.systemSettings.update({
-      where: { id: settings.id },
+      where: { organizationId: organizationId },
       data: {
         maintenanceMode: newMaintenanceMode,
         enabledBy: newMaintenanceMode ? userId : null,
         enabledAt: newMaintenanceMode ? new Date() : null,
       },
     });
-
     // Log maintenance mode change
-    console.log(`🔧 Maintenance mode ${newMaintenanceMode ? 'ENABLED' : 'DISABLED'} by user ${user.name} (${user.email})`);
+    console.log(`🔧 Maintenance mode ${newMaintenanceMode ? 'ENABLED' : 'DISABLED'} by user ${user.name} (${user.email}) for org ${organizationId}`);
     if (newMaintenanceMode) {
-      console.log('🛑 SCADA data fetching will be STOPPED');
+      console.log('🛑 SCADA data fetching will be STOPPED for this org');
     } else {
-      console.log('▶️ SCADA data fetching will be RESUMED');
+      console.log('▶️ SCADA data fetching will be RESUMED for this org');
     }
-
     res.json({
       maintenanceMode: updatedSettings.maintenanceMode,
       enabledAt: updatedSettings.enabledAt,
@@ -75,10 +76,12 @@ export const toggleMaintenanceMode = async (req: Request, res: Response) => {
   }
 };
 
-// Check if maintenance mode is currently active
-export const isMaintenanceModeActive = async (): Promise<boolean> => {
+// Check if maintenance mode is currently active for an org
+export const isMaintenanceModeActive = async (organizationId: string): Promise<boolean> => {
   try {
-    const settings = await prisma.systemSettings.findFirst();
+    const settings = await prisma.systemSettings.findUnique({
+      where: { organizationId: organizationId },
+    });
     return settings?.maintenanceMode || false;
   } catch (error) {
     console.error('Error checking maintenance mode:', error);

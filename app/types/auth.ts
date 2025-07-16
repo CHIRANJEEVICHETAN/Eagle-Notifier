@@ -2,9 +2,10 @@ export type UserRole = 'OPERATOR' | 'ADMIN';
 
 export interface User {
   id: string;
-  email: string;
   name: string;
-  role: UserRole;
+  email: string;
+  role: string;
+  organizationId: string | null;
   avatar?: string;
   pushToken?: string | null;
   createdAt: string;
@@ -17,6 +18,8 @@ export interface AuthState {
   isAuthenticated: boolean;
   error: string | null;
   errorType: 'error' | 'warning' | 'info';
+  organizationId: string | null;
+  role: string | null;
 }
 
 export interface LoginCredentials {

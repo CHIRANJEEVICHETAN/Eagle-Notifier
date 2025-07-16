@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { apiConfig } from './config';
 import { Notification, NotificationResponse, NotificationSettings } from '../types/notification';
-import { getAuthHeader } from './auth';
+import { getAuthHeader, getOrgHeaders } from './auth';
 
 /**
  * Fetch notifications with pagination
@@ -10,10 +10,11 @@ export const fetchNotifications = async (
   page: number = 1,
   limit: number = 20,
   filter: 'all' | 'unread' = 'all',
-  source?: string
+  source?: string,
+  organizationId?: string
 ): Promise<NotificationResponse> => {
   try {
-    const headers = await getAuthHeader();
+    const headers = await getOrgHeaders(organizationId);
     let url = `${apiConfig.apiUrl}/api/notifications?page=${page}&limit=${limit}&filter=${filter}`;
     
     // Add source parameter if provided
@@ -32,9 +33,9 @@ export const fetchNotifications = async (
 /**
  * Mark a notification as read
  */
-export const markNotificationAsRead = async (notificationId: string): Promise<Notification> => {
+export const markNotificationAsRead = async (notificationId: string, organizationId?: string): Promise<Notification> => {
   try {
-    const headers = await getAuthHeader();
+    const headers = await getOrgHeaders(organizationId);
     const response = await axios.patch(
       `${apiConfig.apiUrl}/api/notifications/${notificationId}/read`,
       {},
@@ -50,9 +51,9 @@ export const markNotificationAsRead = async (notificationId: string): Promise<No
 /**
  * Mark all notifications as read
  */
-export const markAllNotificationsAsRead = async (): Promise<{ message: string }> => {
+export const markAllNotificationsAsRead = async (organizationId?: string): Promise<{ message: string }> => {
   try {
-    const headers = await getAuthHeader();
+    const headers = await getOrgHeaders(organizationId);
     const response = await axios.patch(
       `${apiConfig.apiUrl}/api/notifications/mark-all-read`,
       {},
@@ -68,9 +69,9 @@ export const markAllNotificationsAsRead = async (): Promise<{ message: string }>
 /**
  * Delete a notification
  */
-export const deleteNotification = async (notificationId: string): Promise<{ message: string }> => {
+export const deleteNotification = async (notificationId: string, organizationId?: string): Promise<{ message: string }> => {
   try {
-    const headers = await getAuthHeader();
+    const headers = await getOrgHeaders(organizationId);
     const response = await axios.delete(
       `${apiConfig.apiUrl}/api/notifications/${notificationId}`,
       { headers }
@@ -86,10 +87,11 @@ export const deleteNotification = async (notificationId: string): Promise<{ mess
  * Update notification settings
  */
 export const updateNotificationSettings = async (
-  settings: Partial<NotificationSettings>
+  settings: Partial<NotificationSettings>,
+  organizationId?: string
 ): Promise<NotificationSettings> => {
   try {
-    const headers = await getAuthHeader();
+    const headers = await getOrgHeaders(organizationId);
     const response = await axios.put(
       `${apiConfig.apiUrl}/api/notifications/settings`,
       settings,
@@ -105,9 +107,9 @@ export const updateNotificationSettings = async (
 /**
  * Update push token
  */
-export const updatePushToken = async (pushToken: string): Promise<{ message: string }> => {
+export const updatePushToken = async (pushToken: string, organizationId?: string): Promise<{ message: string }> => {
   try {
-    const headers = await getAuthHeader();
+    const headers = await getOrgHeaders(organizationId);
     
     // Check if API URL is configured properly
     if (!apiConfig.apiUrl) {
@@ -138,9 +140,9 @@ export const updatePushToken = async (pushToken: string): Promise<{ message: str
 /**
  * Send test notification (development only)
  */
-export const sendTestNotification = async (): Promise<{ message: string; notification: Notification }> => {
+export const sendTestNotification = async (organizationId?: string): Promise<{ message: string; notification: Notification }> => {
   try {
-    const headers = await getAuthHeader();
+    const headers = await getOrgHeaders(organizationId);
     const response = await axios.post(
       `${apiConfig.apiUrl}/api/notifications/send-test`,
       {},
@@ -156,9 +158,9 @@ export const sendTestNotification = async (): Promise<{ message: string; notific
 /**
  * Fetch unread notification count
  */
-export const fetchUnreadCount = async (): Promise<number> => {
+export const fetchUnreadCount = async (organizationId?: string): Promise<number> => {
   try {
-    const headers = await getAuthHeader();
+    const headers = await getOrgHeaders(organizationId);
     const response = await axios.get(
       `${apiConfig.apiUrl}/api/notifications/unread-count`,
       { headers }

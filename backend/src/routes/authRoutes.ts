@@ -13,14 +13,14 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB limit
   },
 });
 
 // Public routes (no authentication required)
 router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, email, password, role = 'OPERATOR' } = req.body;
+    const { name, email, password, role = 'OPERATOR', organizationId } = req.body;
     
     // Validate inputs
     if (!name || !email || !password) {
@@ -37,8 +37,16 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     }
     
     // Validate role
-    if (role !== 'OPERATOR' && role !== 'ADMIN') {
+    if (role !== 'OPERATOR' && role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
       throw createError('Invalid role', 400);
+    }
+    
+    // Only SUPER_ADMIN can create users for any org
+    let orgIdToUse = organizationId;
+    if (role !== 'SUPER_ADMIN') {
+      if (!organizationId) {
+        throw createError('organizationId is required for non-super-admin users', 400);
+      }
     }
     
     // Hash password
@@ -52,6 +60,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
         email,
         password: hashedPassword,
         role: role as any,
+        organizationId: orgIdToUse,
       },
     });
     
@@ -63,7 +72,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     const expiresIn = process.env.JWT_EXPIRES_IN || '1d';
     
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
       process.env.JWT_SECRET as string,
       { expiresIn } as SignOptions
     );
@@ -75,6 +84,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
         name: user.name,
         email: user.email,
         role: user.role,
+        organizationId: user.organizationId,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
@@ -129,14 +139,14 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     const refreshExpiresIn = '7d'; // Refresh tokens last longer
     
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
       process.env.JWT_SECRET as string,
       { expiresIn } as SignOptions
     );
     
     // Generate refresh token
     const refreshToken = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
       process.env.JWT_SECRET as string,
       { expiresIn: refreshExpiresIn } as SignOptions
     );
@@ -151,6 +161,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         name: user.name,
         email: user.email,
         role: user.role,
+        organizationId: user.organizationId,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
         pushToken: user.pushToken,
@@ -198,14 +209,14 @@ router.post('/refresh', async (req: Request, res: Response, next: NextFunction) 
       
       // Generate new access token
       const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
         process.env.JWT_SECRET as string,
         { expiresIn } as SignOptions
       );
       
       // Generate new refresh token
       const newRefreshToken = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
         process.env.JWT_SECRET as string,
         { expiresIn: refreshExpiresIn } as SignOptions
       );
@@ -219,6 +230,7 @@ router.post('/refresh', async (req: Request, res: Response, next: NextFunction) 
           name: user.name,
           email: user.email,
           role: user.role,
+          organizationId: user.organizationId,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           pushToken: user.pushToken,
@@ -262,6 +274,7 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      organizationId: user.organizationId,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });

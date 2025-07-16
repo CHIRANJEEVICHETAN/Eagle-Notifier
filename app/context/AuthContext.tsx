@@ -27,6 +27,8 @@ interface AuthContextProps {
   refreshAuthToken: () => Promise<string | null>;
   selectedAppType: string | null;
   setSelectedAppType: (type: string) => Promise<void>;
+  organizationId: string | null;
+  role: string | null;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
@@ -38,6 +40,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAuthenticated: false,
     error: null,
     errorType: 'error', // Add default error type
+    organizationId: null,
+    role: null,
   });
   
   // Track if the user has seen onboarding
@@ -73,6 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAuthState(prev => ({
       ...prev,
       user: prev.user ? { ...prev.user, ...userData } : null,
+      // Do not set organizationId or role here
     }));
   }, []);
 
@@ -83,32 +88,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Authentication route checking - simplified and updated to include onboarding
   const checkAuthRoute = useCallback(() => {
-    const { isAuthenticated, isLoading } = authState;
-    
+    const { isAuthenticated, isLoading, role } = authState;
     if (isLoading) return;
-
     const inAuthGroup = segments[0] === '(auth)';
     const inDashboardGroup = segments[0] === '(dashboard)';
     const isOnboarding = segments[0] === 'onboarding';
-
     // If not authenticated, redirect to login
     if (!isAuthenticated && !inAuthGroup) {
       navigateTo('/');
       return;
     }
-
     // If authenticated but in auth group, always go to onboarding
     if (isAuthenticated && inAuthGroup) {
       navigateTo('/onboarding');
       return;
     }
-    
+    // SUPER_ADMIN: always go to super-admin dashboard
+    if (isAuthenticated && role === 'SUPER_ADMIN') {
+      navigateTo('/(dashboard)/super-admin');
+      return;
+    }
     // If authenticated and on onboarding screen but already selected app type
     if (isAuthenticated && isOnboarding && selectedAppType) {
       routeUserByAppType(selectedAppType);
       return;
     }
-  }, [authState.isAuthenticated, authState.isLoading, segments, navigateTo, selectedAppType]);
+  }, [authState.isAuthenticated, authState.isLoading, authState.role, segments, navigateTo, selectedAppType]);
 
   // Only check routes on initial load and auth state changes, not on every navigation
   useEffect(() => {
@@ -170,7 +175,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         isAuthenticated: false,
         error: 'Session expired. Please log in again.',
-        errorType: 'error'
+        errorType: 'error',
+        organizationId: null,
+        role: null,
       });
       
       return null;
@@ -291,6 +298,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
         const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
         const userJson = await SecureStore.getItemAsync(USER_KEY);
+        const organizationId = await SecureStore.getItemAsync('organizationId');
+        const role = await SecureStore.getItemAsync('role');
         const appType = await SecureStore.getItemAsync(SELECTED_APP_KEY);
         
         // Set selected app type
@@ -308,6 +317,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isAuthenticated: true,
             error: null,
             errorType: 'error',
+            organizationId: organizationId || user.organizationId || null,
+            role: role || user.role || null,
           });
           
           // Try to register push token if we previously failed
@@ -320,16 +331,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Always navigate to onboarding after initial app load
           router.replace('/onboarding');
         } else {
-          setAuthState(prev => ({ ...prev, isLoading: false }));
+          setAuthState(prev => ({ ...prev, isLoading: false })); // No organizationId or role here
         }
       } catch (error) {
-        console.error('Failed to load user data:', error);
         setAuthState({
           user: null,
           isLoading: false,
           isAuthenticated: false,
           error: 'Failed to load user data',
           errorType: 'error',
+          organizationId: null,
+          role: null,
         });
       }
     };
@@ -472,6 +484,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('Login successful - User role:', user.role);
       
+      // Save organizationId and role
+      const organizationId = user?.organizationId || null;
+      const role = user?.role || null;
       // Set axios default headers
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
@@ -479,20 +494,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await Promise.all([
         SecureStore.setItemAsync(AUTH_TOKEN_KEY, token),
         refreshToken ? SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken) : Promise.resolve(),
-        SecureStore.setItemAsync(USER_KEY, JSON.stringify(user))
+        SecureStore.setItemAsync(USER_KEY, JSON.stringify(user)),
+        SecureStore.setItemAsync('organizationId', organizationId || ''),
+        SecureStore.setItemAsync('role', role || ''),
       ]);
       
       // Update auth state
-      await new Promise<void>((resolve) => {
         setAuthState({
           user,
           isLoading: false,
           isAuthenticated: true,
           error: null,
           errorType: 'error',
-        });
-        // Ensure state is updated before proceeding
-        setTimeout(resolve, 0);
+        organizationId,
+        role,
       });
       
       // Handle push token registration after auth state is updated
@@ -656,10 +671,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: false,
         error: errorMessage,
         errorType: errorType,
+        organizationId: null,
+        role: null,
       });
     }
   };
 
+  // Update logout to clear organizationId and role
   const logout = async () => {
     try {
       setAuthState(prev => ({
@@ -725,6 +743,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
       await SecureStore.deleteItemAsync(USER_KEY);
       await SecureStore.deleteItemAsync('tempPushToken');
+      await SecureStore.deleteItemAsync('organizationId');
+      await SecureStore.deleteItemAsync('role');
       
       // Keep app selection for next login
       // await SecureStore.deleteItemAsync(SELECTED_APP_KEY);
@@ -738,12 +758,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: false,
         error: null,
         errorType: 'error',
+        organizationId: null,
+        role: null,
       });
       
       // Navigation will be handled by checkAuthRoute effect
       // No need to explicitly navigate here
     } catch (error) {
-      console.error('Logout error:', error);
       setAuthState(prev => ({
         ...prev,
         isLoading: false,
@@ -768,7 +789,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       hasSeenOnboarding, 
       refreshAuthToken,
       selectedAppType,
-      setSelectedAppType
+      setSelectedAppType,
+      organizationId: authState.organizationId,
+      role: authState.role,
     }}>
       {children}
     </AuthContext.Provider>

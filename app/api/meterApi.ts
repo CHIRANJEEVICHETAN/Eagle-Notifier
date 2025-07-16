@@ -64,7 +64,7 @@ export interface MeterReport {
 /**
  * Fetch latest meter reading
  */
-export const fetchLatestReading = async (): Promise<MeterReading> => {
+export const fetchLatestReading = async (organizationId?: string): Promise<MeterReading> => {
   try {
     const headers = await getAuthHeader();
     const { data } = await axios.get(`${apiConfig.apiUrl}/api/meter/latest`, { headers });
@@ -82,7 +82,8 @@ export const fetchMeterHistory = async (
   hours: number = 1, 
   page: number = 1, 
   limit: number = 20, 
-  startTime?: string
+  startTime?: string,
+  organizationId?: string
 ): Promise<PaginatedMeterReadings> => {
   try {
     const headers = await getAuthHeader();
@@ -107,7 +108,7 @@ export const fetchMeterHistory = async (
 /**
  * Fetch meter parameter limits
  */
-export const fetchMeterLimits = async (): Promise<MeterLimit[]> => {
+export const fetchMeterLimits = async (organizationId?: string): Promise<MeterLimit[]> => {
   try {
     const headers = await getAuthHeader();
     const { data } = await axios.get(`${apiConfig.apiUrl}/api/meter/limits`, { headers });
@@ -123,7 +124,8 @@ export const fetchMeterLimits = async (): Promise<MeterLimit[]> => {
  */
 export const updateMeterLimit = async (
   id: string, 
-  values: { highLimit?: number; lowLimit?: number }
+  values: { highLimit?: number; lowLimit?: number },
+  organizationId?: string
 ): Promise<MeterLimit> => {
   try {
     const headers = await getAuthHeader();
@@ -143,7 +145,7 @@ export const updateMeterLimit = async (
  * Generate a new meter readings report
  * @param params Report parameters
  */
-export const generateMeterReport = async (params: MeterReportParams): Promise<MeterReport> => {
+export const generateMeterReport = async (params: MeterReportParams, organizationId?: string): Promise<MeterReport> => {
   try {
     const headers = await getAuthHeader();
     const { data } = await axios.post(
@@ -161,7 +163,7 @@ export const generateMeterReport = async (params: MeterReportParams): Promise<Me
 /**
  * Get all reports for current user
  */
-export const getMeterReports = async (): Promise<MeterReport[]> => {
+export const getMeterReports = async (organizationId?: string): Promise<MeterReport[]> => {
   try {
     const headers = await getAuthHeader();
     const { data } = await axios.get(
@@ -180,7 +182,7 @@ export const getMeterReports = async (): Promise<MeterReport[]> => {
  * @param id Report ID
  * @returns Blob of the report file
  */
-export const downloadMeterReport = async (id: string): Promise<Blob> => {
+export const downloadMeterReport = async (id: string, organizationId?: string): Promise<Blob> => {
   try {
     const headers = await getAuthHeader();
     const response = await axios.get(

@@ -31,6 +31,7 @@ interface CreateNotificationParams {
   severity?: 'CRITICAL' | 'WARNING' | 'INFO';
   type?: 'ALARM' | 'SYSTEM' | 'MAINTENANCE' | 'INFO';
   metadata?: Record<string, unknown>;
+  organizationId?: string;
 }
 
 // Helper function for database operations with retry
@@ -90,27 +91,37 @@ export class NotificationService {
       console.log(`📱 Found ${users.length} users with push tokens`);
       
       // Filter users who should receive this notification
-      const eligibleUsers = users.filter((user: UserWithSettings) => {
-        if (!user.notificationSettings) {
-          console.log(`ℹ️ User ${user.id} has no notification settings, using defaults`);
+      const eligibleUsers = users.filter((user: any) => {
+        // Exclude SUPER_ADMIN users from all notifications
+        if (user.role === 'SUPER_ADMIN') {
+          console.log(`🚫 Skipping SUPER_ADMIN user ${user.id} for notifications`);
+          return false;
+        }
+        // Find notification settings for the correct organization
+        let settings = null;
+        if (Array.isArray(user.notificationSettings)) {
+          settings = user.notificationSettings.find((ns: any) => ns.organizationId === data.organizationId);
+        } else if (user.notificationSettings) {
+          settings = user.notificationSettings;
+        }
+        if (!settings) {
+          console.log(`ℹ️ User ${user.id} has no notification settings for org ${data.organizationId}, using defaults`);
           // Use default settings
           return true;
         }
-        if (!user.notificationSettings.pushEnabled) {
+        if (!settings.pushEnabled) {
           console.log(`🔕 User ${user.id} has disabled push notifications`);
           return false;
         }
-        if (user.notificationSettings.criticalOnly && data.severity !== 'CRITICAL') {
+        if (settings.criticalOnly && data.severity !== 'CRITICAL') {
           console.log(`⚡ User ${user.id} only wants critical notifications`);
           return false;
         }
-        
         // Check mute hours
-        if (user.notificationSettings.muteFrom !== null && user.notificationSettings.muteTo !== null) {
+        if (settings.muteFrom !== null && settings.muteTo !== null) {
           const currentHour = new Date().getHours();
-          const muteFrom = user.notificationSettings.muteFrom;
-          const muteTo = user.notificationSettings.muteTo;
-          
+          const muteFrom = settings.muteFrom;
+          const muteTo = settings.muteTo;
           if (muteFrom < muteTo) {
             if (currentHour >= muteFrom && currentHour < muteTo) {
               console.log(`🌙 User ${user.id} has muted notifications for current hour`);
@@ -123,7 +134,6 @@ export class NotificationService {
             }
           }
         }
-        
         return true;
       });
       
@@ -142,7 +152,8 @@ export class NotificationService {
               title: data.title,
               body: data.body,
               type: data.type || 'INFO',
-              priority: PRIORITY_MAP[data.severity || 'INFO']
+              priority: PRIORITY_MAP[data.severity || 'INFO'],
+              organizationId: data.organizationId || '',
             }
           }));
           

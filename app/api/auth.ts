@@ -41,6 +41,21 @@ export const clearAuthToken = async (): Promise<void> => {
 };
 
 /**
+ * Get auth and org headers
+ */
+export const getOrgHeaders = async (organizationId?: string): Promise<{ [key: string]: string }> => {
+  const headers: { [key: string]: string } = {};
+  try {
+    const token = await SecureStore.getItemAsync(TOKEN_KEY);
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (organizationId) headers['x-organization-id'] = organizationId;
+  } catch (error) {
+    console.error('Error getting auth/org headers:', error);
+  }
+  return headers;
+};
+
+/**
  * Login API call
  */
 export const loginApi = async (credentials: LoginCredentials): Promise<AuthResponse> => {

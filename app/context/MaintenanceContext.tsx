@@ -17,6 +17,8 @@ export const MaintenanceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const { authState } = useAuth();
 
   const checkMaintenanceStatus = async () => {
+    // Prevent SUPER_ADMIN from calling this route
+    if (authState.role === 'SUPER_ADMIN') return;
     try {
       const headers = await getAuthHeader();
       const response = await axios.get(
@@ -30,6 +32,8 @@ export const MaintenanceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const toggleMaintenanceMode = async () => {
+    // Prevent SUPER_ADMIN from calling this route
+    if (authState.role === 'SUPER_ADMIN') return;
     try {
       const headers = await getAuthHeader();
       const response = await axios.post(
@@ -54,10 +58,10 @@ export const MaintenanceProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // Check maintenance status on mount and when auth state changes
   useEffect(() => {
-    if (authState.isAuthenticated) {
+    if (authState.isAuthenticated && authState.role !== 'SUPER_ADMIN') {
       checkMaintenanceStatus();
     }
-  }, [authState.isAuthenticated]);
+  }, [authState.isAuthenticated, authState.role]);
 
   return (
     <MaintenanceContext.Provider

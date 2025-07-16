@@ -1,6 +1,7 @@
 import express, { Request, Response, Router, RequestHandler } from 'express';
 import { getClientWithRetry } from '../config/scadaDb';
 import { authenticate } from '../middleware/authMiddleware';
+import { getRequestOrgId } from '../middleware/authMiddleware';
 import prisma from '../config/db';
 
 const router: Router = express.Router();
@@ -33,7 +34,7 @@ router.get('/alarm-data', function(req: Request, res: Response) {
       }
 
       // Get a SCADA DB client
-      const client = await getClientWithRetry();
+      const client = await getClientWithRetry(getRequestOrgId(req));
 
       try {
         // Get setpoints to calculate thresholds
@@ -271,9 +272,10 @@ router.get('/furnace', function(req: Request, res: Response) {
       const limit = parseInt(req.query.limit as string) || 10;
       const skip = (page - 1) * limit;
 
+      const organizationId = getRequestOrgId(req);
       // Get reports with pagination and exclude large fileContent for list view
       const reports = await prisma.furnaceReport.findMany({
-        where: { userId },
+        where: { userId, organizationId },
         select: {
           id: true,
           title: true,
@@ -302,7 +304,7 @@ router.get('/furnace', function(req: Request, res: Response) {
 
       // Get total count for pagination info
       const totalCount = await prisma.furnaceReport.count({
-        where: { userId }
+        where: { userId, organizationId }
       });
 
       const totalPages = Math.ceil(totalCount / limit);
@@ -367,9 +369,11 @@ router.post('/furnace', function(req: Request, res: Response) {
       console.log('Buffer size:', buffer.length);
 
       console.log('Creating furnace report in database...');
+      const organizationId = getRequestOrgId(req);
       const report = await prisma.furnaceReport.create({
         data: {
           userId,
+          organizationId,
           title,
           format,
           fileContent: buffer,
@@ -416,10 +420,12 @@ router.get('/furnace/:id', function(req: Request, res: Response) {
         return res.status(401).json({ error: 'User not authenticated' });
       }
 
+      const organizationId = getRequestOrgId(req);
       const report = await prisma.furnaceReport.findFirst({
         where: { 
           id: reportId,
-          userId 
+          userId,
+          organizationId
         }
       });
 

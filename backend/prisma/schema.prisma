@@ -12,8 +12,28 @@ datasource db {
 }
 
 enum UserRole {
-  OPERATOR
+  SUPER_ADMIN
   ADMIN
+  OPERATOR
+}
+
+model Organization {
+  id           String   @id @default(uuid())
+  name         String
+  scadaDbConfig Json    // Encrypted: { host, port, user, pass, db, table, columns }
+  schemaConfig  Json    // Alarm logic, column mapping, etc.
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  users        User[]
+  notifications Notification[]
+  alarms       Alarm[]
+  alarmHistories AlarmHistory[]
+  meterReports MeterReport[]
+  furnaceReports FurnaceReport[]
+  systemSettings SystemSettings[]
+  setpoints    Setpoint[]
+  meterLimits  MeterLimit[]
+  notificationSettings NotificationSettings[]
 }
 
 model User {
@@ -33,7 +53,9 @@ model User {
   reports         MeterReport[]
   furnaceReports  FurnaceReport[]
   pushToken       String?
-  notificationSettings NotificationSettings?
+  notificationSettings NotificationSettings[]
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
 }
 
 enum AlarmType {
@@ -90,12 +112,16 @@ model Notification {
   metadata        Json?
   createdAt       DateTime            @default(now())
   readAt          DateTime?
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
 }
 
 model NotificationSettings {
   id              String    @id @default(uuid())
-  userId          String    @unique
+  userId          String
   user            User      @relation(fields: [userId], references: [id])
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
   pushEnabled     Boolean   @default(true)
   emailEnabled    Boolean   @default(false)
   criticalOnly    Boolean   @default(false)
@@ -103,6 +129,8 @@ model NotificationSettings {
   muteTo          Int?      // Hour to end muting (0-23)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, organizationId])
 }
 
 model Alarm {
@@ -127,6 +155,8 @@ model Alarm {
   resolvedAt      DateTime?
   resolutionMessage String?     @db.Text
   history         AlarmHistory[]
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
 }
 
 model AlarmHistory {
@@ -147,6 +177,8 @@ model AlarmHistory {
   resolvedBy      User?         @relation("ResolvedBy", fields: [resolvedById], references: [id])
   resolvedAt      DateTime?
   resolutionMessage String?     @db.Text
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
 }
 
 model Setpoint {
@@ -157,12 +189,18 @@ model Setpoint {
   scadaField    String   // Field name in SCADA database (e.g., "hz1sv")
   lowDeviation  Float
   highDeviation Float
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@unique([name, organizationId])
 }
 
 model SystemSettings {
   id              String    @id @default(uuid())
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  organizationId  String    @unique
   maintenanceMode Boolean   @default(false)
   enabledBy       String?
   enabledAt       DateTime?
@@ -178,12 +216,14 @@ model MeterLimit {
   unit            String
   highLimit       Float     // Upper threshold that triggers notifications
   lowLimit        Float?    // Optional lower threshold
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   createdById     String?
   updatedById     String?
 
-  @@unique([parameter])
+  @@unique([parameter, organizationId])
 }
 
 // Model to store generated meter reports
@@ -201,6 +241,8 @@ model MeterReport {
   parameters      String[]  // Array of parameters included in report
   createdAt       DateTime  @default(now())
   metadata        Json?
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
 }
 
 // Model to store generated furnace reports
@@ -223,4 +265,6 @@ model FurnaceReport {
   zones               String[]  // Array of zones included
   createdAt           DateTime  @default(now())
   metadata            Json?
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id])
 } 

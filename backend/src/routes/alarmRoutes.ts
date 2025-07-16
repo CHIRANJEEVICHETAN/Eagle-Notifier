@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import prisma from '../config/db';
 import { createError } from '../middleware/errorHandler';
-import { authenticate, authorize } from '../middleware/authMiddleware';
+import { authenticate, authorize, getRequestOrgId } from '../middleware/authMiddleware';
 import { Router } from 'express';
 import { NotificationService } from '../services/notificationService';
 
@@ -17,32 +17,17 @@ router.use(authenticate);
  */
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const organizationId = getRequestOrgId(req);
     const alarms = await prisma.alarm.findMany({
-      orderBy: {
-        timestamp: 'desc',
-      },
+      where: { organizationId },
+      orderBy: { timestamp: 'desc' },
       include: {
-        acknowledgedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        resolvedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        acknowledgedBy: { select: { id: true, name: true, email: true } },
+        resolvedBy: { select: { id: true, name: true, email: true } },
       },
     });
-    
     res.json(alarms);
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -52,9 +37,11 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.get('/active', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const organizationId = getRequestOrgId(req);
     const activeAlarms = await prisma.alarm.findMany({
       where: {
         status: 'ACTIVE',
+        organizationId,
       },
       orderBy: {
         timestamp: 'desc',
@@ -130,6 +117,8 @@ router.post('/', authorize(['ADMIN']), async (req: Request, res: Response, next:
       throw createError('Missing required fields', 400);
     }
     
+    const organizationId = getRequestOrgId(req);
+
     // Create alarm
     const alarm = await prisma.alarm.create({
       data: {
@@ -142,6 +131,7 @@ router.post('/', authorize(['ADMIN']), async (req: Request, res: Response, next:
         unit,
         lowLimit,
         highLimit,
+        organizationId,
       },
     });
     
@@ -150,7 +140,8 @@ router.post('/', authorize(['ADMIN']), async (req: Request, res: Response, next:
       title: `${alarm.severity} Alarm: ${alarm.description}`,
       body: `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
       severity: alarm.severity,
-      type: 'ALARM'
+      type: 'ALARM',
+      organizationId,
     });
     
     res.status(201).json(alarm);
@@ -196,6 +187,8 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
       throw createError('Resolution message is required when resolving an alarm', 400);
     }
     
+    const organizationId = getRequestOrgId(req);
+
     // Update alarm status with user information
     const updatedAlarm = await prisma.alarm.update({
       where: { id },
@@ -244,6 +237,7 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
         resolvedById: status === 'RESOLVED' ? userId : alarm.resolvedById,
         resolvedAt: status === 'RESOLVED' ? new Date() : alarm.resolvedAt,
         resolutionMessage: status === 'RESOLVED' ? resolutionMessage?.trim() : alarm.resolutionMessage,
+        organizationId,
       },
     });
     
@@ -258,7 +252,8 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
         ? `${alarm.description} acknowledged by ${updatedAlarm.acknowledgedBy?.name}`
         : `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
       severity: alarm.severity,
-      type: status === 'RESOLVED' ? 'INFO' : 'ALARM'
+      type: status === 'RESOLVED' ? 'INFO' : 'ALARM',
+      organizationId,
     });
     
     res.json(updatedAlarm);
@@ -282,12 +277,15 @@ router.get('/history', async (req: Request, res: Response, next: NextFunction) =
     const timeThreshold = new Date();
     timeThreshold.setHours(timeThreshold.getHours() - hoursAgo);
     
+    const organizationId = getRequestOrgId(req);
+
     // Get alarm history
     const history = await prisma.alarmHistory.findMany({
       where: {
         timestamp: {
           gte: timeThreshold,
         },
+        organizationId,
       },
       orderBy: {
         timestamp: 'desc',
@@ -326,12 +324,15 @@ router.post('/notification', authenticate, async (req: Request, res: Response, n
     createdAt: new Date().toISOString()
   };
 
+  const organizationId = getRequestOrgId(req);
+
   // Use notification service to create and send notifications
   await NotificationService.createNotification({
     title: `${alarm.severity} Alarm: ${alarm.description}`,
     body: `${alarm.description} - Value: ${alarm.value}${alarm.unit ? ` ${alarm.unit}` : ''}`,
     severity: alarm.severity,
-    type: 'ALARM'
+    type: 'ALARM',
+    organizationId,
   });
 
   res.status(200).json({ 

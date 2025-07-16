@@ -13,6 +13,7 @@ interface AlarmState {
   getAlarmsByType: (type: 'analog' | 'binary') => Alarm[];
   getAlarmsBySeverity: (severity: 'critical' | 'warning' | 'info' | 'all') => Alarm[];
   clearError: () => void;
+  resetStore: () => void;
 }
 
 // Create a Zustand store for managing alarms
@@ -67,4 +68,5 @@ export const useAlarmStore = create<AlarmState>((set, get) => ({
     if (severity === 'all') return state.alarms;
     return state.alarms.filter(alarm => alarm.severity === severity);
   },
+  resetStore: () => set({ alarms: [], isLoading: false, error: null, lastUpdated: null }),
 })); 

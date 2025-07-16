@@ -2,8 +2,9 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tansta
 import { Alarm, AlarmStatus } from '../types/alarm';
 import { useAlarmStore } from '../store/useAlarmStore';
 import axios from 'axios';
-import { getAuthHeader } from '../api/auth';
+import { getOrgHeaders } from '../api/auth';
 import { apiConfig, SCADA_INTERVAL } from '../api/config';
+import { useAuth } from '../context/AuthContext';
 
 // Query keys
 export const ALARM_KEYS = {
@@ -29,6 +30,7 @@ export interface ScadaAlarmResponse {
 // Hook for fetching active SCADA alarms
 export const useActiveAlarms = (initialForceRefresh = false) => {
   const { setAlarms, setLoading, setError } = useAlarmStore();
+  const { organizationId } = useAuth();
 
   // Get interval from environment variable or use default value (120000 ms = 2 minutes)
   const scadaInterval = SCADA_INTERVAL
@@ -50,7 +52,7 @@ export const useActiveAlarms = (initialForceRefresh = false) => {
       setLoading(true);
       try {
         const forceRefresh = queryKey[1] as boolean;
-        const headers = await getAuthHeader();
+        const headers = await getOrgHeaders(organizationId);
         const { data } = await axios.get<ScadaAlarmResponse>(
           `${apiConfig.apiUrl}/api/scada/alarms${forceRefresh ? '?force=true' : ''}`,
           { headers }
@@ -107,10 +109,11 @@ interface UpdateAlarmStatusParams {
 export const useUpdateAlarmStatus = () => {
   const queryClient = useQueryClient();
   const { updateAlarmStatus: updateStoreAlarmStatus } = useAlarmStore();
+  const { organizationId } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, status, resolutionMessage }: UpdateAlarmStatusParams) => {
-      const headers = await getAuthHeader();
+      const headers = await getOrgHeaders(organizationId);
       await axios.put(
         `${apiConfig.apiUrl}/api/alarms/${id}/status`,
         { status, resolutionMessage },
@@ -154,6 +157,7 @@ export function useAlarmHistory({
   alarmId
 }: AlarmHistoryParams = {}) {
   const params = { page, limit, status, hours, search, sortBy, sortOrder, type, alarmId };
+  const { organizationId } = useAuth();
   
   return useQuery({
     queryKey: ALARM_KEYS.history(params),
@@ -171,7 +175,7 @@ export function useAlarmHistory({
         if (type) urlParams.append('type', type);
         if (alarmId) urlParams.append('alarmId', alarmId);
         
-        const headers = await getAuthHeader();
+        const headers = await getOrgHeaders(organizationId);
         const response = await axios.get(
           `${apiConfig.apiUrl}/api/scada/history?${urlParams.toString()}`,
           { headers }
@@ -196,6 +200,7 @@ export function useAlarmHistory({
 // Hook for fetching history of a specific alarm with proper pagination
 export function useSpecificAlarmHistory(alarmId: string, params: Partial<AlarmHistoryParams> = {}) {
   const { limit = 50, status, hours, startTime, endTime, timeFilter } = params;
+  const { organizationId } = useAuth();
   
   return useInfiniteQuery({
     queryKey: ALARM_KEYS.alarmHistory({ alarmId, status, hours, startTime, endTime, timeFilter }),
@@ -217,7 +222,7 @@ export function useSpecificAlarmHistory(alarmId: string, params: Partial<AlarmHi
         if (endTime) urlParams.append('endTime', endTime);
         if (timeFilter) urlParams.append('timeFilter', timeFilter);
         
-        const headers = await getAuthHeader();
+        const headers = await getOrgHeaders(organizationId);
         const response = await axios.get(
           `${apiConfig.apiUrl}/api/scada/history?${urlParams.toString()}`,
           { headers }
@@ -265,11 +270,12 @@ function getAccessToken() {
 
 // Hook for fetching SCADA analytics data
 export const useAnalyticsData = (timeFilter: string) => {
+  const { organizationId } = useAuth();
   return useQuery({
     queryKey: ALARM_KEYS.analytics(timeFilter),
     queryFn: async () => {
       try {
-        const headers = await getAuthHeader();
+        const headers = await getOrgHeaders(organizationId);
         const { data } = await axios.get(
           `${apiConfig.apiUrl}/api/scada/analytics?timeFilter=${timeFilter}`,
           { headers }

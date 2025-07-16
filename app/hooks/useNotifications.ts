@@ -8,6 +8,7 @@ import {
   fetchUnreadCount
 } from '../api/notificationsApi';
 import { NotificationSettings } from '../types/notification';
+import { useAuth } from '../context/AuthContext';
 
 // Query keys
 const NOTIFICATIONS_KEY = 'notifications';
@@ -22,9 +23,10 @@ export const useNotifications = (
   limit: number = 10,
   source?: string
 ) => {
+  const { organizationId } = useAuth();
   return useInfiniteQuery({
     queryKey: [NOTIFICATIONS_KEY, filter, limit, source],
-    queryFn: ({ pageParam = 1 }) => fetchNotifications(pageParam as number, limit, filter, source),
+    queryFn: ({ pageParam = 1 }) => fetchNotifications(pageParam as number, limit, filter, source, organizationId ?? undefined),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => {
       if (lastPage.pagination.hasMore) {
@@ -40,9 +42,10 @@ export const useNotifications = (
  * Hook for fetching unread notifications count
  */
 export const useUnreadCount = () => {
+  const { organizationId } = useAuth();
   return useQuery({
     queryKey: [UNREAD_COUNT_KEY],
-    queryFn: fetchUnreadCount,
+    queryFn: () => fetchUnreadCount(organizationId ?? undefined),
     staleTime: 30 * 1000, // 30 seconds
     refetchInterval: 60 * 1000, // Refetch every minute
     refetchOnWindowFocus: true, // Refetch when app comes into focus
@@ -55,9 +58,10 @@ export const useUnreadCount = () => {
  */
 export const useMarkAsRead = () => {
   const queryClient = useQueryClient();
+  const { organizationId } = useAuth();
   
   return useMutation({
-    mutationFn: markNotificationAsRead,
+    mutationFn: (notificationId: string) => markNotificationAsRead(notificationId, organizationId ?? undefined),
     onSuccess: (updatedNotification) => {
       // Invalidate notifications cache to refetch with updated data
       queryClient.invalidateQueries({ queryKey: [NOTIFICATIONS_KEY] });
@@ -76,9 +80,10 @@ export const useMarkAsRead = () => {
  */
 export const useMarkAllAsRead = () => {
   const queryClient = useQueryClient();
+  const { organizationId } = useAuth();
   
   return useMutation({
-    mutationFn: markAllNotificationsAsRead,
+    mutationFn: () => markAllNotificationsAsRead(organizationId ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [NOTIFICATIONS_KEY] });
       queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
@@ -94,9 +99,10 @@ export const useMarkAllAsRead = () => {
  */
 export const useDeleteNotification = () => {
   const queryClient = useQueryClient();
+  const { organizationId } = useAuth();
   
   return useMutation({
-    mutationFn: deleteNotification,
+    mutationFn: (notificationId: string) => deleteNotification(notificationId, organizationId ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [NOTIFICATIONS_KEY] });
       queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
@@ -112,9 +118,10 @@ export const useDeleteNotification = () => {
  */
 export const useUpdateNotificationSettings = () => {
   const queryClient = useQueryClient();
+  const { organizationId } = useAuth();
   
   return useMutation({
-    mutationFn: (settings: Partial<NotificationSettings>) => updateNotificationSettings(settings),
+    mutationFn: (settings: Partial<NotificationSettings>) => updateNotificationSettings(settings, organizationId ?? undefined),
     onSuccess: (updatedSettings) => {
       queryClient.setQueryData([SETTINGS_KEY], updatedSettings);
     }

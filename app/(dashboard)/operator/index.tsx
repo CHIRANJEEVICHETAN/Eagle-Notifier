@@ -194,6 +194,7 @@ export default function OperatorDashboard() {
   const { authState } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const isSuperAdmin = authState?.user?.role === 'SUPER_ADMIN';
   
   // Alarm Data and Mutations
   const { data: alarmData, isLoading, isError, error, refetch } = useActiveAlarms();
@@ -234,7 +235,9 @@ export default function OperatorDashboard() {
   // Memoized Values
   const analogAlarms = useMemo(() => alarmData?.analogAlarms || [], [alarmData]);
   const binaryAlarms = useMemo(() => alarmData?.binaryAlarms || [], [alarmData]);
-  const isScadaMaintenanceMode = useMemo(() => alarmData?.maintenanceMode || false, [alarmData]);
+  const isScadaMaintenanceMode = useMemo(() =>
+    isSuperAdmin ? false : alarmData?.maintenanceMode || false,
+  [alarmData, isSuperAdmin]);
 
   const filteredAnalogAlarms = useMemo(() => {
     if (!alarmData?.analogAlarms) return [];
@@ -557,7 +560,7 @@ export default function OperatorDashboard() {
   const renderSummaryCards = () => {
     return (
       <View style={styles.summaryContainer}>
-        {isScadaMaintenanceMode && (
+        {!isSuperAdmin && isScadaMaintenanceMode && (
           <View style={[
             styles.maintenanceAlert,
             { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.05)' }
@@ -1608,7 +1611,7 @@ export default function OperatorDashboard() {
               ]}>
               {isAdmin ? 'Admin Dashboard' : 'Operator Dashboard'}
             </Text>
-            {isScadaMaintenanceMode && (
+            {!isSuperAdmin && isScadaMaintenanceMode && (
               <View style={[
                 styles.maintenanceBadge,
                 { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)' }
@@ -1924,6 +1927,7 @@ export default function OperatorDashboard() {
           isSubmitting={updateSetpointMutation.isPending}
         />
       )}
+      {!isSuperAdmin && isMaintenanceMode && <MaintenanceScreen />}
     </SafeAreaView>
   );
 } 

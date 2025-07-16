@@ -1,6 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 import { backOff } from 'exponential-backoff';
 import { logError } from './../utils/logger';
+import prisma from './db';
 
 const DEBUG = process.env.NODE_ENV === 'development';
 
@@ -9,135 +10,91 @@ interface PostgresError extends Error {
   code?: string;
 }
 
-const createScadaPool = () => {
-  try {
-    const dbUrl = process.env.DATABASE_URL;
-    if (!dbUrl) {
-      throw new Error('DATABASE_URL environment variable is not set');
+const poolCache = new Map<string, Pool>();
+
+async function getOrgScadaConfig(orgId: string) {
+  const org = await prisma.organization.findUnique({ where: { id: orgId } });
+  if (!org) throw new Error('Organization not found');
+  return org.scadaDbConfig;
+}
+
+function createPoolFromConfig(config: any): Pool {
+  // Validate required fields
+  const requiredFields = ['host', 'port', 'user', 'password', 'database'];
+  for (const field of requiredFields) {
+    if (!config[field] || typeof config[field] !== 'string' && field !== 'port') {
+      console.error(`❌ SCADA DB config error: Missing or invalid '${field}' in org config:`, config);
+      throw new Error(`SCADA DB config error: Missing or invalid '${field}'`);
     }
-
-    if (DEBUG) {
-      console.log('🔌 Initializing SCADA DB connection...');
-    }
-
-    const [credentials, hostInfo] = dbUrl.split('@');
-    const [protocol, userPass] = credentials.split('://');
-    const [user, password] = userPass.split(':');
-    const [hostPort, dbName] = hostInfo.split('/');
-    const [host, port] = hostPort.split(':');
-
-    const pool = new Pool({
-      user,
-      password,
-      host,
-      port: parseInt(port || '19905'),
-      database: 'Notifier-Main-DB',
-      ssl: {
-        rejectUnauthorized: false
-      },
-      // Enhanced connection pool settings to prevent timeouts
-      max: 20,               // Maximum number of clients in the pool
-      min: 4,                // Keep at least 4 connections ready
-      idleTimeoutMillis: 15000, // Reduced idle timeout below our 30s polling interval
-      connectionTimeoutMillis: 5000, // Increased time to wait for a connection
-      maxUses: 5000,         // Close and replace after this many uses
-      allowExitOnIdle: false, // Don't exit on idle
-      keepAlive: true       // Enable TCP keepalive
-    });
-
-    // Add event listeners for connection issues
-    pool.on('connect', () => {
-      if (DEBUG) console.log('🟢 New client connected to SCADA DB');
-    });
-
-    pool.on('error', (err: PostgresError, client) => {
-      logError('Unexpected error on idle client', err);
-      // Force close this client and let the pool create a new one
-      if (client) {
-        client.release(true);
-      }
-      // Recreate the pool if we had critical errors
-      if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
-        console.log('🔄 Database connection error detected, recreating connection pool');
-        scadaPool = createScadaPool();
-      }
-    });
-
-    pool.on('acquire', () => {
-      if (DEBUG) console.log('🔵 Client acquired from pool');
-    });
-
-    pool.on('remove', () => {
-      if (DEBUG) console.log('🟡 Client removed from pool');
-    });
-
-    return pool;
-  } catch (error) {
-    console.error('🔴 Error creating SCADA database pool:', error);
-    throw error;
   }
-};
-
-// Use a singleton pattern for connection pool with auto-reconnect capabilities
-let scadaPool: Pool;
-
-const getScadaPool = () => {
-  if (!scadaPool) {
-    scadaPool = createScadaPool();
+  // Determine SSL config based on sslmode
+  let ssl: any = false;
+  if (config.sslmode === 'require' || config.ssl === true) {
+    ssl = { rejectUnauthorized: false };
   }
-  return scadaPool;
-};
+  if (typeof config.ssl === 'object') {
+    ssl = config.ssl;
+  }
+  // Ensure password is always a string
+  let password = config.password;
+  if (typeof password !== 'string') {
+    console.warn('⚠️ SCADA DB password is not a string, coercing to string.');
+    password = password !== undefined && password !== null ? String(password) : '';
+  }
+  return new Pool({
+    user: config.user,
+    password,
+    host: config.host,
+    port: parseInt(config.port || '5432'),
+    database: config.database,
+    ssl,
+    max: 20,
+    min: 4,
+    idleTimeoutMillis: 15000,
+    connectionTimeoutMillis: 5000,
+    maxUses: 5000,
+    allowExitOnIdle: false,
+    keepAlive: true
+  });
+}
 
-// Helper function to get a client with retry logic
-export async function getClientWithRetry(retries = 3, delay = 500): Promise<PoolClient> {
+export async function getScadaPoolForOrg(orgId: string): Promise<Pool> {
+  if (poolCache.has(orgId)) return poolCache.get(orgId)!;
+  const config = await getOrgScadaConfig(orgId);
+  const pool = createPoolFromConfig(config);
+  poolCache.set(orgId, pool);
+  return pool;
+}
+
+export async function getClientWithRetry(orgId: string, retries = 3, delay = 500): Promise<PoolClient> {
   try {
-    // Check if pool is healthy, recreate if needed
-    if (!scadaPool || scadaPool.totalCount < 1) {
-      console.log('🔄 Pool doesn\'t exist or is empty, recreating connection pool');
-      scadaPool = createScadaPool();
-    }
-    
-    const client = await getScadaPool().connect();
-    
-    // Test if connection is still valid with simple query
+    const pool = await getScadaPoolForOrg(orgId);
+    const client = await pool.connect();
     try {
       await client.query('SELECT 1');
     } catch (testError) {
-      console.error('❌ Connection test failed, releasing and retrying', testError);
       client.release(true);
-      // If we still have retries left, attempt to get a new client
       if (retries > 0) {
         await new Promise(resolve => setTimeout(resolve, delay));
-        return getClientWithRetry(retries - 1, delay * 2);
+        return getClientWithRetry(orgId, retries - 1, delay * 2);
       }
       throw new Error('Connection test failed');
     }
-    
-    // Ensure client is properly released when it's no longer needed
-    const originalRelease = client.release;
-    client.release = (err?: Error) => {
-      if (DEBUG) console.log('🟡 Client released back to pool');
-      client.release = originalRelease;
-      return originalRelease.call(client, err);
-    };
-    
     return client;
   } catch (error) {
     if (retries > 0) {
-      if (DEBUG) console.warn(`⚠️ Failed to get client, retrying... (${retries} attempts left)`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      return getClientWithRetry(retries - 1, delay * 2);
+      return getClientWithRetry(orgId, retries - 1, delay * 2);
     } else {
-      console.error('🔴 Failed to get SCADA DB client after retries:', error);
       throw error;
     }
   }
 }
 
 // Check database health
-export async function checkScadaHealth() {
+export async function checkScadaHealth(orgId: string) {
   try {
-    const client = await getClientWithRetry();
+    const client = await getClientWithRetry(orgId);
     try {
       const result = await client.query('SELECT NOW()');
       return {
@@ -147,9 +104,9 @@ export async function checkScadaHealth() {
           connected: true,
           databaseTime: result.rows[0].now,
           poolStats: {
-            totalCount: getScadaPool().totalCount,
-            idleCount: getScadaPool().idleCount,
-            waitingCount: getScadaPool().waitingCount,
+            totalCount: getScadaPoolForOrg(orgId).then(p => p.totalCount),
+            idleCount: getScadaPoolForOrg(orgId).then(p => p.idleCount),
+            waitingCount: getScadaPoolForOrg(orgId).then(p => p.waitingCount),
           }
         }
       };
@@ -169,9 +126,9 @@ export async function checkScadaHealth() {
 }
 
 // Test the connection and output status
-export async function testScadaConnection() {
+export async function testScadaConnection(orgId: string) {
   try {
-    const client = await getClientWithRetry();
+    const client = await getClientWithRetry(orgId);
     try {
       const result = await client.query('SELECT NOW()');
       if (DEBUG) console.log('🟢 Successfully connected to SCADA database');
@@ -189,15 +146,35 @@ export async function testScadaConnection() {
 // Close all database connections
 export async function closeScadaConnections() {
   try {
-    if (scadaPool) {
-      await scadaPool.end();
-      if (DEBUG) console.log('✅ All SCADA database connections closed');
+    for (const pool of poolCache.values()) {
+      await pool.end();
     }
-    return true;
+    poolCache.clear();
+    if (DEBUG) console.log('✅ All SCADA database connections closed');
   } catch (error) {
     console.error('❌ Error closing SCADA database connections:', error);
     return false;
   }
 }
 
-export default getScadaPool();
+// Helper to test and log all org SCADA DB connections at startup
+export async function testAllOrgScadaConnections() {
+  const orgs = await prisma.organization.findMany();
+  for (const org of orgs) {
+    const orgName = org.name || org.id;
+    if (!org.scadaDbConfig || Object.keys(org.scadaDbConfig).length === 0) {
+      console.error(`❌ [${orgName}] Missing scadaDbConfig. Skipping organization.`);
+      continue;
+    }
+    try {
+      // Validate config before attempting connection
+      createPoolFromConfig(org.scadaDbConfig);
+      // Test connection
+      const pool = getScadaPoolForOrg(org.id);
+      await testScadaConnection(org.id);
+      console.log(`✅ [${orgName}] SCADA DB connected successfully (orgId: ${org.id})`);
+    } catch (err: any) {
+      console.error(`🔴 [${orgName}] Failed to connect to SCADA DB (orgId: ${org.id}):`, err.message || err);
+    }
+  }
+}

@@ -1,9 +1,22 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Stack } from 'expo-router';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { useAlarmStore } from '../store/useAlarmStore';
+import { useMeterReportStore } from '../store/useMeterReportStore';
 
 export default function DashboardLayout() {
   const { isDarkMode } = useTheme();
+  const { organizationId } = useAuth();
+  const prevOrgId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (prevOrgId.current && prevOrgId.current !== organizationId) {
+      useAlarmStore.getState().resetStore();
+      useMeterReportStore.getState().resetStore();
+    }
+    prevOrgId.current = organizationId;
+  }, [organizationId]);
 
   return (
     <Stack

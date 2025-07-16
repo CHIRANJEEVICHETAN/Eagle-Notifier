@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/authMiddleware';
+import { getRequestOrgId } from '../middleware/authMiddleware';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { NotificationService } from '../services/notificationService';
 import prisma from '../config/db';
@@ -99,7 +100,7 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
   
   // Get notifications with pagination
   const notifications = await prisma.notification.findMany({
-    where,
+    where: { ...where, organizationId: getRequestOrgId(req) },
     orderBy: { createdAt: 'desc' },
     skip,
     take: limit
@@ -135,7 +136,7 @@ router.patch('/:id/read', authenticate, asyncHandler(async (req, res) => {
   
   // Check if notification exists and belongs to user
   const notification = await prisma.notification.findFirst({
-    where: { id: notificationId, userId }
+    where: { id: notificationId, userId, organizationId: getRequestOrgId(req) }
   });
   
   if (!notification) {
@@ -166,7 +167,7 @@ router.patch('/mark-all-read', authenticate, asyncHandler(async (req, res) => {
   
   // Update all unread notifications
   await prisma.notification.updateMany({
-    where: { userId, isRead: false },
+    where: { userId, isRead: false, organizationId: getRequestOrgId(req) },
     data: { 
       isRead: true,
       readAt: new Date()
@@ -188,7 +189,7 @@ router.delete('/:id', authenticate, asyncHandler(async (req, res) => {
   
   // Check if notification exists and belongs to user
   const notification = await prisma.notification.findFirst({
-    where: { id: notificationId, userId }
+    where: { id: notificationId, userId, organizationId: getRequestOrgId(req) }
   });
   
   if (!notification) {
@@ -211,12 +212,11 @@ router.get('/settings', authenticate, asyncHandler(async (req, res) => {
     res.status(401).json({ message: 'User not authenticated' });
     return;
   }
-
-  // Get user's notification settings
+  const organizationId = getRequestOrgId(req);
+  // Get user's notification settings for this org
   const settings = await prisma.notificationSettings.findUnique({
-    where: { userId }
+    where: { userId_organizationId: { userId, organizationId } }
   });
-
   // If no settings exist, return default settings
   if (!settings) {
     const defaultSettings = {
@@ -229,7 +229,6 @@ router.get('/settings', authenticate, asyncHandler(async (req, res) => {
     res.status(200).json(defaultSettings);
     return;
   }
-
   res.status(200).json(settings);
 }));
 
@@ -240,26 +239,17 @@ router.put('/settings', authenticate, asyncHandler(async (req, res) => {
     res.status(401).json({ message: 'User not authenticated' });
     return;
   }
-  
-  const { 
-    pushEnabled, 
-    emailEnabled, 
-    criticalOnly,
-    muteFrom,
-    muteTo
-  } = req.body;
-  
+  const organizationId = getRequestOrgId(req);
+  const { pushEnabled, emailEnabled, criticalOnly, muteFrom, muteTo } = req.body;
   // Find existing settings
   const existingSettings = await prisma.notificationSettings.findUnique({
-    where: { userId }
+    where: { userId_organizationId: { userId, organizationId } }
   });
-  
   let settings;
-  
   if (existingSettings) {
     // Update existing settings
     settings = await prisma.notificationSettings.update({
-      where: { userId },
+      where: { userId_organizationId: { userId, organizationId } },
       data: {
         pushEnabled: pushEnabled !== undefined ? pushEnabled : existingSettings.pushEnabled,
         emailEnabled: emailEnabled !== undefined ? emailEnabled : existingSettings.emailEnabled,
@@ -269,10 +259,11 @@ router.put('/settings', authenticate, asyncHandler(async (req, res) => {
       }
     });
   } else {
-    // Create new settings with non-null userId
+    // Create new settings with org
     settings = await prisma.notificationSettings.create({
       data: {
-        userId: userId, // Explicitly set as non-null
+        user: { connect: { id: userId } },
+        organization: { connect: { id: organizationId } },
         pushEnabled: pushEnabled !== undefined ? pushEnabled : true,
         emailEnabled: emailEnabled !== undefined ? emailEnabled : false,
         criticalOnly: criticalOnly !== undefined ? criticalOnly : false,
@@ -281,7 +272,6 @@ router.put('/settings', authenticate, asyncHandler(async (req, res) => {
       }
     });
   }
-  
   res.status(200).json(settings);
 }));
 
@@ -397,12 +387,15 @@ router.post('/send', authenticate, asyncHandler(async (req, res) => {
     return;
   }
   
+  // SUPER_ADMIN users are always excluded from notifications by NotificationService
+  // No need to filter here; enforced centrally
   try {
     await NotificationService.createNotification({
       title,
       body,
       severity,
-      type
+      type,
+      organizationId: getRequestOrgId(req)
     });
     
     res.status(200).json({ 
@@ -427,7 +420,8 @@ router.post('/send-test', authenticate, asyncHandler(async (req, res) => {
       title: 'Test Notification',
       body: 'This is a test notification',
       type: 'INFO',
-      severity: 'INFO'
+      severity: 'INFO',
+      organizationId: getRequestOrgId(req)
     });
     
     res.status(200).json({ 

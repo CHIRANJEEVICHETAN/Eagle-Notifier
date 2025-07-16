@@ -1,9 +1,49 @@
 import { PrismaClient } from '../src/generated/prisma-client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  // Define all setpoint configurations from IOT ALARM LIST
+  // 1. Create default organization if not present
+  const defaultOrgName = 'Default Org';
+  let defaultOrg = await prisma.organization.findFirst({ where: { name: defaultOrgName } });
+  if (!defaultOrg) {
+    defaultOrg = await prisma.organization.create({
+      data: {
+        name: defaultOrgName,
+        scadaDbConfig: {}, // Fill with real config as needed
+        schemaConfig: {},
+      },
+    });
+    console.log('✅ Created default organization:', defaultOrgName);
+  } else {
+    console.log('⏭️ Default organization already exists - skipping');
+  }
+  const organizationId = defaultOrg.id;
+
+  // 2. Seed SUPER_ADMIN user if not present
+  const superAdminEmail = 'superadmin@eaglenotifier.com';
+  const superAdminPassword = 'SuperSecure123!'; // Change after first login
+  const superAdminName = 'Super Admin';
+  const existingSuperAdmin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
+  if (!existingSuperAdmin) {
+    const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
+    await prisma.user.create({
+      data: {
+        email: superAdminEmail,
+        password: hashedPassword,
+        name: superAdminName,
+        role: 'SUPER_ADMIN',
+        // organizationId: null // Not required, nullable for SUPER_ADMIN
+      }
+    });
+    console.log('✅ Seeded SUPER_ADMIN user:', superAdminEmail);
+    console.log('   Default password:', superAdminPassword);
+  } else {
+    console.log('⏭️ SUPER_ADMIN user already exists - skipping');
+  }
+
+  // 3. Seed setpoints for the default org
   const setpoints = [
     {
       name: 'HARDENING ZONE 1 TEMPERATURE',
@@ -63,12 +103,13 @@ async function main() {
 
   for (const setpoint of setpoints) {
     try {
-      // Check if setpoint already exists
+      // Check if setpoint already exists for this org
       const existing = await prisma.setpoint.findFirst({
         where: {
           name: setpoint.name,
           type: setpoint.type,
           zone: setpoint.zone || null,
+          organizationId,
         },
       });
 
@@ -81,7 +122,8 @@ async function main() {
             zone: setpoint.zone || null,
             scadaField: setpoint.scadaField,
             lowDeviation: setpoint.lowDeviation,
-            highDeviation: setpoint.highDeviation
+            highDeviation: setpoint.highDeviation,
+            organization: { connect: { id: organizationId } },
           },
         });
         console.log(`✅ Added setpoint configuration for ${setpoint.name}`);
@@ -97,7 +139,7 @@ async function main() {
 
   console.log('✨ Setpoint configuration seeding completed');
 
-  // Define default meter limits
+  // 4. Seed meter limits for the default org
   const meterLimits = [
     {
       parameter: 'voltage',
@@ -147,17 +189,25 @@ async function main() {
 
   for (const limit of meterLimits) {
     try {
-      // Check if limit already exists
-      const existing = await prisma.meterLimit.findUnique({
+      // Check if limit already exists for this org
+      const existing = await prisma.meterLimit.findFirst({
         where: {
-          parameter: limit.parameter
+          parameter: limit.parameter,
+          organizationId,
         }
       });
 
       if (!existing) {
         // Create new meter limit
         await prisma.meterLimit.create({
-          data: limit
+          data: {
+            parameter: limit.parameter,
+            description: limit.description,
+            unit: limit.unit,
+            highLimit: limit.highLimit,
+            lowLimit: limit.lowLimit,
+            organization: { connect: { id: organizationId } },
+          }
         });
         console.log(`✅ Added meter limit for ${limit.description}`);
         console.log(`   Range: ${limit.lowLimit} ${limit.unit} to ${limit.highLimit} ${limit.unit}`);

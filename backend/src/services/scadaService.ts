@@ -213,11 +213,11 @@ const calculateBinarySeverity = (isFailure: boolean): 'critical' | 'warning' | '
 };
 
 // Get latest SCADA data with respect to polling interval
-export const getLatestScadaData = async (forceRefresh = false): Promise<ScadaData | null> => {
+export const getLatestScadaData = async (orgId: string, forceRefresh = false): Promise<ScadaData | null> => {
     const now = Date.now();
     
     // Check if maintenance mode is active
-    const isMaintenanceActive = await isMaintenanceModeActive();
+    const isMaintenanceActive = await isMaintenanceModeActive(orgId);
     if (isMaintenanceActive && !forceRefresh) {
         if (DEBUG) console.log('🔧 Maintenance mode active - returning cached SCADA data without fetching new data');
         
@@ -237,7 +237,7 @@ export const getLatestScadaData = async (forceRefresh = false): Promise<ScadaDat
     }
     
     try {
-        const client = await getClientWithRetry();
+        const client = await getClientWithRetry(orgId);
 
         try {
             const query = `
@@ -297,7 +297,7 @@ export const getLatestScadaData = async (forceRefresh = false): Promise<ScadaDat
 };
 
 // Get setpoint configurations
-const getSetpointConfigs = async (): Promise<SetpointConfig[]> => {
+const getSetpointConfigs = async (orgId: string): Promise<SetpointConfig[]> => {
     try {
         const setpoints = await prisma.$queryRaw<PrismaSetpoint[]>`
       SELECT id, name, type, zone, "scadaField",
@@ -329,9 +329,12 @@ const createEnhancedNotification = async (
     severity: 'critical' | 'warning' | 'info',
     type: string,
     zone?: string,
-    scadaTimestamp?: Date
+    scadaTimestamp?: Date,
+    orgId?: string
 ) => {
     try {
+        // SUPER_ADMIN users are always excluded from notifications by NotificationService
+        // No need to filter here; enforced centrally
         // Use SCADA timestamp if available (already in IST), otherwise use current time
         let timestamp = scadaTimestamp || new Date();
         
@@ -372,7 +375,8 @@ const createEnhancedNotification = async (
                 setPoint,
                 type,
                 zone
-            }
+            },
+            organizationId: orgId
         });
         
         if (DEBUG) {
@@ -411,18 +415,23 @@ const createEnhancedNotification = async (
                 type,
                 zone,
                 error: 'Timestamp formatting error'
-            }
+            },
+            organizationId: orgId
         });
     }
 };
 
-// Process and format alarms
-export const processAndFormatAlarms = async (forceRefresh = false) => {
+/**
+ * Process and format alarms for a specific organization.
+ * @param orgId - Organization ID
+ * @param forceRefresh - Whether to force refresh SCADA data (default: false)
+ */
+export const processAndFormatAlarms = async (orgId: string, forceRefresh = false) => {
     try {
         // Check if maintenance mode is active
-        const isMaintenanceActive = await isMaintenanceModeActive();
+        const isMaintenanceActive = await isMaintenanceModeActive(orgId);
         
-        const scadaData = await getLatestScadaData(forceRefresh);
+        const scadaData = await getLatestScadaData(orgId, forceRefresh);
         if (DEBUG) console.log('📊 Latest SCADA Data:', scadaData);
 
         if (!scadaData) {
@@ -463,7 +472,7 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
             console.log(`📊 Processing new timestamp: ${scadaTimestampString} (previous: ${lastProcessedTimestamp})`);
         }
 
-        const setpointConfigs = await getSetpointConfigs();
+        const setpointConfigs = await getSetpointConfigs(orgId);
         if (DEBUG) {
             console.log('\n🔍 Available Setpoint Configurations:');
             setpointConfigs.forEach(sp => {
@@ -630,7 +639,8 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
                     severity,
                     config.type,
                     config.zone,
-                    parseISTTimestamp(scadaData.created_timestamp)
+                    parseISTTimestamp(scadaData.created_timestamp),
+                    orgId
                 );
             }
         }
@@ -718,7 +728,8 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
                     severity,
                     config.type,
                     config.zone,
-                    parseISTTimestamp(scadaData.created_timestamp)
+                    parseISTTimestamp(scadaData.created_timestamp),
+                    orgId
                 );
             }
         }
@@ -752,6 +763,7 @@ export const processAndFormatAlarms = async (forceRefresh = false) => {
 
 // Fetch historical SCADA alarms with pagination, filtering and sorting
 export const getScadaAlarmHistory = async (
+  orgId: string,
   page = 1, 
   limit = 20, 
   statusFilter = 'all',
@@ -834,7 +846,7 @@ export const getScadaAlarmHistory = async (
     }
     
     // Count total records for pagination
-    const client = await getClientWithRetry();
+    const client = await getClientWithRetry(orgId);
     
     try {
       // Count total records for pagination
@@ -867,7 +879,7 @@ export const getScadaAlarmHistory = async (
       
       // Process each row into alarm formats
       const alarms = await Promise.all(result.rows.map(async (scadaData) => {
-        const processed = await processScadaDataRow(scadaData);
+        const processed = await processScadaDataRow(orgId, scadaData);
         return processed;
       }));
       
@@ -991,7 +1003,7 @@ export const getScadaAlarmHistory = async (
 };
 
 // Helper function to process a single SCADA data row into alarm format
-async function processScadaDataRow(scadaData: ScadaData) {
+async function processScadaDataRow(orgId: string, scadaData: ScadaData) {
   const analogAlarms = [];
   const binaryAlarms = [];
   
@@ -1180,7 +1192,7 @@ async function processScadaDataRow(scadaData: ScadaData) {
 }
 
 // Get SCADA analytics data for charts
-export const getScadaAnalyticsData = async (timeFilter: string) => {
+export const getScadaAnalyticsData = async (orgId: string, timeFilter: string) => {
   try {
     if (DEBUG) console.log('📈 Fetching SCADA analytics data for timeFilter:', timeFilter);
     
@@ -1212,7 +1224,7 @@ export const getScadaAnalyticsData = async (timeFilter: string) => {
       console.log(`Duration: ${durationMs}ms (${timeFilter})`);
     }
     
-    const client = await getClientWithRetry();
+    const client = await getClientWithRetry(orgId);
     
     try {
       // Get historical data within the time range

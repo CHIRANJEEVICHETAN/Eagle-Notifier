@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { processAndFormatAlarms, getScadaAlarmHistory, getScadaAnalyticsData, SCADA_POLLING_INTERVAL } from '../services/scadaService';
-import { authenticate } from '../middleware/authMiddleware';
+import { authenticate, getRequestOrgId } from '../middleware/authMiddleware';
 import { checkScadaHealth } from '../config/scadaDb';
 
 const DEBUG = process.env.NODE_ENV === 'development';
@@ -18,7 +18,7 @@ router.get('/alarms', authenticate, async (req, res) => {
       console.log('🔄 Force refresh requested, bypassing cache');
     }
     
-    const alarms = await processAndFormatAlarms(forceRefresh);
+    const alarms = await processAndFormatAlarms(getRequestOrgId(req), forceRefresh);
     
     if (DEBUG) {
       console.log('📊 SCADA Response Stats:');
@@ -74,19 +74,7 @@ router.get('/history', authenticate, async (req, res) => {
     }
     
     // Get historical alarms
-    const alarmHistory = await getScadaAlarmHistory(
-      page,
-      limit,
-      statusFilter,
-      timeFilter,
-      searchQuery,
-      sortBy,
-      sortOrder,
-      alarmType,
-      alarmId,
-      startTime,
-      endTime
-    );
+    const alarmHistory = await getScadaAlarmHistory(getRequestOrgId(req), page, limit, statusFilter, timeFilter, searchQuery, sortBy, sortOrder, alarmType, alarmId, startTime, endTime);
     
     if (DEBUG) {
       console.log('📊 History Response Stats:');
@@ -123,7 +111,7 @@ router.get('/analytics', authenticate, async (req, res) => {
     }
     
     // Get analytics data
-    const analyticsData = await getScadaAnalyticsData(timeFilter);
+    const analyticsData = await getScadaAnalyticsData(getRequestOrgId(req), timeFilter);
     
     if (DEBUG) {
       console.log('📊 Analytics Response Stats:');
@@ -131,7 +119,6 @@ router.get('/analytics', authenticate, async (req, res) => {
       console.log(`Binary Data Points: ${analyticsData.binaryData.length > 0 ? analyticsData.binaryData[0].data.length : 0}`);
       console.log(`Time Labels: ${analyticsData.timeLabels.length}`);
     }
-    
     res.json(analyticsData);
   } catch (error) {
     console.error('🔴 Error fetching SCADA analytics data:', error);
@@ -148,11 +135,11 @@ router.get('/analytics', authenticate, async (req, res) => {
 // Add health check endpoint with detailed diagnostics
 router.get('/health', authenticate, async (req, res) => {
   if (DEBUG) console.log('🏥 Checking SCADA health...');
-  const health = await checkScadaHealth();
+  const health = await checkScadaHealth(getRequestOrgId(req));
   res.status(health.status === 'healthy' ? 200 : 503).json({
     ...health,
     pollingInterval: SCADA_POLLING_INTERVAL
   });
 });
 
-export default router; 
+export default router;

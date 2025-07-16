@@ -10,7 +10,7 @@ import scadaRoutes from './src/routes/scadaRoutes';
 import maintenanceRoutes from './src/routes/maintenanceRoutes';
 import reportRoutes from './src/routes/reportRoutes';
 import { processAndFormatAlarms } from './src/services/scadaService';
-import { testScadaConnection, checkScadaHealth } from './src/config/scadaDb';
+import { testAllOrgScadaConnections } from './src/config/scadaDb';
 import prisma from './src/config/db';
 import authRoutes from './src/routes/authRoutes';
 import operatorRoutes from './src/routes/operatorRoutes';
@@ -108,39 +108,29 @@ const SCADA_POLL_INTERVAL = parseInt(
 // Track if polling is currently active
 let isPolling = false;
 
-// Reliable polling function with overlap protection
+// Multi-tenant SCADA polling function
 async function pollScadaData() {
-  // Skip if already polling to prevent overlap
   if (isPolling) {
     console.log('⚠️ Previous poll still in progress, skipping this interval');
     return;
   }
-
   try {
     isPolling = true;
     console.log(`📊 Polling SCADA data at ${new Date().toISOString()}`);
-    
-    // Adding a timeout to prevent stuck operations
-    const pollPromise = processAndFormatAlarms(true); // Force refresh
-    
-    // Add a timeout to ensure we don't get stuck
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('SCADA poll timeout')), 20000); // 20 second timeout
-    });
-    
-    await Promise.race([pollPromise, timeoutPromise]);
-    console.log('✅ SCADA data processed successfully');
-  } catch (error) {
-    console.error('🔴 Error polling SCADA data:', error);
-    
-    // Check database health if we encounter an error
-    const healthStatus = await checkScadaHealth();
-    console.log('🏥 SCADA DB Health Check:', healthStatus.status);
-    
-    if (healthStatus.status === 'unhealthy') {
-      console.log('🔄 Attempting to reconnect to SCADA database...');
-      await testScadaConnection();
+    // Fetch all organizations
+    const orgs = await prisma.organization.findMany();
+    for (const org of orgs) {
+      try {
+        // Poll alarms for this org
+        await processAndFormatAlarms(org.id, true);
+        // Health check for this org
+        // await checkScadaHealth(org.id); // This line was removed as per the edit hint
+      } catch (err) {
+        console.error(`Error polling SCADA for org ${org.id}:`, err);
+      }
     }
+  } catch (err) {
+    console.error('Error in multi-tenant SCADA polling:', err);
   } finally {
     isPolling = false;
   }
@@ -165,10 +155,28 @@ async function startServer() {
       await prisma.$connect();
     }
 
-    const scadaConnected = await testScadaConnection();
-    if (!scadaConnected) {
-      console.error('Failed to connect to SCADA database. Server will start but SCADA features may be limited.');
-    }
+    // Test all org SCADA DB connections and log results
+    await testAllOrgScadaConnections();
+
+    // Always start SCADA polling for all orgs, regardless of connection test results
+    // Use reliable interval with jitter to prevent thundering herd problems
+    const pollingInterval = setInterval(() => {
+      // Add small random jitter (±500ms) to prevent synchronized requests
+      const jitter = Math.floor(Math.random() * 1000) - 500;
+      setTimeout(() => {
+        pollScadaData().catch(error => {
+          console.error('Error in SCADA polling:', error);
+        });
+      }, jitter);
+    }, SCADA_POLL_INTERVAL);
+    // Add to tracked intervals for clean shutdown
+    trackedIntervals.push(pollingInterval);
+    // Initial poll with error handling (with a slight delay to ensure server is fully ready)
+    setTimeout(() => {
+      pollScadaData().catch(error => {
+        console.error('Error in initial SCADA poll:', error);
+      });
+    }, 2000);
 
     // Start server
     app.listen(PORT, () => {
@@ -190,28 +198,7 @@ async function startServer() {
       console.log(`SCADA polling interval: ${SCADA_POLL_INTERVAL}ms`);
 
       // Start SCADA polling if connection was successful
-      if (scadaConnected) {
-        // Use reliable interval with jitter to prevent thundering herd problems
-        const pollingInterval = setInterval(() => {
-          // Add small random jitter (±500ms) to prevent synchronized requests
-          const jitter = Math.floor(Math.random() * 1000) - 500;
-          setTimeout(() => {
-            pollScadaData().catch(error => {
-              console.error('Error in SCADA polling:', error);
-            });
-          }, jitter);
-        }, SCADA_POLL_INTERVAL);
-        
-        // Add to tracked intervals for clean shutdown
-        trackedIntervals.push(pollingInterval);
-        
-        // Initial poll with error handling (with a slight delay to ensure server is fully ready)
-        setTimeout(() => {
-          pollScadaData().catch(error => {
-            console.error('Error in initial SCADA poll:', error);
-          });
-        }, 2000);
-      }
+      // The polling logic was removed as per the edit hint
     });
   } catch (error) {
     console.error('Failed to start server:', error);

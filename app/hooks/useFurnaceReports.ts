@@ -5,10 +5,11 @@ import * as Sharing from 'expo-sharing';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { Alert, Platform } from 'react-native';
 import axios from 'axios';
-import { getAuthHeader } from '../api/auth';
+import { getOrgHeaders } from '../api/auth';
 import { apiConfig } from '../api/config';
 import { subDays, addHours, format as formatDate } from 'date-fns';
 import { ColumnGrouping, ExcelReportService } from '../services/ExcelReportService';
+import { useAuth } from '../context/AuthContext';
 
 export interface ReportTimeRange {
   startDate: Date;
@@ -63,6 +64,7 @@ export function useFurnaceReports() {
   const [currentPage, setCurrentPage] = useState(1);
   const [allReports, setAllReports] = useState<FurnaceReport[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const { organizationId } = useAuth();
 
   // Fetch reports from database with pagination
   const {
@@ -73,7 +75,7 @@ export function useFurnaceReports() {
   } = useQuery<PaginatedReportsResponse>({
     queryKey: ['furnaceReports', currentPage],
     queryFn: async () => {
-      const headers = await getAuthHeader();
+      const headers = await getOrgHeaders(organizationId);
       
       // Fetch reports for the current page
       const { data } = await axios.get(
@@ -104,7 +106,7 @@ export function useFurnaceReports() {
       setIsLoadingMore(true);
       const nextPage = currentPage + 1;
       
-      const headers = await getAuthHeader();
+      const headers = await getOrgHeaders(organizationId);
       const { data } = await axios.get(
         `${apiConfig.apiUrl}/api/reports/furnace?page=${nextPage}&limit=10`,
         { headers }
@@ -120,7 +122,7 @@ export function useFurnaceReports() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [currentPage, hasNextPage, isLoadingMore]);
+  }, [currentPage, hasNextPage, isLoadingMore, organizationId]);
 
   // Reset pagination when refetching
   const handleRefetchReports = useCallback(async () => {
@@ -194,7 +196,7 @@ export function useFurnaceReports() {
         
         if (format === 'excel') {
           // Fetch the data directly from API
-          const headers = await getAuthHeader();
+          const headers = await getOrgHeaders(organizationId);
           
           // Smart limit calculation for SCADA data (1 record/second = 86,400/day)
           const timeDifferenceHours = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
@@ -407,7 +409,7 @@ export function useFurnaceReports() {
         const fileSize = fileInfo.exists && !fileInfo.isDirectory ? fileInfo.size : 0;
         
         // Save to database
-        const headers = await getAuthHeader();
+        const headers = await getOrgHeaders(organizationId);
         console.log('Attempting to save report to database...');
         console.log('Headers:', headers);
         console.log('Report title:', reportTitle);
@@ -491,7 +493,7 @@ export function useFurnaceReports() {
         setIsGenerating(false);
       }
     },
-    []
+    [organizationId, handleRefetchReports]
   );
 
   // Generate split reports for large time ranges
@@ -591,7 +593,7 @@ export function useFurnaceReports() {
   const openReport = useCallback(async (reportId: string): Promise<void> => {
     try {
       // 1️⃣ Download the file
-      const headers = await getAuthHeader();
+      const headers = await getOrgHeaders(organizationId);
       const response = await axios.get(`${apiConfig.apiUrl}/api/reports/furnace/${reportId}`, {
         headers,
         responseType: 'arraybuffer'
@@ -649,12 +651,12 @@ export function useFurnaceReports() {
       console.error('Error opening report:', error);
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to open report');
     }
-  }, [reports]);
+  }, [reports, organizationId]);
 
   // Share report from database
   const shareReport = useCallback(async (reportId: string): Promise<void> => {
     try {
-      const headers = await getAuthHeader();
+      const headers = await getOrgHeaders(organizationId);
       const response = await axios.get(`${apiConfig.apiUrl}/api/reports/furnace/${reportId}`, {
         headers,
         responseType: 'arraybuffer'
@@ -681,7 +683,7 @@ export function useFurnaceReports() {
       console.error('Error sharing report:', error);
       Alert.alert('Error', 'Failed to share report');
     }
-  }, []);
+  }, [organizationId]);
 
   return {
     reports,

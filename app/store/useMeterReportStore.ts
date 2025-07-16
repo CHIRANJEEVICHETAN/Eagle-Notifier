@@ -24,6 +24,7 @@ interface MeterReportState {
   addReport: (report: MeterReport) => void;
   setGeneratedReportId: (id: string | null) => void;
   setIsGenerating: (isGenerating: boolean) => void;
+  resetStore: () => void;
 }
 
 // Default filter: last 7 days, all parameters
@@ -63,5 +64,11 @@ export const useMeterReportStore = create<MeterReportState>((set) => ({
   
   setIsGenerating: (isGenerating) => set({
     isGenerating
+  }),
+  resetStore: () => set({
+    filter: getDefaultFilter(),
+    recentReports: [],
+    generatedReportId: null,
+    isGenerating: false
   })
 })); 
