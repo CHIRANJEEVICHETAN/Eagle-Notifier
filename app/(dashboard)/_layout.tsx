@@ -30,12 +30,7 @@ export default function DashboardLayout() {
         },
         headerShadowVisible: false,
       }}>
-      <Stack.Screen
-        name="screens/admin/index"
-        options={{
-          headerShown: false,
-        }}
-      />
+
       <Stack.Screen
         name="screens/admin/meter-limits/index"
         options={{
@@ -122,6 +117,42 @@ export default function DashboardLayout() {
       />
       <Stack.Screen
         name="reports/index"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="superAdmin/index"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="superAdmin/impersonation/index"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="superAdmin/orgManagement/index"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen 
+        name="superAdmin/scadaConfig/index"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="superAdmin/userManagement/index"
+        options={{
+          headerShown: false,
+        }}
+      /> 
+      <Stack.Screen
+        name="superAdmin/globalSearch/index"
         options={{
           headerShown: false,
         }}

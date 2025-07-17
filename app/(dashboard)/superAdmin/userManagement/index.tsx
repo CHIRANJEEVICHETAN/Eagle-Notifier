@@ -2,9 +2,9 @@ import React from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../../../context/ThemeContext';
 import { useRouter } from 'expo-router';
-import SuperAdminUserManagement from '../../components/SuperAdminUserManagement';
+import SuperAdminUserManagement from '../../../components/SuperAdminUserManagement';
 
 const UserManagementPage = () => {
   const { isDarkMode } = useTheme();

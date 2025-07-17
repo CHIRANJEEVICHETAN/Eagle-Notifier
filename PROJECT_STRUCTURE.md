@@ -34,7 +34,7 @@ Eagle-Notifier
 │  │  │     │  └─ index.tsx
 │  │  │     └─ users
 │  │  │        └─ index.tsx
-│  │  ├─ super-admin
+│  │  ├─ superAdmin
 │  │  │  ├─ index.tsx
 │  │  │  └─ _layout.tsx
 │  │  └─ _layout.tsx

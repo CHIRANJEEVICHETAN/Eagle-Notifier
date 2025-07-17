@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, TouchableOpacity, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../../../context/ThemeContext';
 import { useRouter } from 'expo-router';
-import { useOrganizations } from '../../hooks/useOrganizations';
+import { useOrganizations } from '../../../hooks/useOrganizations';
 
 const TABS = [
   { key: 'alarms', label: 'Alarms' },

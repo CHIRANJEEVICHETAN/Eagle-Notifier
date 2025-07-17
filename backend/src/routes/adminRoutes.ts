@@ -344,7 +344,7 @@ router.delete('/organizations/:id', async (req: Request, res: Response, next: Ne
 
 /**
  * @route   GET /api/admin/organizations
- * @desc    Get all organizations (super-admin only)
+ * @desc    Get all organizations (superAdmin only)
  * @access  Private (Super Admin)
  */
 // Define the async handler separately to avoid type inference issues

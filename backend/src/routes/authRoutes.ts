@@ -45,7 +45,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     let orgIdToUse = organizationId;
     if (role !== 'SUPER_ADMIN') {
       if (!organizationId) {
-        throw createError('organizationId is required for non-super-admin users', 400);
+        throw createError('organizationId is required for non-superAdmin users', 400);
       }
     }
     

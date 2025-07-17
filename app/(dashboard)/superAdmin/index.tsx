@@ -5,9 +5,9 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import OrganizationManagement from '../../components/OrganizationManagement';
-import SuperAdminUserManagement from '../../components/SuperAdminUserManagement';
-import { useRouter } from 'expo-router';
+// import OrganizationManagement from '../../components/OrganizationManagement';
+// import SuperAdminUserManagement from '../../components/SuperAdminUserManagement';
+import { useRouter, usePathname } from 'expo-router';
 // Import org-aware API (to be implemented if not present)
 // import { fetchOrganizations, createOrganization, updateOrganization, deleteOrganization } from '../../api/superAdminApi';
 
@@ -19,35 +19,35 @@ const SUPER_ADMIN_SECTIONS = [
     key: 'org-management',
     icon: 'business-outline',
     title: 'Organization Management',
-    route: '/(dashboard)/super-admin/org-management',
+    route: '/(dashboard)/superAdmin/orgManagement',
     description: 'View, create, edit, and delete organizations. Manage SCADA DB configs and schema mappings.'
   },
   {
     key: 'user-management',
     icon: 'people-outline',
     title: 'User Management',
-    route: '/(dashboard)/super-admin/user-management',
+    route: '/(dashboard)/superAdmin/userManagement',
     description: 'Manage users across all organizations. Assign roles, reset passwords, and more.'
   },
   {
     key: 'scada-config',
     icon: 'settings-outline',
     title: 'SCADA Config & Schema',
-    route: '/(dashboard)/super-admin/scada-config',
+    route: '/(dashboard)/superAdmin/scadaConfig',
     description: 'Configure SCADA DB connections and schema mapping for each organization.'
   },
   {
     key: 'impersonation',
     icon: 'person-circle-outline',
     title: 'Impersonation / Switch Context',
-    route: '/(dashboard)/super-admin/impersonation',
+    route: '/(dashboard)/superAdmin/impersonation',
     description: 'Impersonate org admins/operators for support and troubleshooting.'
   },
   {
     key: 'global-search',
     icon: 'search-outline',
     title: 'Global Search & Analytics',
-    route: '/(dashboard)/super-admin/global-search',
+    route: '/(dashboard)/superAdmin/globalSearch',
     description: 'Search/view alarms, notifications, and reports across all organizations.'
   },
 ];
@@ -56,6 +56,32 @@ const SuperAdminDashboard = () => {
   const { isDarkMode } = useTheme();
   const { authState } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+
+  // Navigation function with debugging
+  const handleNavigation = (route: string, sectionTitle: string) => {
+    try {
+      router.push(route as any);
+      console.log('✅ router.push successful');
+    } catch (error) {
+      console.error('❌ router.push failed:', error);
+      // Try alternative navigation methods
+      try {
+        console.log('- Attempting router.navigate...');
+        (router as any).navigate(route);
+        console.log('✅ router.navigate successful');
+      } catch (navError) {
+        console.error('❌ router.navigate failed:', navError);
+        try {
+          console.log('- Attempting router.replace...');
+          router.replace(route as any);
+          console.log('✅ router.replace successful');
+        } catch (replaceError) {
+          console.error('❌ router.replace failed:', replaceError);
+        }
+      }
+    }
+  };
 
   // Theme colors
   const THEME = useMemo(() => ({
@@ -86,12 +112,12 @@ const SuperAdminDashboard = () => {
   const theme = isDarkMode ? THEME.dark : THEME.light;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>  
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: isDarkMode ? 'rgba(30,41,59,0.95)' : 'rgba(248,250,252,0.95)', borderBottomColor: theme.border }]}>  
+      <View style={[styles.header, { backgroundColor: isDarkMode ? 'rgba(30,41,59,0.95)' : 'rgba(248,250,252,0.95)', borderBottomColor: theme.border }]}>
         <View style={styles.headerLeft}>
-          <View style={[styles.logoContainer, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }]}>  
+          <View style={[styles.logoContainer, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }]}>
             <Ionicons name="shield-checkmark-outline" size={40} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
           </View>
           <View style={styles.titleContainer}>
@@ -114,7 +140,7 @@ const SuperAdminDashboard = () => {
               key={section.key}
               style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.border, shadowColor: theme.shadow }]}
               activeOpacity={0.85}
-              onPress={() => router.push(section.route as any)}
+              onPress={() => handleNavigation(section.route, section.title)}
             >
               <Ionicons name={section.icon as any} size={32} color={theme.text.accent} style={styles.sectionIcon} />
               <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{section.title}</Text>
@@ -125,18 +151,18 @@ const SuperAdminDashboard = () => {
         {/* Removed OrganizationManagement and SuperAdminUserManagement from dashboard */}
       </ScrollView>
       {/* Bottom Navigation */}
-      <SafeAreaView edges={['bottom']} style={[styles.bottomNavContainer, { backgroundColor: theme.cardBg }]}>  
-        <View style={[styles.bottomNav, { backgroundColor: theme.cardBg, borderTopColor: theme.border }]}>  
+      <SafeAreaView edges={['bottom']} style={[styles.bottomNavContainer, { backgroundColor: theme.cardBg }]}>
+        <View style={[styles.bottomNav, { backgroundColor: theme.cardBg, borderTopColor: theme.border }]}>
           {[
-            { name: 'Dashboard', icon: 'home', route: '/(dashboard)/super-admin', active: true },
-            { name: 'Organizations', icon: 'business-outline', route: '/(dashboard)/super-admin/org-management', active: false },
-            { name: 'Users', icon: 'people-outline', route: '/(dashboard)/super-admin/user-management', active: false },
+            { name: 'Dashboard', icon: 'home', route: '/(dashboard)/superAdmin', active: true },
+            { name: 'Organizations', icon: 'business-outline', route: '/(dashboard)/superAdmin/orgManagement', active: false },
+            { name: 'Users', icon: 'people-outline', route: '/(dashboard)/superAdmin/userManagement', active: false },
             { name: 'Settings', icon: 'settings-outline', route: '/(dashboard)/profile', active: false },
           ].map(item => (
             <TouchableOpacity
               key={item.name}
               style={styles.navItem}
-              onPress={() => router.push(item.route as any)}
+              onPress={() => handleNavigation(item.route, item.name)}
               accessibilityRole="button"
               accessibilityLabel={item.name}
             >
@@ -148,7 +174,7 @@ const SuperAdminDashboard = () => {
               <Text style={[styles.navLabel, { color: item.active ? theme.text.accent : theme.text.secondary }]} numberOfLines={1}>{item.name}</Text>
             </TouchableOpacity>
           ))}
-    </View>
+        </View>
       </SafeAreaView>
     </SafeAreaView>
   );

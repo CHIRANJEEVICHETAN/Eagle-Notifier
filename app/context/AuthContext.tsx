@@ -103,9 +103,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       navigateTo('/onboarding');
       return;
     }
-    // SUPER_ADMIN: always go to super-admin dashboard
+    // SUPER_ADMIN: allow navigation within superAdmin section, otherwise go to superAdmin dashboard
     if (isAuthenticated && role === 'SUPER_ADMIN') {
-      navigateTo('/(dashboard)/super-admin');
+      const isSuperAdminRoute = segments[0] === '(dashboard)' && segments[1] === 'superAdmin';
+      if (!isSuperAdminRoute) {
+        navigateTo('/(dashboard)/superAdmin');
+        return;
+      }
+      // If already in superAdmin section, allow navigation to continue
       return;
     }
     // If authenticated and on onboarding screen but already selected app type

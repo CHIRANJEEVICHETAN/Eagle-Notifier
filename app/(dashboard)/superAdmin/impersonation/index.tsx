@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../../../context/ThemeContext';
 import { useRouter } from 'expo-router';
-import { useOrganizations, Organization } from '../../hooks/useOrganizations';
-import { useSuperAdminUsers, SuperAdminUser } from '../../hooks/useSuperAdminUsers';
+import { useOrganizations, Organization } from '../../../hooks/useOrganizations';
+import { useSuperAdminUsers, SuperAdminUser } from '../../../hooks/useSuperAdminUsers';
 
 const ImpersonationPage: React.FC = () => {
   const { isDarkMode } = useTheme();
