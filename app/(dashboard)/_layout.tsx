@@ -128,19 +128,7 @@ export default function DashboardLayout() {
         }}
       />
       <Stack.Screen
-        name="superAdmin/impersonation/index"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
         name="superAdmin/orgManagement/index"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen 
-        name="superAdmin/scadaConfig/index"
         options={{
           headerShown: false,
         }}

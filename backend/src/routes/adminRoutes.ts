@@ -199,9 +199,10 @@ router.delete('/users/:id', async (req: Request, res: Response, next: NextFuncti
     if (userToDelete.role === 'ADMIN' && userToDelete.email === req.user?.email) {
       throw createError('Cannot delete your own admin account', 400);
     }
-    await prisma.user.delete({
-      where: { id },
-    });
+    // Delete related notifications (and add more if needed)
+    // await prisma.notification.deleteMany({ where: { userId: id } });
+    // Now delete the user
+    await prisma.user.delete({ where: { id } });
     res.status(204).send();
   } catch (error) {
     next(error);

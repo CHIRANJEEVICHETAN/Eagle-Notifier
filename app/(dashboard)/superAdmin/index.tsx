@@ -30,13 +30,6 @@ const SUPER_ADMIN_SECTIONS = [
     description: 'Manage users across all organizations. Assign roles, reset passwords, and more.'
   },
   {
-    key: 'impersonation',
-    icon: 'person-circle-outline',
-    title: 'Impersonation / Switch Context',
-    route: '/(dashboard)/superAdmin/impersonation',
-    description: 'Impersonate org admins/operators for support and troubleshooting.'
-  },
-  {
     key: 'global-search',
     icon: 'search-outline',
     title: 'Global Search & Analytics',
@@ -49,7 +42,6 @@ const CARD_COLORS = [
   // Soft, theme-aware, not too vibrant
   { light: ['#e0e7ff', '#f1f5f9'], dark: ['#1e293b', '#334155'] }, // Org
   { light: ['#fef9c3', '#f1f5f9'], dark: ['#334155', '#1e293b'] }, // User
-  { light: ['#fce7f3', '#f1f5f9'], dark: ['#1e293b', '#334155'] }, // Impersonation
   { light: ['#cffafe', '#f1f5f9'], dark: ['#334155', '#1e293b'] }, // Search
 ];
 
@@ -234,31 +226,32 @@ const SuperAdminDashboard = () => {
         </View>
       </View>
       {/* Body */}
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={{ marginTop: 8 }}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}> 
+        <View style={{ flex: 1, flexDirection: 'column', justifyContent: 'space-evenly', minHeight: 420, marginTop: 8 }}>
           {SUPER_ADMIN_SECTIONS.map((section, idx) => {
             const colors = CARD_COLORS[idx % CARD_COLORS.length][isDarkMode ? 'dark' : 'light'];
-            // Colored shadow: blue/cyan for dark, blue for light
             const shadowColor = isDarkMode ? 'rgba(56,189,248,0.35)' : 'rgba(59,130,246,0.22)';
             return (
               <Animated.View
                 key={section.key}
                 style={{
-                  transform: [
-                    { scale: Animated.multiply(cardScales[idx], breathScales[idx]) },
-                    { translateX: cardTranslates[idx] },
-                  ],
-                  opacity: cardOpacities[idx],
-                  marginBottom: 14,
+                  flex: 1,
+                  minHeight: 0,
+                  marginBottom: idx < SUPER_ADMIN_SECTIONS.length - 1 ? 18 : 0,
                   borderRadius: 16,
                   shadowColor: shadowColor,
-                  shadowOffset: { width: 8, height: 12 }, // bottom-right only
+                  shadowOffset: { width: 8, height: 12 },
                   shadowOpacity: 0.45,
                   shadowRadius: 14,
                   elevation: 7,
                   backgroundColor: colors[0],
-                  minWidth: 0,
+                  opacity: cardOpacities[idx],
+                  transform: [
+                    { scale: Animated.multiply(cardScales[idx], breathScales[idx]) },
+                    { translateX: cardTranslates[idx] },
+                  ],
                   maxWidth: '100%',
+                  justifyContent: 'center',
                 }}
               >
                 <TouchableOpacity
@@ -266,27 +259,27 @@ const SuperAdminDashboard = () => {
                   onPressIn={() => handlePressIn(idx)}
                   onPressOut={() => handlePressOut(idx)}
                   onPress={() => handleNavigation(section.route, section.title)}
-                  style={{ borderRadius: 16, overflow: 'hidden' }}
+                  style={{ borderRadius: 16, overflow: 'hidden', flex: 1 }}
                 >
                   <View
                     style={{
-                      padding: 14,
+                      flex: 1,
+                      padding: 18,
                       alignItems: 'center',
                       justifyContent: 'center',
                       borderRadius: 16,
-                      minHeight: 90,
+                      minHeight: 120,
                       backgroundColor: colors[1],
                       borderWidth: 1,
                       borderColor: isDarkMode ? '#334155' : '#E2E8F0',
                     }}
-                    className="rounded-2xl"
                   >
                     <View
                       style={{
                         backgroundColor: isDarkMode ? 'rgba(59,130,246,0.10)' : 'rgba(37,99,235,0.07)',
                         borderRadius: 14,
-                        padding: 10,
-                        marginBottom: 8,
+                        padding: 12,
+                        marginBottom: 10,
                         shadowColor: shadowColor,
                         shadowOffset: { width: 4, height: 6 },
                         shadowOpacity: 0.18,
@@ -296,16 +289,16 @@ const SuperAdminDashboard = () => {
                     >
                       <Ionicons
                         name={section.icon as any}
-                        size={28}
+                        size={32}
                         color={isDarkMode ? '#60A5FA' : '#2563EB'}
                       />
                     </View>
                     <Text
                       style={{
-                        fontSize: 14,
+                        fontSize: 16,
                         fontWeight: 'bold',
                         color: isDarkMode ? '#F8FAFC' : '#1E293B',
-                        marginBottom: 4,
+                        marginBottom: 6,
                         textAlign: 'center',
                         letterSpacing: 0.1,
                       }}
@@ -314,11 +307,11 @@ const SuperAdminDashboard = () => {
                     </Text>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: 12,
                         color: isDarkMode ? '#94A3B8' : '#475569',
                         textAlign: 'center',
                         fontWeight: '500',
-                        lineHeight: 14,
+                        lineHeight: 16,
                       }}
                     >
                       {section.description}

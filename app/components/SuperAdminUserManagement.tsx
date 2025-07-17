@@ -1,13 +1,18 @@
 import { useTheme } from "../context/ThemeContext";
 import { useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Alert } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSuperAdminUsers, SuperAdminUser, UserForm } from "../hooks/useSuperAdminUsers";
 import { useOrganizations, Organization } from "../hooks/useOrganizations";
+import { useAuth } from "../context/AuthContext";
 
 const SuperAdminUserManagement: React.FC = () => {
   const { isDarkMode } = useTheme();
   const { organizations } = useOrganizations();
+  const { authState } = useAuth();
+  const currentUserId = authState.user?.id;
+  const currentUserEmail = authState.user?.email;
+  const currentUserRole = authState.user?.role;
   const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>(undefined);
   const {
     users,
@@ -21,6 +26,12 @@ const SuperAdminUserManagement: React.FC = () => {
   const [modalType, setModalType] = useState<'add' | 'edit'>('add');
   const [selectedUser, setSelectedUser] = useState<SuperAdminUser | null>(null);
   const [form, setForm] = useState<UserForm>({ name: '', email: '', password: '', role: 'OPERATOR', organizationId: '' });
+
+  // Modal state for delete confirmation and success
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<SuperAdminUser | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [deletedUserInfo, setDeletedUserInfo] = useState<{ name: string; email: string } | null>(null);
 
   const openAddModal = () => {
     setModalType('add');
@@ -36,14 +47,22 @@ const SuperAdminUserManagement: React.FC = () => {
     setSelectedUser(user);
   };
 
-  const handleDelete = (user: SuperAdminUser) => {
-    Alert.alert('Delete User', `Are you sure you want to delete ${user.email}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        await deleteUser(user.id);
-        refetchUsers();
-      } }
-    ]);
+  // Open delete confirmation modal
+  const openDeleteModal = (user: SuperAdminUser) => {
+    setUserToDelete(user);
+    setShowDeleteModal(true);
+  };
+
+  // Confirm delete
+  const confirmDelete = async () => {
+    if (userToDelete) {
+      await deleteUser(userToDelete.id);
+      setShowDeleteModal(false);
+      setDeletedUserInfo({ name: userToDelete.name, email: userToDelete.email });
+      setShowSuccessModal(true);
+      setUserToDelete(null);
+      refetchUsers();
+    }
   };
 
   const handleSubmit = async () => {
@@ -83,25 +102,39 @@ const SuperAdminUserManagement: React.FC = () => {
           <Text>Loading...</Text>
         ) : users.length === 0 ? (
           <Text>No users found.</Text>
-        ) : users.map((user: SuperAdminUser) => (
-          <View key={user.id} style={{ backgroundColor: isDarkMode ? '#1e293b' : '#f3f4f6', borderRadius: 10, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View>
-              <Text style={{ fontSize: 18, fontWeight: '600' }}>{user.name}</Text>
-              <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b' }}>{user.email}</Text>
-              <Text style={{ fontSize: 12, color: isDarkMode ? '#fbbf24' : '#2563eb' }}>Role: {user.role}</Text>
-              <Text style={{ fontSize: 12, color: isDarkMode ? '#a3e635' : '#0ea5e9' }}>Org: {organizations.find(o => o.id === user.organizationId)?.name || user.organizationId}</Text>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity onPress={() => openEditModal(user)} style={{ marginRight: 8 }}>
-                <Ionicons name="create-outline" size={22} color={isDarkMode ? '#fbbf24' : '#f59e42'} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDelete(user)}>
-                <Ionicons name="trash-outline" size={22} color="#ef4444" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
+        ) : [...users]
+          // TypeScript fix: allow for possible 'SUPER_ADMIN' role in sorting
+          .sort((a: any, b: any) => {
+            if (a.role === 'SUPER_ADMIN' && b.role !== 'SUPER_ADMIN') return -1;
+            if (a.role !== 'SUPER_ADMIN' && b.role === 'SUPER_ADMIN') return 1;
+            return 0;
+          })
+          .map((user: SuperAdminUser) => {
+            // Hide edit/delete for current super_admin
+            const isCurrentSuperAdmin = user.id === currentUserId && currentUserRole === 'SUPER_ADMIN';
+            return (
+              <View key={user.id} style={{ backgroundColor: isDarkMode ? '#1e293b' : '#f3f4f6', borderRadius: 10, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View>
+                  <Text style={{ fontSize: 18, fontWeight: '600' }}>{user.name}</Text>
+                  <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b' }}>{user.email}</Text>
+                  <Text style={{ fontSize: 12, color: isDarkMode ? '#fbbf24' : '#2563eb' }}>Role: {user.role}</Text>
+                  <Text style={{ fontSize: 12, color: isDarkMode ? '#a3e635' : '#0ea5e9' }}>Org: {organizations.find(o => o.id === user.organizationId)?.name || user.organizationId}</Text>
+                </View>
+                {!isCurrentSuperAdmin && (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity onPress={() => openEditModal(user)} style={{ marginRight: 8 }}>
+                      <Ionicons name="create-outline" size={22} color={isDarkMode ? '#fbbf24' : '#f59e42'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openDeleteModal(user)}>
+                      <Ionicons name="trash-outline" size={22} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            );
+          })}
       </ScrollView>
+      {/* Add/Edit User Modal */}
       <Modal visible={showModal} animationType="slide" transparent>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
           <View style={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: 12, padding: 20, width: '90%' }}>
@@ -160,6 +193,42 @@ const SuperAdminUserManagement: React.FC = () => {
                 <Text style={{ color: '#fff', fontWeight: 'bold' }}>{modalType === 'add' ? 'Add' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Delete Confirmation Modal */}
+      <Modal visible={showDeleteModal} animationType="fade" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: 12, padding: 24, width: '85%' }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: isDarkMode ? '#fff' : '#111827' }}>Confirm Delete</Text>
+            <Text style={{ marginBottom: 20, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+              Are you sure you want to delete user
+              <Text style={{ fontWeight: 'bold', color: isDarkMode ? '#f87171' : '#dc2626' }}> {userToDelete?.email} </Text>?
+              This action cannot be undone.
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity onPress={() => setShowDeleteModal(false)} style={{ padding: 8, borderRadius: 8, backgroundColor: '#e5e7eb', marginRight: 8 }}>
+                <Text style={{ color: '#111827' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmDelete} style={{ padding: 8, borderRadius: 8, backgroundColor: '#ef4444' }}>
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Success Modal */}
+      <Modal visible={showSuccessModal} animationType="fade" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: 12, padding: 24, width: '85%', alignItems: 'center' }}>
+            <Ionicons name="checkmark-circle" size={48} color={isDarkMode ? '#22d3ee' : '#22c55e'} style={{ marginBottom: 12 }} />
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: isDarkMode ? '#fff' : '#111827' }}>User Deleted</Text>
+            <Text style={{ color: isDarkMode ? '#cbd5e1' : '#334155', marginBottom: 16 }}>
+              User <Text style={{ fontWeight: 'bold' }}>{deletedUserInfo?.email}</Text> has been deleted successfully.
+            </Text>
+            <TouchableOpacity onPress={() => setShowSuccessModal(false)} style={{ padding: 10, borderRadius: 8, backgroundColor: isDarkMode ? '#2563eb' : '#3b82f6', marginTop: 8, paddingHorizontal: 20, paddingVertical: 10 }}>
+              <Text style={{ color: '#fff', fontWeight: 'bold' }}>OK</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
