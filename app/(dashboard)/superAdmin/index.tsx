@@ -1,8 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput, Alert, Dimensions, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput, Alert, Dimensions, Platform, Animated, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 // import OrganizationManagement from '../../components/OrganizationManagement';
@@ -10,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useRouter, usePathname } from 'expo-router';
 // Import org-aware API (to be implemented if not present)
 // import { fetchOrganizations, createOrganization, updateOrganization, deleteOrganization } from '../../api/superAdminApi';
+import { Ionicons } from '@expo/vector-icons';
 
 const windowWidth = Dimensions.get('window').width;
 const highDPIPhones = 380;
@@ -43,6 +43,14 @@ const SUPER_ADMIN_SECTIONS = [
     route: '/(dashboard)/superAdmin/globalSearch',
     description: 'Search/view alarms, notifications, and reports across all organizations.'
   },
+];
+
+const CARD_COLORS = [
+  // Soft, theme-aware, not too vibrant
+  { light: ['#e0e7ff', '#f1f5f9'], dark: ['#1e293b', '#334155'] }, // Org
+  { light: ['#fef9c3', '#f1f5f9'], dark: ['#334155', '#1e293b'] }, // User
+  { light: ['#fce7f3', '#f1f5f9'], dark: ['#1e293b', '#334155'] }, // Impersonation
+  { light: ['#cffafe', '#f1f5f9'], dark: ['#334155', '#1e293b'] }, // Search
 ];
 
 const SuperAdminDashboard = () => {
@@ -104,48 +112,227 @@ const SuperAdminDashboard = () => {
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
 
+  // Animation state for each card
+  const [cardScales] = useState(() => SUPER_ADMIN_SECTIONS.map(() => new Animated.Value(1)));
+  // Breathing animation state for each card
+  const [breathScales] = useState(() => SUPER_ADMIN_SECTIONS.map(() => new Animated.Value(1)));
+  // Entry animation state for each card
+  const [cardTranslates] = useState(() => SUPER_ADMIN_SECTIONS.map((_, idx) => new Animated.Value(idx < 2 ? -80 : 80)));
+  const [cardOpacities] = useState(() => SUPER_ADMIN_SECTIONS.map(() => new Animated.Value(0)));
+
+  useEffect(() => {
+    // Animate entry: first 2 from left, next 2 from right
+    const animations = SUPER_ADMIN_SECTIONS.map((_, idx) =>
+      Animated.parallel([
+        Animated.timing(cardTranslates[idx], {
+          toValue: 0,
+          duration: 520 + idx * 60,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cardOpacities[idx], {
+          toValue: 1,
+          duration: 420 + idx * 60,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    Animated.stagger(80, animations).start();
+
+    // Breathing animation loop for each card
+    SUPER_ADMIN_SECTIONS.forEach((_, idx) => {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(breathScales[idx], {
+            toValue: 1.045,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(breathScales[idx], {
+            toValue: 0.97,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(breathScales[idx], {
+            toValue: 1,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+        ]),
+        { resetBeforeIteration: true }
+      );
+      setTimeout(() => loop.start(), idx * 350); // stagger start
+    });
+  }, []);
+
+  // Card press in/out handlers
+  const handlePressIn = (idx: number) => {
+    Animated.spring(cardScales[idx], {
+      toValue: 0.96,
+      useNativeDriver: true,
+      friction: 6,
+      tension: 120,
+    }).start();
+  };
+  const handlePressOut = (idx: number) => {
+    Animated.spring(cardScales[idx], {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 6,
+      tension: 120,
+    }).start();
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       {/* Header */}
       <View style={[styles.header, { backgroundColor: isDarkMode ? 'rgba(30,41,59,0.95)' : 'rgba(248,250,252,0.95)', borderBottomColor: theme.border }]}>
         <View style={styles.headerLeft}>
-          <View style={[styles.logoContainer, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)' }]}>
-            <Ionicons name="shield-checkmark-outline" size={40} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
+          <View style={[styles.logoContainer, { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', borderRadius: 16, width: 48, height: 48, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }]}> 
+            <Image
+              source={require('../../../assets/images/icon.png')}
+              style={{ width: 48, height: 48, borderRadius: 16 }}
+              resizeMode="contain"
+            />
           </View>
-          <View style={styles.titleContainer}>
-            <Text style={[styles.headerTitle, { color: theme.text.primary }]}>Super Admin</Text>
-            <Text style={[styles.headerSubtitle, { color: theme.text.secondary }]}>Centralized Organization & User Management</Text>
+          <View style={[styles.titleContainer, { maxWidth: windowWidth - 110, flexShrink: 1 }]}> 
+            <Text
+              style={{
+                fontSize: 22,
+                fontWeight: 'bold',
+                color: isDarkMode ? '#60A5FA' : '#2563EB', // deep blue
+                textShadowColor: isDarkMode ? 'rgba(30,41,59,0.7)' : 'rgba(59,130,246,0.18)',
+                textShadowOffset: { width: 0, height: 2 },
+                textShadowRadius: 8,
+                letterSpacing: 0.5,
+                maxWidth: '100%',
+              }}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              Super Admin
+            </Text>
+            <Text
+              style={{
+                fontSize: 12, // reduced for better fit
+                fontStyle: 'italic',
+                fontWeight: '600',
+                color: isDarkMode ? '#22d3ee' : '#06b6d4', // cyan/teal
+                marginTop: 2,
+                letterSpacing: 0.1,
+                maxWidth: '100%',
+              }}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              Centralized Organization & User Management
+            </Text>
           </View>
         </View>
         <View style={styles.headerActions}>
-          <Ionicons name="person" size={24} color={theme.text.accent} />
-          <Text style={[styles.headerUser, { color: theme.text.accent }]}>{authState.user?.name || 'Super Admin'}</Text>
+          {/* Removed the right-side icon and user name for a clean look */}
         </View>
       </View>
       {/* Body */}
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={[styles.sectionHeading, { color: theme.text.primary }]}>Super Admin Portal</Text>
-        <Text style={[styles.sectionDescription, { color: theme.text.secondary }]}>Manage all organizations, users, and system-wide settings from one place.</Text>
-        <View style={styles.sectionsGrid}>
-          {SUPER_ADMIN_SECTIONS.map(section => (
-            <TouchableOpacity
-              key={section.key}
-              style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.border, shadowColor: theme.shadow }]}
-              activeOpacity={0.85}
-              onPress={() => handleNavigation(section.route, section.title)}
-            >
-              <Ionicons name={section.icon as any} size={32} color={theme.text.accent} style={styles.sectionIcon} />
-              <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{section.title}</Text>
-              <Text style={[styles.sectionDesc, { color: theme.text.secondary }]}>{section.description}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ marginTop: 8 }}>
+          {SUPER_ADMIN_SECTIONS.map((section, idx) => {
+            const colors = CARD_COLORS[idx % CARD_COLORS.length][isDarkMode ? 'dark' : 'light'];
+            // Colored shadow: blue/cyan for dark, blue for light
+            const shadowColor = isDarkMode ? 'rgba(56,189,248,0.35)' : 'rgba(59,130,246,0.22)';
+            return (
+              <Animated.View
+                key={section.key}
+                style={{
+                  transform: [
+                    { scale: Animated.multiply(cardScales[idx], breathScales[idx]) },
+                    { translateX: cardTranslates[idx] },
+                  ],
+                  opacity: cardOpacities[idx],
+                  marginBottom: 14,
+                  borderRadius: 16,
+                  shadowColor: shadowColor,
+                  shadowOffset: { width: 8, height: 12 }, // bottom-right only
+                  shadowOpacity: 0.45,
+                  shadowRadius: 14,
+                  elevation: 7,
+                  backgroundColor: colors[0],
+                  minWidth: 0,
+                  maxWidth: '100%',
+                }}
+              >
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPressIn={() => handlePressIn(idx)}
+                  onPressOut={() => handlePressOut(idx)}
+                  onPress={() => handleNavigation(section.route, section.title)}
+                  style={{ borderRadius: 16, overflow: 'hidden' }}
+                >
+                  <View
+                    style={{
+                      padding: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 16,
+                      minHeight: 90,
+                      backgroundColor: colors[1],
+                      borderWidth: 1,
+                      borderColor: isDarkMode ? '#334155' : '#E2E8F0',
+                    }}
+                    className="rounded-2xl"
+                  >
+                    <View
+                      style={{
+                        backgroundColor: isDarkMode ? 'rgba(59,130,246,0.10)' : 'rgba(37,99,235,0.07)',
+                        borderRadius: 14,
+                        padding: 10,
+                        marginBottom: 8,
+                        shadowColor: shadowColor,
+                        shadowOffset: { width: 4, height: 6 },
+                        shadowOpacity: 0.18,
+                        shadowRadius: 6,
+                        elevation: 2,
+                      }}
+                    >
+                      <Ionicons
+                        name={section.icon as any}
+                        size={28}
+                        color={isDarkMode ? '#60A5FA' : '#2563EB'}
+                      />
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color: isDarkMode ? '#F8FAFC' : '#1E293B',
+                        marginBottom: 4,
+                        textAlign: 'center',
+                        letterSpacing: 0.1,
+                      }}
+                    >
+                      {section.title}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: isDarkMode ? '#94A3B8' : '#475569',
+                        textAlign: 'center',
+                        fontWeight: '500',
+                        lineHeight: 14,
+                      }}
+                    >
+                      {section.description}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </Animated.View>
+            );
+          })}
         </View>
-        {/* Removed OrganizationManagement and SuperAdminUserManagement from dashboard */}
       </ScrollView>
       {/* Bottom Navigation */}
-      <SafeAreaView edges={['bottom']} style={[styles.bottomNavContainer, { backgroundColor: theme.cardBg }]}>
-        <View style={[styles.bottomNav, { backgroundColor: theme.cardBg, borderTopColor: theme.border }]}>
+      <SafeAreaView edges={['bottom']} style={[styles.bottomNavContainer, { backgroundColor: isDarkMode ? '#1e293b' : '#e3edfa', borderTopLeftRadius: 18, borderTopRightRadius: 18, shadowColor: isDarkMode ? '#60A5FA' : '#2563EB', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.01, shadowRadius: 2, elevation: 1 }]}> 
+        <View style={[styles.bottomNav, { backgroundColor: isDarkMode ? '#1e293b' : '#e3edfa', borderTopColor: isDarkMode ? '#374151' : '#E2E8F0' }]}> 
           {[
             { name: 'Dashboard', icon: 'home', route: '/(dashboard)/superAdmin', active: true },
             { name: 'Organizations', icon: 'business-outline', route: '/(dashboard)/superAdmin/orgManagement', active: false },
@@ -162,9 +349,9 @@ const SuperAdminDashboard = () => {
               <Ionicons
                 name={item.icon as any}
                 size={22}
-                color={item.active ? theme.text.accent : theme.text.secondary}
+                color={item.active ? (isDarkMode ? '#60A5FA' : '#2563EB') : (isDarkMode ? '#94A3B8' : '#64748B')}
               />
-              <Text style={[styles.navLabel, { color: item.active ? theme.text.accent : theme.text.secondary }]} numberOfLines={1}>{item.name}</Text>
+              <Text style={[styles.navLabel, { color: item.active ? (isDarkMode ? '#60A5FA' : '#2563EB') : (isDarkMode ? '#94A3B8' : '#64748B') }]} numberOfLines={1}>{item.name}</Text>
             </TouchableOpacity>
           ))}
         </View>
