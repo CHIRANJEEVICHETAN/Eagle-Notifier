@@ -5,6 +5,7 @@ import { User, AuthState, LoginCredentials, AuthResponse } from '../types/auth';
 import axios from 'axios';
 import { Alert } from 'react-native';
 import { apiConfig, PROJECT_ID } from '../api/config';
+import { useQueryClient } from '@tanstack/react-query';
 
 // Token storage keys
 const AUTH_TOKEN_KEY = 'eagle_auth_token';
@@ -54,6 +55,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const segments = useSegments();
   const isNavigatingRef = useRef(false);
   
+  const queryClient = useQueryClient();
+
   // Check onboarding status and app type selection
   useEffect(() => {
     const checkUserPreferences = async () => {
@@ -103,14 +106,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       navigateTo('/onboarding');
       return;
     }
-    // SUPER_ADMIN: allow navigation within superAdmin section, otherwise go to superAdmin dashboard
+    // SUPER_ADMIN: allow navigation within superAdmin section OR profile page, otherwise go to superAdmin dashboard
     if (isAuthenticated && role === 'SUPER_ADMIN') {
       const isSuperAdminRoute = segments[0] === '(dashboard)' && segments[1] === 'superAdmin';
-      if (!isSuperAdminRoute) {
+      const isProfileRoute = segments[0] === '(dashboard)' && segments[1] === 'profile';
+      if (!isSuperAdminRoute && !isProfileRoute) {
         navigateTo('/(dashboard)/superAdmin');
         return;
       }
-      // If already in superAdmin section, allow navigation to continue
+      // If already in superAdmin section or profile, allow navigation to continue
       return;
     }
     // If authenticated and on onboarding screen but already selected app type
@@ -750,6 +754,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await SecureStore.deleteItemAsync('tempPushToken');
       await SecureStore.deleteItemAsync('organizationId');
       await SecureStore.deleteItemAsync('role');
+      // Clear React Query cache
+      queryClient.clear();
       
       // Keep app selection for next login
       // await SecureStore.deleteItemAsync(SELECTED_APP_KEY);

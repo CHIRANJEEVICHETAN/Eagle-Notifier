@@ -5,6 +5,7 @@ import { Alert } from 'react-native';
 import { ReportFormat, ReportTimeRange } from '../components/ReportGenerator';
 import { AlarmReportFilters, useAlarmReportData } from './useAlarmReportData';
 import { ColumnGrouping, ExcelReportService } from '../services/ExcelReportService';
+import { useAuth } from '../context/AuthContext';
 
 type ReportGeneratorReturnType = [
   {
@@ -31,9 +32,9 @@ interface ReportGeneratorOptions {
 export function useReportGenerator(): ReportGeneratorReturnType {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedFilePath, setGeneratedFilePath] = useState<string | null>(null);
-
+  const { authState } = useAuth();
   // Create a wrapper hook with the needed filters
-  const { refetch } = useAlarmReportData({}, false);
+  const { refetch } = useAlarmReportData({}, authState.isAuthenticated && !!authState.user);
   
   // Generate a report based on parameters
   const generateReport = async (

@@ -52,7 +52,7 @@ export const useActiveAlarms = (initialForceRefresh = false) => {
       setLoading(true);
       try {
         const forceRefresh = queryKey[1] as boolean;
-        const headers = await getOrgHeaders(organizationId);
+        const headers = await getOrgHeaders(organizationId ?? undefined);
         const { data } = await axios.get<ScadaAlarmResponse>(
           `${apiConfig.apiUrl}/api/scada/alarms${forceRefresh ? '?force=true' : ''}`,
           { headers }
@@ -113,7 +113,7 @@ export const useUpdateAlarmStatus = () => {
 
   return useMutation({
     mutationFn: async ({ id, status, resolutionMessage }: UpdateAlarmStatusParams) => {
-      const headers = await getOrgHeaders(organizationId);
+      const headers = await getOrgHeaders(organizationId ?? undefined);
       await axios.put(
         `${apiConfig.apiUrl}/api/alarms/${id}/status`,
         { status, resolutionMessage },
@@ -175,7 +175,7 @@ export function useAlarmHistory({
         if (type) urlParams.append('type', type);
         if (alarmId) urlParams.append('alarmId', alarmId);
         
-        const headers = await getOrgHeaders(organizationId);
+        const headers = await getOrgHeaders(organizationId ?? undefined);
         const response = await axios.get(
           `${apiConfig.apiUrl}/api/scada/history?${urlParams.toString()}`,
           { headers }
@@ -222,7 +222,7 @@ export function useSpecificAlarmHistory(alarmId: string, params: Partial<AlarmHi
         if (endTime) urlParams.append('endTime', endTime);
         if (timeFilter) urlParams.append('timeFilter', timeFilter);
         
-        const headers = await getOrgHeaders(organizationId);
+        const headers = await getOrgHeaders(organizationId ?? undefined);
         const response = await axios.get(
           `${apiConfig.apiUrl}/api/scada/history?${urlParams.toString()}`,
           { headers }
@@ -275,7 +275,7 @@ export const useAnalyticsData = (timeFilter: string) => {
     queryKey: ALARM_KEYS.analytics(timeFilter),
     queryFn: async () => {
       try {
-        const headers = await getOrgHeaders(organizationId);
+        const headers = await getOrgHeaders(organizationId ?? undefined);
         const { data } = await axios.get(
           `${apiConfig.apiUrl}/api/scada/analytics?timeFilter=${timeFilter}`,
           { headers }

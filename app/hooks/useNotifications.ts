@@ -23,7 +23,8 @@ export const useNotifications = (
   limit: number = 10,
   source?: string
 ) => {
-  const { organizationId } = useAuth();
+  const { organizationId, authState } = useAuth();
+  const enabled = authState.isAuthenticated && !!authState.user;
   return useInfiniteQuery({
     queryKey: [NOTIFICATIONS_KEY, filter, limit, source],
     queryFn: ({ pageParam = 1 }) => fetchNotifications(pageParam as number, limit, filter, source, organizationId ?? undefined),
@@ -35,6 +36,7 @@ export const useNotifications = (
       return undefined;
     },
     staleTime: 60 * 1000, // 1 minute
+    enabled,
   });
 };
 
@@ -42,7 +44,8 @@ export const useNotifications = (
  * Hook for fetching unread notifications count
  */
 export const useUnreadCount = () => {
-  const { organizationId } = useAuth();
+  const { organizationId, authState } = useAuth();
+  const enabled = authState.isAuthenticated && !!authState.user;
   return useQuery({
     queryKey: [UNREAD_COUNT_KEY],
     queryFn: () => fetchUnreadCount(organizationId ?? undefined),
@@ -50,6 +53,7 @@ export const useUnreadCount = () => {
     refetchInterval: 60 * 1000, // Refetch every minute
     refetchOnWindowFocus: true, // Refetch when app comes into focus
     refetchOnMount: true, // Always refetch on mount
+    enabled,
   });
 };
 

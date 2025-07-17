@@ -21,11 +21,13 @@ export const METER_KEYS = {
  * Hook for fetching the latest meter reading
  */
 export const useLatestMeterReading = () => {
-  const { organizationId } = useAuth();
+  const { organizationId, authState } = useAuth();
+  const enabled = authState.isAuthenticated && !!authState.user;
   return useQuery({
     queryKey: METER_KEYS.latest,
     queryFn: () => fetchLatestReading(organizationId ?? undefined),
     staleTime: 1000 * 60 * 3, // 3 minutes
+    enabled,
   });
 };
 
@@ -33,7 +35,8 @@ export const useLatestMeterReading = () => {
  * Hook for fetching historical meter readings
  */
 export const useMeterHistory = (hours: number = 1, startTime?: string) => {
-  const { organizationId } = useAuth();
+  const { organizationId, authState } = useAuth();
+  const enabled = authState.isAuthenticated && !!authState.user;
   return useQuery({
     queryKey: METER_KEYS.history(hours, startTime),
     queryFn: () => {
@@ -41,6 +44,7 @@ export const useMeterHistory = (hours: number = 1, startTime?: string) => {
       return fetchMeterHistory(hours, 1, 20, startTime, organizationId);
     },
     staleTime: 1000 * 60 * 3, // 3 minutes
+    enabled,
   });
 };
 
@@ -48,11 +52,13 @@ export const useMeterHistory = (hours: number = 1, startTime?: string) => {
  * Hook for fetching all meter parameter limits
  */
 export const useMeterLimits = () => {
-  const { organizationId } = useAuth();
+  const { organizationId, authState } = useAuth();
+  const enabled = authState.isAuthenticated && !!authState.user;
   return useQuery({
     queryKey: METER_KEYS.limits,
     queryFn: () => fetchMeterLimits(organizationId ?? undefined),
     staleTime: 1000 * 60 * 10, // 10 minutes
+    enabled,
   });
 };
 

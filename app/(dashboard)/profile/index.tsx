@@ -96,6 +96,7 @@ export default function ProfileScreen() {
   const [avatarKey, setAvatarKey] = useState(0);
   
   // Fetch notification settings
+  const shouldFetchNotificationSettings = authState.isAuthenticated && authState.user?.role !== 'SUPER_ADMIN';
   const { data: settingsData } = useQuery({
     queryKey: ['notificationSettings'],
     queryFn: async () => {
@@ -105,7 +106,8 @@ export default function ProfileScreen() {
         { headers }
       );
       return response.data;
-    }
+    },
+    enabled: shouldFetchNotificationSettings,
   });
   
   // Update notification settings from API data
@@ -115,6 +117,7 @@ export default function ProfileScreen() {
     }
   }, [settingsData]);
   
+  const enabled = authState.isAuthenticated && !!authState.user;
   // Add profile fetch query
   const { data: profileData } = useQuery({
     queryKey: ['profile'],
@@ -130,7 +133,8 @@ export default function ProfileScreen() {
       return response.data;
     },
     retry: 2,
-    staleTime: 300000 // 5 minutes
+    staleTime: 300000, // 5 minutes
+    enabled,
   });
   
   // Profile update mutation
@@ -1129,68 +1133,67 @@ export default function ProfileScreen() {
         </View>
 
         {/* Notification Settings */}
-        <View style={[styles.section, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
-          <Text style={[styles.sectionTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-            Notification Settings
-          </Text>
-
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-                Push Notifications
-              </Text>
-              <Text
-                style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-                Receive notifications on your device
-              </Text>
+        {authState.user?.role !== 'SUPER_ADMIN' && (
+          <View style={[styles.section, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}> 
+            <Text style={[styles.sectionTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}> 
+              Notification Settings
+            </Text>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}> 
+                  Push Notifications
+                </Text>
+                <Text
+                  style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}> 
+                  Receive notifications on your device
+                </Text>
+              </View>
+              <Switch
+                value={notificationSettings.pushEnabled}
+                onValueChange={() => handleToggleSetting('pushEnabled')}
+                trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
+                thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
+                disabled={notificationMutation.isPending}
+              />
             </View>
-            <Switch
-              value={notificationSettings.pushEnabled}
-              onValueChange={() => handleToggleSetting('pushEnabled')}
-              trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
-              thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
-              disabled={notificationMutation.isPending}
-            />
-          </View>
-
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-                Email Notifications
-              </Text>
-              <Text
-                style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-                Receive alarm notifications via email
-              </Text>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}> 
+                  Email Notifications
+                </Text>
+                <Text
+                  style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}> 
+                  Receive alarm notifications via email
+                </Text>
+              </View>
+              <Switch
+                value={notificationSettings.emailEnabled}
+                onValueChange={() => handleToggleSetting('emailEnabled')}
+                trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
+                thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
+                disabled={notificationMutation.isPending}
+              />
             </View>
-            <Switch
-              value={notificationSettings.emailEnabled}
-              onValueChange={() => handleToggleSetting('emailEnabled')}
-              trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
-              thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
-              disabled={notificationMutation.isPending}
-            />
-          </View>
-
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
-                Critical Alarms Only
-              </Text>
-              <Text
-                style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-                Only receive notifications for critical alarms
-              </Text>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}> 
+                  Critical Alarms Only
+                </Text>
+                <Text
+                  style={[styles.settingDescription, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}> 
+                  Only receive notifications for critical alarms
+                </Text>
+              </View>
+              <Switch
+                value={notificationSettings.criticalOnly}
+                onValueChange={() => handleToggleSetting('criticalOnly')}
+                trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
+                thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
+                disabled={notificationMutation.isPending}
+              />
             </View>
-            <Switch
-              value={notificationSettings.criticalOnly}
-              onValueChange={() => handleToggleSetting('criticalOnly')}
-              trackColor={{ false: isDarkMode ? '#4B5563' : '#D1D5DB', true: '#3B82F6' }}
-              thumbColor={isDarkMode ? '#FFFFFF' : '#FFFFFF'}
-              disabled={notificationMutation.isPending}
-            />
           </View>
-        </View>
+        )}
 
         {/* Theme Settings */}
         <View style={[styles.section, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>

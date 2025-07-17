@@ -39,8 +39,8 @@ export function useMeterReports() {
   const queryClient = useQueryClient();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedReportId, setGeneratedReportId] = useState<string | null>(null);
-  const { organizationId } = useAuth();
-
+  const { organizationId, authState } = useAuth();
+  const enabled = authState.isAuthenticated && !!authState.user;
   // Get all reports for the current user
   const {
     data: reports,
@@ -51,6 +51,7 @@ export function useMeterReports() {
     queryKey: ['meterReports'],
     queryFn: () => getMeterReports(organizationId ?? undefined),
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled,
   });
 
   // Generate report mutation

@@ -46,6 +46,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   
   // Register for push token when authenticated
   useEffect(() => {
+    if (!authState.isAuthenticated || !authState.user) {
+      setExpoPushToken(null);
+      setNotification(null);
+      setNotificationCount(0);
+      return;
+    }
     const registerForPushNotifications = async () => {
       try {
         const { status } = await Notifications.getPermissionsAsync();
@@ -53,72 +59,49 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           console.log('Notification permission not granted');
           return;
         }
-
         // Get Expo push token for this device
         const projectId = PROJECT_ID;
         if (!projectId) {
           console.error('Project ID is not configured in environment');
           return;
         }
-        
         console.log(`Getting push token for project ID: ${projectId}`);
         const tokenData = await Notifications.getExpoPushTokenAsync({
           projectId,
         });
-        
         const token = tokenData.data;
         console.log(`Push token: ${token}`);
         setExpoPushToken(token);
-        
         // Store token locally for future use
         await SecureStore.setItemAsync('tempPushToken', token);
-        
-        // Token will be updated by the other useEffect that watches for 
-        // expoPushToken and authState.user changes
       } catch (error) {
         console.error('Error getting push token:', error);
-        // We'll try again when component remounts or auth state changes
       }
     };
-    
     registerForPushNotifications();
-  }, []);
-  
-  // Set up notification listeners
+  }, [authState.isAuthenticated, authState.user]);
+
+  // Set up notification listeners only if authenticated
   useEffect(() => {
-    // Notification received while app is in foreground
+    if (!authState.isAuthenticated || !authState.user) return;
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
       console.log('Notification received in foreground:', notification);
       setNotification(notification);
       handleNotification(notification);
     });
-    
-    // User interacted with notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
       console.log('Notification response received:', response);
-      
-      // Handle notification response here
-      // Use data property instead of deprecated dataString
       const data = response.notification.request.content.data;
-      
       if (data && data.alarmId) {
-        // Navigate to alarm details
-        // Navigation would be handled by the component using this context
         console.log('Navigate to alarm:', data.alarmId);
       }
     });
-    
-    // Clean up listeners on unmount
     return () => {
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-      }
+      if (notificationListener.current) notificationListener.current.remove();
+      if (responseListener.current) responseListener.current.remove();
     };
-  }, []);
-  
+  }, [authState.isAuthenticated, authState.user]);
+
   const handleNotification = (notification: Notifications.Notification) => {
     console.log('Received notification:', {
       ...notification,
@@ -134,32 +117,24 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setNotificationCount(prev => prev + 1);
   };
 
-  // Update token on server with retry mechanism
+  // Update token on server with retry mechanism only if authenticated
   useEffect(() => {
     const updateToken = async () => {
-      if (authState.user && expoPushToken) {
+      if (authState.isAuthenticated && authState.user && expoPushToken) {
         console.log('Updating push token:', expoPushToken);
         try {
           const result = await updatePushToken(expoPushToken);
-          
           if (result.message === 'Failed to update push token. Will retry later.') {
-            // Only retry a limited number of times to avoid infinite loops
             if (tokenRetryCount.current < 3) {
               tokenRetryCount.current++;
               console.log(`Token update failed, will retry later. Attempt ${tokenRetryCount.current}/3`);
-              
-              // Set a retry timer after exponential backoff
               const retryDelay = Math.min(1000 * Math.pow(2, tokenRetryCount.current), 30000);
               setTimeout(updateToken, retryDelay);
             } else {
               console.log('Max token update retries reached. Giving up for now.');
-              // Reset counter for future attempts when app state changes
-              setTimeout(() => {
-                tokenRetryCount.current = 0;
-              }, 60000); // Reset after 1 minute
+              setTimeout(() => { tokenRetryCount.current = 0; }, 60000);
             }
           } else {
-            // Success - reset retry counter
             tokenRetryCount.current = 0;
             console.log('Push token updated successfully');
           }
@@ -168,9 +143,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
       }
     };
-    
-    updateToken();
-  }, [authState.user, expoPushToken]);
+    if (authState.isAuthenticated && authState.user) {
+      updateToken();
+    }
+  }, [authState.isAuthenticated, authState.user, expoPushToken]);
 
   return (
     <NotificationContext.Provider

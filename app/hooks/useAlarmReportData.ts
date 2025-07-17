@@ -70,8 +70,8 @@ export interface AlarmReportResponse {
 }
 
 export const useAlarmReportData = (filters: AlarmReportFilters = {}, enabled = true) => {
-  const { organizationId } = useAuth();
-
+  const { organizationId, authState } = useAuth();
+  const isEnabled = enabled && authState.isAuthenticated && !!authState.user;
   return useQuery<AlarmReportResponse>({
     queryKey: ['alarmReport', filters],
     queryFn: async () => {
@@ -111,6 +111,6 @@ export const useAlarmReportData = (filters: AlarmReportFilters = {}, enabled = t
       
       return data;
     },
-    enabled: enabled,
+    enabled: isEnabled,
   });
 }; 
