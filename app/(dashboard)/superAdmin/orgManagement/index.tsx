@@ -3,19 +3,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../context/ThemeContext';
-import { useRouter, usePathname } from 'expo-router';
+import { useRouter } from 'expo-router';
 import OrganizationManagement from '../../../components/OrganizationManagement';
 
 const OrgManagementPage = () => {
   const { isDarkMode } = useTheme();
   const router = useRouter();
-  const pathname = usePathname();
 
-  // Debug logging
-  console.log('🎯 OrgManagementPage rendered!');
-  console.log('- isDarkMode:', isDarkMode);
-  console.log('- Current pathname:', pathname);
-  console.log('- Component mounted successfully');
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isDarkMode ? '#0F172A' : '#F8FAFC' }}>

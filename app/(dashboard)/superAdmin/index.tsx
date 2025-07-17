@@ -30,13 +30,6 @@ const SUPER_ADMIN_SECTIONS = [
     description: 'Manage users across all organizations. Assign roles, reset passwords, and more.'
   },
   {
-    key: 'scada-config',
-    icon: 'settings-outline',
-    title: 'SCADA Config & Schema',
-    route: '/(dashboard)/superAdmin/scadaConfig',
-    description: 'Configure SCADA DB connections and schema mapping for each organization.'
-  },
-  {
     key: 'impersonation',
     icon: 'person-circle-outline',
     title: 'Impersonation / Switch Context',
