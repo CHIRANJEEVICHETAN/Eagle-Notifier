@@ -45,6 +45,149 @@ const CARD_COLORS = [
   { light: ['#cffafe', '#f1f5f9'], dark: ['#334155', '#1e293b'] }, // Search
 ];
 
+// Metrics mock data and color config
+const METRICS_DATA = [
+  {
+    icon: 'business-outline',
+    value: '12',
+    title: 'Organizations',
+    subtitle: '2 new this week',
+    color: '#3B82F6', // Blue
+  },
+  {
+    icon: 'people-outline',
+    value: '156',
+    title: 'Total Users',
+    subtitle: '8 new this week',
+    color: '#10B981', // Green
+  },
+  {
+    icon: 'alert-circle-outline',
+    value: '23',
+    title: 'Active Alarms',
+    subtitle: '5 critical',
+    color: '#EF4444', // Red
+  },
+  {
+    icon: 'checkmark-circle-outline',
+    value: 'Healthy',
+    title: 'System Health',
+    subtitle: '99.8% uptime',
+    color: '#8B5CF6', // Purple
+  },
+];
+
+// Animated Metric Card Component
+const AnimatedMetricCard: React.FC<{
+  icon: string;
+  value: string;
+  title: string;
+  subtitle: string;
+  color: string;
+  index: number;
+}> = React.memo(({ icon, value, title, subtitle, color, index }) => {
+  const { isDarkMode } = useTheme();
+  const [cardScale] = useState(new Animated.Value(1));
+  const [cardOpacity] = useState(new Animated.Value(0));
+  const [cardTranslateY] = useState(new Animated.Value(40));
+  const [breathScale] = useState(new Animated.Value(1));
+
+  useEffect(() => {
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(cardOpacity, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cardTranslateY, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 200 + index * 250);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathScale, {
+          toValue: 1.02,
+          duration: 1800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(breathScale, {
+          toValue: 0.98,
+          duration: 1800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(breathScale, {
+          toValue: 1,
+          duration: 1800,
+          useNativeDriver: true,
+        }),
+      ]),
+      { resetBeforeIteration: true }
+    );
+    setTimeout(() => loop.start(), 800 + index * 200);
+    return () => loop.stop();
+  }, []);
+
+  const handlePressIn = () => {
+    Animated.spring(cardScale, {
+      toValue: 0.95,
+      useNativeDriver: true,
+      friction: 6,
+      tension: 120,
+    }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(cardScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 6,
+      tension: 120,
+    }).start();
+  };
+
+  // Theme-aware card background and shadow
+  const cardBg = isDarkMode ? '#1E293B' : '#fff';
+  const shadowColor = color + (isDarkMode ? '88' : '33');
+  const borderColor = isDarkMode ? color : color + '33';
+
+  return (
+    <Animated.View
+      style={[
+        styles.metricCard,
+        {
+          backgroundColor: cardBg,
+          borderColor,
+          shadowColor,
+          opacity: cardOpacity,
+          transform: [
+            { scale: Animated.multiply(cardScale, breathScale) },
+            { translateY: cardTranslateY },
+          ],
+        },
+      ]}
+    >
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={{ borderRadius: 16, alignItems: 'center', justifyContent: 'center', flex: 1, width: '100%' }}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+      >
+        <View style={[styles.metricIconContainer, { backgroundColor: color + (isDarkMode ? '22' : '18') }]}> 
+          <Ionicons name={icon as any} size={windowWidth > highDPIPhones ? 20 : 16} color={color} />
+        </View>
+        <Text style={[styles.metricValue, { color }]} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+        <Text style={[styles.metricTitle, { color: isDarkMode ? '#F8FAFC' : '#1E293B' }]} numberOfLines={1} adjustsFontSizeToFit>{title}</Text>
+        <Text style={[styles.metricSubtitle, { color: isDarkMode ? '#94A3B8' : '#64748B' }]} numberOfLines={2} adjustsFontSizeToFit>{subtitle}</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
 const SuperAdminDashboard = () => {
   const { isDarkMode } = useTheme();
   const { authState } = useAuth();
@@ -118,17 +261,17 @@ const SuperAdminDashboard = () => {
       Animated.parallel([
         Animated.timing(cardTranslates[idx], {
           toValue: 0,
-          duration: 520 + idx * 60,
+          duration: 1000 + idx * 120,
           useNativeDriver: true,
         }),
         Animated.timing(cardOpacities[idx], {
           toValue: 1,
-          duration: 420 + idx * 60,
+          duration: 900 + idx * 120,
           useNativeDriver: true,
         }),
       ])
     );
-    Animated.stagger(80, animations).start();
+    Animated.stagger(200, animations).start();
 
     // Breathing animation loop for each card
     SUPER_ADMIN_SECTIONS.forEach((_, idx) => {
@@ -136,23 +279,23 @@ const SuperAdminDashboard = () => {
         Animated.sequence([
           Animated.timing(breathScales[idx], {
             toValue: 1.045,
-            duration: 1200,
+            duration: 2000,
             useNativeDriver: true,
           }),
           Animated.timing(breathScales[idx], {
             toValue: 0.97,
-            duration: 1200,
+            duration: 2000,
             useNativeDriver: true,
           }),
           Animated.timing(breathScales[idx], {
             toValue: 1,
-            duration: 1200,
+            duration: 2000,
             useNativeDriver: true,
           }),
         ]),
         { resetBeforeIteration: true }
       );
-      setTimeout(() => loop.start(), idx * 350); // stagger start
+      setTimeout(() => loop.start(), idx * 500); // slower stagger start
     });
   }, []);
 
@@ -224,6 +367,19 @@ const SuperAdminDashboard = () => {
         <View style={styles.headerActions}>
           {/* Removed the right-side icon and user name for a clean look */}
         </View>
+      </View>
+      {/* Metrics Grid Section */}
+      <View style={styles.metricsContainer}>
+        <Text style={[styles.metricsHeader, { color: isDarkMode ? '#60A5FA' : '#2563EB' }]}>Quick Info</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.metricsGrid}
+        >
+          {METRICS_DATA.map((metric, idx) => (
+            <AnimatedMetricCard key={metric.title} {...metric} index={idx} />
+          ))}
+        </ScrollView>
       </View>
       {/* Body */}
       <ScrollView contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}> 
@@ -422,6 +578,79 @@ const styles = StyleSheet.create({
   },
   navItem: { flex: 1, minWidth: 64, height: 56, alignItems: 'center', justifyContent: 'center', paddingVertical: 6 },
   navLabel: { fontSize: 12, marginTop: 4, textAlign: 'center', fontWeight: '500' },
+  metricsContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 6,
+    backgroundColor: 'transparent',
+    zIndex: 2,
+  },
+  metricsHeader: {
+    fontSize: windowWidth > highDPIPhones ? 18 : 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    letterSpacing: 0.2,
+    textAlign: 'left',
+  },
+  metricsGrid: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: windowWidth > 400 ? 18 : 12,
+    paddingBottom: 4,
+    minHeight: windowWidth > 400 ? 128 : 112,
+    paddingRight: 10,
+  },
+  metricCard: {
+    width: windowWidth > 400 ? 140 : 120,
+    minHeight: windowWidth > 400 ? 128 : 112,
+    borderRadius: 16,
+    marginRight: 0,
+    paddingVertical: windowWidth > 400 ? 14 : 10,
+    paddingHorizontal: windowWidth > 400 ? 10 : 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.23,
+    shadowRadius: 6,
+    elevation: 8,
+    backgroundColor: '#fff', // will be overridden by theme
+  },
+  metricIconContainer: {
+    width: windowWidth > 400 ? 32 : 28,
+    height: windowWidth > 400 ? 32 : 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  metricValue: {
+    fontSize: windowWidth > highDPIPhones ? 20 : 16,
+    fontWeight: 'bold',
+    marginBottom: 2,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+    maxWidth: '100%',
+  },
+  metricTitle: {
+    fontSize: windowWidth > highDPIPhones ? 12 : 11,
+    fontWeight: '600',
+    marginTop: 2,
+    marginBottom: 0,
+    textAlign: 'center',
+    letterSpacing: 0.1,
+    maxWidth: '100%',
+  },
+  metricSubtitle: {
+    fontSize: windowWidth > highDPIPhones ? 10 : 9,
+    fontWeight: '400',
+    marginTop: 2,
+    textAlign: 'center',
+    letterSpacing: 0.05,
+    maxWidth: '100%',
+  },
 });
 
 export default SuperAdminDashboard;
