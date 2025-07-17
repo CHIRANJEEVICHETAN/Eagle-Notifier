@@ -1,6 +1,6 @@
 import { useTheme } from "../context/ThemeContext";
 import { useState, useMemo } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Alert, FlatList } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Alert, FlatList, ActivityIndicator, RefreshControl } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useOrganizations, Organization } from "../hooks/useOrganizations";
 
@@ -56,6 +56,11 @@ const OrganizationManagement: React.FC = () => {
     schemaConfig: { ...defaultSchemaConfig },
   });
   const [modalType, setModalType] = useState<'add' | 'edit'>('add');
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Parse org config to form
   const orgToForm = (org: Organization): OrgForm => {
@@ -120,15 +125,18 @@ const OrganizationManagement: React.FC = () => {
     }
   };
   const handleDelete = () => {
+    setShowDeleteModal(true);
+  };
+  const confirmDelete = async () => {
     if (!selectedOrg) return;
-    Alert.alert('Delete Organization', `Are you sure you want to delete ${selectedOrg.name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        await deleteOrganization(selectedOrg.id);
-        setShowModal(false);
-        refetchOrganizations();
-      } }
-    ]);
+    setIsSaving(true);
+    await deleteOrganization(selectedOrg.id);
+    setIsSaving(false);
+    setShowDeleteModal(false);
+    setShowModal(false);
+    setSuccessMessage('Organization deleted successfully!');
+    setShowSuccessModal(true);
+    refetchOrganizations();
   };
   const handleSave = async () => {
     // Validate required fields
@@ -136,28 +144,55 @@ const OrganizationManagement: React.FC = () => {
       Alert.alert('Validation Error', 'Please fill all required fields.');
       return;
     }
+    // Utility to trim all string fields in an object
+    const trimObjectStrings = (obj: any) => {
+      const trimmed: any = {};
+      for (const key in obj) {
+        const val = obj[key];
+        trimmed[key] = typeof val === 'string' ? val.trim() : val;
+      }
+      return trimmed;
+    };
+    // Trim all scadaDbConfig and schemaConfig fields
+    const trimmedScadaDbConfig = trimObjectStrings(form.scadaDbConfig);
+    const trimmedSchemaConfig = trimObjectStrings(form.schemaConfig);
     const scadaDbConfig = {
-      ...form.scadaDbConfig,
-      port: Number(form.scadaDbConfig.port),
+      ...trimmedScadaDbConfig,
+      port: Number(trimmedScadaDbConfig.port),
     };
     const schemaConfig = {
-      columns: form.schemaConfig.columns.split(',').map(s => s.trim()).filter(Boolean),
+      columns: trimmedSchemaConfig.columns.split(',').map((s: string) => s.trim()).filter(Boolean),
     };
-    if (modalType === 'add') {
-      await createOrganization({
-        name: form.name,
-        scadaDbConfig: JSON.stringify(scadaDbConfig),
-        schemaConfig: JSON.stringify(schemaConfig),
-      });
-    } else if (selectedOrg) {
-      await updateOrganization(selectedOrg.id, {
-        name: form.name,
-        scadaDbConfig: JSON.stringify(scadaDbConfig),
-        schemaConfig: JSON.stringify(schemaConfig),
-      });
+    setIsSaving(true);
+    try {
+      if (modalType === 'add') {
+        await createOrganization({
+          name: form.name,
+          scadaDbConfig,
+          schemaConfig,
+        });
+        setSuccessMessage('Organization created successfully!');
+      } else if (selectedOrg) {
+        await updateOrganization(selectedOrg.id, {
+          name: form.name,
+          scadaDbConfig,
+          schemaConfig,
+        });
+        setSuccessMessage('Organization updated successfully!');
+      }
+      setShowModal(false);
+      setShowSuccessModal(true);
+      refetchOrganizations();
+    } finally {
+      setIsSaving(false);
     }
-    setShowModal(false);
-    refetchOrganizations();
+  };
+
+  // Handler for pull-to-refresh
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refetchOrganizations();
+    setIsRefreshing(false);
   };
 
   // Render
@@ -193,7 +228,18 @@ const OrganizationManagement: React.FC = () => {
           placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
         />
       </View>
-      <ScrollView style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[isDarkMode ? '#22d3ee' : '#2563eb']}
+            tintColor={isDarkMode ? '#22d3ee' : '#2563eb'}
+            progressBackgroundColor={isDarkMode ? '#1e293b' : '#f3f4f6'}
+          />
+        }
+      >
         {isLoading ? (
           <Text style={{ color: isDarkMode ? '#F8FAFC' : '#1E293B' }}>Loading...</Text>
         ) : filteredOrgs.length === 0 ? (
@@ -233,7 +279,7 @@ const OrganizationManagement: React.FC = () => {
               />
               {/* SCADA DB Config Fields */}
               <Text style={{ fontWeight: '600', color: isDarkMode ? '#F8FAFC' : '#1E293B', marginTop: 8 }}>SCADA DB Config</Text>
-              {['host', 'port', 'user', 'password', 'database', 'sslmode', 'table '].map((field) => (
+              {['host', 'port', 'user', 'password', 'database', 'sslmode', 'table'].map((field) => (
                 <View key={field} style={{ marginBottom: 8 }}>
                   <Text style={{ color: isDarkMode ? '#cbd5e1' : '#64748b', fontSize: 13 }}>{field.charAt(0).toUpperCase() + field.slice(1)}</Text>
                   <TextInput
@@ -264,11 +310,15 @@ const OrganizationManagement: React.FC = () => {
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
               {isEditing ? (
                 <>
-                  <TouchableOpacity onPress={handleCancel} style={{ padding: 8, borderRadius: 8, backgroundColor: '#e5e7eb', marginRight: 8 }}>
+                  <TouchableOpacity onPress={handleCancel} style={{ padding: 8, borderRadius: 8, backgroundColor: '#e5e7eb', marginRight: 8 }} disabled={isSaving}>
                     <Text style={{ color: '#111827' }}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleSave} style={{ padding: 8, borderRadius: 8, backgroundColor: isDarkMode ? '#2563eb' : '#3b82f6' }}>
-                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>Save</Text>
+                  <TouchableOpacity onPress={handleSave} style={{ padding: 8, borderRadius: 8, backgroundColor: isDarkMode ? '#2563eb' : '#3b82f6', flexDirection: 'row', alignItems: 'center', minWidth: 80, justifyContent: 'center' }} disabled={isSaving}>
+                    {isSaving ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={{ color: '#fff', fontWeight: 'bold' }}>Save</Text>
+                    )}
                   </TouchableOpacity>
                 </>
               ) : (
@@ -288,6 +338,43 @@ const OrganizationManagement: React.FC = () => {
                   </TouchableOpacity>
                 </>
               )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Success Modal */}
+      <Modal visible={showSuccessModal} animationType="fade" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: 16, padding: 32, alignItems: 'center', width: '85%' }}>
+            <Ionicons name="checkmark-circle" size={64} color={isDarkMode ? '#22d3ee' : '#22c55e'} style={{ marginBottom: 16 }} />
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: isDarkMode ? '#F8FAFC' : '#1E293B', marginBottom: 8 }}>{successMessage}</Text>
+            <TouchableOpacity onPress={() => setShowSuccessModal(false)} style={{ marginTop: 20, backgroundColor: isDarkMode ? '#2563eb' : '#3b82f6', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 24 }}>
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      {/* Delete Confirmation Modal */}
+      <Modal visible={showDeleteModal} animationType="fade" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: 16, padding: 28, alignItems: 'center', width: '85%' }}>
+            <Ionicons name="warning" size={56} color="#f59e42" style={{ marginBottom: 12 }} />
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: isDarkMode ? '#F8FAFC' : '#1E293B', marginBottom: 8 }}>Delete Organization</Text>
+            <Text style={{ color: isDarkMode ? '#cbd5e1' : '#64748b', textAlign: 'center', marginBottom: 18 }}>
+              Are you sure you want to delete <Text style={{ fontWeight: 'bold', color: isDarkMode ? '#f87171' : '#dc2626' }}>{selectedOrg?.name}</Text>? This action cannot be undone.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+              <TouchableOpacity onPress={() => setShowDeleteModal(false)} style={{ padding: 10, borderRadius: 8, backgroundColor: '#e5e7eb', marginRight: 8, minWidth: 80, alignItems: 'center' }} disabled={isSaving}>
+                <Text style={{ color: '#111827', fontWeight: 'bold' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmDelete} style={{ padding: 10, borderRadius: 8, backgroundColor: '#ef4444', minWidth: 80, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }} disabled={isSaving}>
+                {isSaving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Ionicons name="trash" size={20} color="#fff" style={{ marginRight: 6 }} />
+                )}
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Delete</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

@@ -1,6 +1,6 @@
 import { useTheme } from "../context/ThemeContext";
 import { useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, RefreshControl } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSuperAdminUsers, SuperAdminUser, UserForm } from "../hooks/useSuperAdminUsers";
 import { useOrganizations, Organization } from "../hooks/useOrganizations";
@@ -26,6 +26,7 @@ const SuperAdminUserManagement: React.FC = () => {
   const [modalType, setModalType] = useState<'add' | 'edit'>('add');
   const [selectedUser, setSelectedUser] = useState<SuperAdminUser | null>(null);
   const [form, setForm] = useState<UserForm>({ name: '', email: '', password: '', role: 'OPERATOR', organizationId: '' });
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Modal state for delete confirmation and success
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -76,6 +77,13 @@ const SuperAdminUserManagement: React.FC = () => {
     refetchUsers();
   };
 
+  // Handler for pull-to-refresh
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refetchUsers();
+    setIsRefreshing(false);
+  };
+
   return (
     <View style={{ flex: 1, padding: 16 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -97,7 +105,18 @@ const SuperAdminUserManagement: React.FC = () => {
           ))}
         </ScrollView>
       </View>
-      <ScrollView style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[isDarkMode ? '#22d3ee' : '#2563eb']}
+            tintColor={isDarkMode ? '#22d3ee' : '#2563eb'}
+            progressBackgroundColor={isDarkMode ? '#1e293b' : '#f3f4f6'}
+          />
+        }
+      >
         {isLoading ? (
           <Text>Loading...</Text>
         ) : users.length === 0 ? (

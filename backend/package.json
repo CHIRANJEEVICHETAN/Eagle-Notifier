@@ -17,7 +17,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@prisma/client": "^6.11.1",
+    "@prisma/client": "^6.12.0",
     "@types/exceljs": "^0.5.3",
     "@types/express-fileupload": "^1.5.1",
     "@types/fs-extra": "^11.0.4",
@@ -53,7 +53,7 @@
     "@types/node-schedule": "^2.1.7",
     "@types/pg": "^8.15.2",
     "nodemon": "^3.1.10",
-    "prisma": "^6.11.1",
+    "prisma": "^6.12.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   },

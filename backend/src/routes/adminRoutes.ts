@@ -318,9 +318,134 @@ router.post('/organizations', async (req: Request, res: Response, next: NextFunc
     if (!name || !scadaDbConfig) {
       throw createError('Organization name and SCADA DB config are required', 400);
     }
+    // Create the organization first
     const org = await prisma.organization.create({
       data: { name, scadaDbConfig, schemaConfig: schemaConfig || {} },
     });
+
+    // Insert default setpoints
+    const setpoints = [
+      {
+        name: 'HARDENING ZONE 1 TEMPERATURE',
+        type: 'temperature',
+        zone: 'zone1',
+        scadaField: 'hz1sv',
+        lowDeviation: -30.0,
+        highDeviation: 10.0
+      },
+      {
+        name: 'HARDENING ZONE 2 TEMPERATURE',
+        type: 'temperature',
+        zone: 'zone2',
+        scadaField: 'hz2sv',
+        lowDeviation: -10.0,
+        highDeviation: 10.0
+      },
+      {
+        name: 'CARBON POTENTIAL',
+        type: 'carbon',
+        zone: null,
+        scadaField: 'cpsv',
+        lowDeviation: -0.05,
+        highDeviation: 0.05
+      },
+      {
+        name: 'TEMPERING ZONE1 TEMPERATURE',
+        type: 'temperature',
+        zone: 'zone1',
+        scadaField: 'tz1sv',
+        lowDeviation: -30.0,
+        highDeviation: 10.0
+      },
+      {
+        name: 'TEMPERING ZONE2 TEMPERATURE',
+        type: 'temperature',
+        zone: 'zone2',
+        scadaField: 'tz2sv',
+        lowDeviation: -10.0,
+        highDeviation: 10.0
+      },
+      {
+        name: 'OIL TEMPERATURE',
+        type: 'temperature',
+        zone: null,
+        scadaField: 'oilpv',
+        lowDeviation: -10,
+        highDeviation: 20.0
+      }
+    ];
+    for (const sp of setpoints) {
+      await prisma.setpoint.create({
+        data: {
+          name: sp.name,
+          type: sp.type,
+          zone: sp.zone,
+          scadaField: sp.scadaField,
+          lowDeviation: sp.lowDeviation,
+          highDeviation: sp.highDeviation,
+          organization: { connect: { id: org.id } },
+        },
+      });
+    }
+
+    // Insert default meter limits
+    const meterLimits = [
+      {
+        parameter: 'voltage',
+        description: 'Line Voltage',
+        unit: 'V',
+        highLimit: 440.0,
+        lowLimit: 380.0
+      },
+      {
+        parameter: 'current',
+        description: 'Line Current',
+        unit: 'A',
+        highLimit: 100.0,
+        lowLimit: 0.0
+      },
+      {
+        parameter: 'frequency',
+        description: 'Power Frequency',
+        unit: 'Hz',
+        highLimit: 51.0,
+        lowLimit: 49.0
+      },
+      {
+        parameter: 'pf',
+        description: 'Power Factor',
+        unit: '',
+        highLimit: 1.0,
+        lowLimit: 0.85
+      },
+      {
+        parameter: 'power',
+        description: 'Active Power',
+        unit: 'kW',
+        highLimit: 75.0,
+        lowLimit: 0.0
+      },
+      {
+        parameter: 'energy',
+        description: 'Energy Consumption',
+        unit: 'kWh',
+        highLimit: 1800.0,
+        lowLimit: 0.0
+      }
+    ];
+    for (const limit of meterLimits) {
+      await prisma.meterLimit.create({
+        data: {
+          parameter: limit.parameter,
+          description: limit.description,
+          unit: limit.unit,
+          highLimit: limit.highLimit,
+          lowLimit: limit.lowLimit,
+          organization: { connect: { id: org.id } },
+        },
+      });
+    }
+
     res.status(201).json(org);
   } catch (error) { next(error); }
 });
@@ -338,7 +463,31 @@ router.put('/organizations/:id', async (req: Request, res: Response, next: NextF
 router.delete('/organizations/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    await prisma.organization.delete({ where: { id } });
+    // Perform cascading delete in a transaction
+    await prisma.$transaction([
+      // Delete NotificationSettings
+      prisma.notificationSettings.deleteMany({ where: { organizationId: id } }),
+      // Delete Notifications
+      prisma.notification.deleteMany({ where: { organizationId: id } }),
+      // Delete AlarmHistory
+      prisma.alarmHistory.deleteMany({ where: { organizationId: id } }),
+      // Delete Alarms
+      prisma.alarm.deleteMany({ where: { organizationId: id } }),
+      // Delete MeterReports
+      prisma.meterReport.deleteMany({ where: { organizationId: id } }),
+      // Delete FurnaceReports
+      prisma.furnaceReport.deleteMany({ where: { organizationId: id } }),
+      // Delete Setpoints
+      prisma.setpoint.deleteMany({ where: { organizationId: id } }),
+      // Delete MeterLimits
+      prisma.meterLimit.deleteMany({ where: { organizationId: id } }),
+      // Delete SystemSettings
+      prisma.systemSettings.deleteMany({ where: { organizationId: id } }),
+      // Delete Users (if any left)
+      prisma.user.deleteMany({ where: { organizationId: id } }),
+      // Finally, delete the Organization
+      prisma.organization.delete({ where: { id } })
+    ]);
     res.status(204).send();
   } catch (error) { next(error); }
 });

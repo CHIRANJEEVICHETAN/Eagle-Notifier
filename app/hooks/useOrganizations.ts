@@ -11,8 +11,8 @@ export interface Organization {
 
 interface OrgForm {
   name: string;
-  scadaDbConfig: string;
-  schemaConfig: string;
+  scadaDbConfig: Record<string, any>;
+  schemaConfig: Record<string, any>;
 }
 
 export function useOrganizations() {
