@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'; // Added for password hashing
 import { createError } from '../middleware/errorHandler';
 import { authenticate, authorize, getRequestOrgId } from '../middleware/authMiddleware';
 import { Router } from 'express';
+import BackgroundMonitoringService from '../services/backgroundMonitoringService';
 
 const router = Router();
 
@@ -512,5 +513,68 @@ const getOrganizationsHandler = async (req: any, res: any, next: any) => {
 };
 
 router.get('/organizations', getOrganizationsHandler);
+
+/**
+ * @route   GET /api/admin/monitoring/status
+ * @desc    Get background monitoring service status (superAdmin only)
+ * @access  Private (Super Admin)
+ */
+router.get('/monitoring/status', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Only SUPER_ADMIN can access this route
+    if (req.user?.role !== 'SUPER_ADMIN') {
+      throw createError('Forbidden', 403);
+    }
+
+    const healthStatus = BackgroundMonitoringService.getHealthStatus();
+    const monitoringStatus = BackgroundMonitoringService.getMonitoringStatus();
+
+    res.json({
+      health: healthStatus,
+      organizations: monitoringStatus
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/admin/monitoring/force-cycle
+ * @desc    Force a monitoring cycle for all organizations (superAdmin only)
+ * @access  Private (Super Admin)
+ */
+router.post('/monitoring/force-cycle', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Only SUPER_ADMIN can access this route
+    if (req.user?.role !== 'SUPER_ADMIN') {
+      throw createError('Forbidden', 403);
+    }
+
+    await BackgroundMonitoringService.forceMonitoringCycle();
+    res.json({ message: 'Monitoring cycle forced successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @route   POST /api/admin/monitoring/force-org/:orgId
+ * @desc    Force monitoring for a specific organization (superAdmin only)
+ * @access  Private (Super Admin)
+ */
+router.post('/monitoring/force-org/:orgId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Only SUPER_ADMIN can access this route
+    if (req.user?.role !== 'SUPER_ADMIN') {
+      throw createError('Forbidden', 403);
+    }
+
+    const { orgId } = req.params;
+    await BackgroundMonitoringService.forceMonitorOrganization(orgId);
+    res.json({ message: `Monitoring forced for organization ${orgId}` });
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router; 

@@ -15,6 +15,7 @@ import prisma from './src/config/db';
 import authRoutes from './src/routes/authRoutes';
 import operatorRoutes from './src/routes/operatorRoutes';
 import meterRoutes from './src/routes/meterRoutes';
+import BackgroundMonitoringService from './src/services/backgroundMonitoringService';
 
 // Load environment variables
 dotenv.config();
@@ -99,42 +100,11 @@ app.use((req, res) => {
 // Error handling middleware (must be after all other middleware and routes)
 app.use(errorHandler);
 
-// Get polling interval - first check for EXPO_PUBLIC_SCADA_INTERVAL, then fallback to other env vars
-const SCADA_POLL_INTERVAL = parseInt(
-  process.env.SCADA_POLL_INTERVAL || process.env.EXPO_PUBLIC_SCADA_INTERVAL ||  
-  '30000'
+// Get monitoring interval from environment
+const MONITORING_INTERVAL = parseInt(
+  process.env.SCADA_MONITORING_INTERVAL || process.env.SCADA_POLL_INTERVAL || 
+  process.env.EXPO_PUBLIC_SCADA_INTERVAL || '30000'
 ); // Default 30 seconds
-
-// Track if polling is currently active
-let isPolling = false;
-
-// Multi-tenant SCADA polling function
-async function pollScadaData() {
-  if (isPolling) {
-    console.log('⚠️ Previous poll still in progress, skipping this interval');
-    return;
-  }
-  try {
-    isPolling = true;
-    console.log(`📊 Polling SCADA data at ${new Date().toISOString()}`);
-    // Fetch all organizations
-    const orgs = await prisma.organization.findMany();
-    for (const org of orgs) {
-      try {
-        // Poll alarms for this org
-        await processAndFormatAlarms(org.id, true);
-        // Health check for this org
-        // await checkScadaHealth(org.id); // This line was removed as per the edit hint
-      } catch (err) {
-        console.error(`Error polling SCADA for org ${org.id}:`, err);
-      }
-    }
-  } catch (err) {
-    console.error('Error in multi-tenant SCADA polling:', err);
-  } finally {
-    isPolling = false;
-  }
-}
 
 // Initialize databases and start server
 async function startServer() {
@@ -147,44 +117,29 @@ async function startServer() {
           setTimeout(() => reject(new Error('Prisma connection timeout')), 5000)
         )
       ]);
-      console.log('Successfully connected to main database');
+      console.log('✅ Successfully connected to main database');
     } catch (dbError) {
-      console.error('Database connection error:', dbError);
-      console.log('Retrying database connection in 3 seconds...');
+      console.error('❌ Database connection error:', dbError);
+      console.log('🔄 Retrying database connection in 3 seconds...');
       await new Promise(resolve => setTimeout(resolve, 3000));
       await prisma.$connect();
+      console.log('✅ Database connection retry successful');
     }
 
     // Test all org SCADA DB connections and log results
+    console.log('🔍 Testing SCADA database connections for all organizations...');
     await testAllOrgScadaConnections();
 
-    // Always start SCADA polling for all orgs, regardless of connection test results
-    // Use reliable interval with jitter to prevent thundering herd problems
-    const pollingInterval = setInterval(() => {
-      // Add small random jitter (±500ms) to prevent synchronized requests
-      const jitter = Math.floor(Math.random() * 1000) - 500;
-      setTimeout(() => {
-        pollScadaData().catch(error => {
-          console.error('Error in SCADA polling:', error);
-        });
-      }, jitter);
-    }, SCADA_POLL_INTERVAL);
-    // Add to tracked intervals for clean shutdown
-    trackedIntervals.push(pollingInterval);
-    // Initial poll with error handling (with a slight delay to ensure server is fully ready)
-    setTimeout(() => {
-      pollScadaData().catch(error => {
-        console.error('Error in initial SCADA poll:', error);
-      });
-    }, 2000);
+    // Start the background monitoring service
+    console.log('🚀 Starting background monitoring service...');
+    await BackgroundMonitoringService.start();
 
     // Start server
     app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+      console.log(`🚀 Server running on port ${PORT}`);
       
       // Log all available routes
-      console.log('Available routes:');
-      // Simplified route logging to avoid type issues
+      console.log('📋 Available routes:');
       console.log('/api/auth routes (authentication)');
       console.log('/api/alarms routes (alarm management)');
       console.log('/api/admin routes (administrative functions)');
@@ -195,36 +150,39 @@ async function startServer() {
       console.log('/api/reports routes (reporting functions)');
       console.log('/api/meter routes (meter readings)');
 
-      console.log(`SCADA polling interval: ${SCADA_POLL_INTERVAL}ms`);
-
-      // Start SCADA polling if connection was successful
-      // The polling logic was removed as per the edit hint
+      console.log(`⏱️ Background monitoring interval: ${MONITORING_INTERVAL}ms`);
+      console.log('✅ Server initialization complete');
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 }
 
-// Track intervals for clean shutdown
-const trackedIntervals: NodeJS.Timeout[] = [];
-
 // Handle graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received. Closing connections...');
-  // Clear all intervals
-  trackedIntervals.forEach(interval => clearInterval(interval));
+  console.log('🛑 SIGTERM received. Shutting down gracefully...');
+  
+  // Stop background monitoring service
+  BackgroundMonitoringService.stop();
+  
   // Disconnect Prisma client
   await prisma.$disconnect();
+  
+  console.log('✅ Graceful shutdown complete');
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-  console.log('SIGINT received. Closing connections...');
-  // Clear all intervals
-  trackedIntervals.forEach(interval => clearInterval(interval));
+  console.log('🛑 SIGINT received. Shutting down gracefully...');
+  
+  // Stop background monitoring service
+  BackgroundMonitoringService.stop();
+  
   // Disconnect Prisma client
   await prisma.$disconnect();
+  
+  console.log('✅ Graceful shutdown complete');
   process.exit(0);
 });
 
