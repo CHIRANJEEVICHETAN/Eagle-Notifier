@@ -72,7 +72,7 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
     // Use parameterized query to avoid type errors and SQL injection
     const rawQueryResult = await prisma.$queryRaw<
       Array<{ count: number }>
-    >`SELECT COUNT(*) FROM "Notification" WHERE title LIKE 'Meter%' and "userId" = 'f0f5cc12-0a48-4436-8784-1f87eb5756b8';`;
+    >`SELECT COUNT(*) FROM "Notification" WHERE title LIKE 'Meter%' and "userId" = ${userId};`;
     const rawCount = rawQueryResult[0]?.count ?? 0;
     console.log(`🔍 DEBUG: Raw query result: ${rawCount}`);
   }

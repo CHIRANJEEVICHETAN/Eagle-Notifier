@@ -318,8 +318,18 @@ async function checkThresholdViolations(readings: {
   power: number 
 }, organizationId?: string): Promise<void> {
   try {
-    // Get all limits
-    const limits = await prisma.meterLimit.findMany();
+    // Validate that organizationId is provided
+    if (!organizationId) {
+      console.error('❌ Organization ID is required for checking threshold violations');
+      return;
+    }
+    
+    // Get limits for the specific organization
+    const limits = await prisma.meterLimit.findMany({
+      where: {
+        organizationId: organizationId
+      }
+    });
     
     // Map to track violations
     const violations = [];

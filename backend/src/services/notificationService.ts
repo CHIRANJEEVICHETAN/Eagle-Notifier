@@ -75,20 +75,28 @@ export class NotificationService {
         body: data.body,
         severity: data.severity || 'INFO',
         type: data.type || 'INFO',
-        metadata: data.metadata
+        metadata: data.metadata,
+        organizationId: data.organizationId
       });
       
-      // Get all users with notification settings and push tokens with retry logic
+      // Validate that organizationId is provided
+      if (!data.organizationId) {
+        console.error('❌ Organization ID is required for notifications');
+        return;
+      }
+      
+      // Get users from the specific organization with notification settings and push tokens
       const users = await withRetry(() => prisma.user.findMany({
         where: {
-          pushToken: { not: null } // Only get users with push tokens
+          pushToken: { not: null }, // Only get users with push tokens
+          organizationId: data.organizationId // CRITICAL: Filter by organization
         },
         include: {
           notificationSettings: true
         }
       }));
       
-      console.log(`📱 Found ${users.length} users with push tokens`);
+      console.log(`📱 Found ${users.length} users with push tokens in organization ${data.organizationId}`);
       
       // Filter users who should receive this notification
       const eligibleUsers = users.filter((user: any) => {
@@ -97,6 +105,7 @@ export class NotificationService {
           console.log(`🚫 Skipping SUPER_ADMIN user ${user.id} for notifications`);
           return false;
         }
+        
         // Find notification settings for the correct organization
         let settings = null;
         if (Array.isArray(user.notificationSettings)) {
@@ -104,19 +113,23 @@ export class NotificationService {
         } else if (user.notificationSettings) {
           settings = user.notificationSettings;
         }
+        
         if (!settings) {
           console.log(`ℹ️ User ${user.id} has no notification settings for org ${data.organizationId}, using defaults`);
-          // Use default settings
+          // Use default settings - user will receive notifications
           return true;
         }
+        
         if (!settings.pushEnabled) {
           console.log(`🔕 User ${user.id} has disabled push notifications`);
           return false;
         }
+        
         if (settings.criticalOnly && data.severity !== 'CRITICAL') {
           console.log(`⚡ User ${user.id} only wants critical notifications`);
           return false;
         }
+        
         // Check mute hours
         if (settings.muteFrom !== null && settings.muteTo !== null) {
           const currentHour = new Date().getHours();
@@ -134,10 +147,11 @@ export class NotificationService {
             }
           }
         }
+        
         return true;
       });
       
-      console.log(`✅ Found ${eligibleUsers.length} eligible users for notification`);
+      console.log(`✅ Found ${eligibleUsers.length} eligible users for notification in organization ${data.organizationId}`);
       
       // Prepare messages for batch sending
       const messages: ExpoPushMessage[] = [];
@@ -153,11 +167,11 @@ export class NotificationService {
               body: data.body,
               type: data.type || 'INFO',
               priority: PRIORITY_MAP[data.severity || 'INFO'],
-              organizationId: data.organizationId || '',
+              organizationId: data.organizationId!, // We've already validated this exists
             }
           }));
           
-          console.log(`📝 Created notification in database for user ${user.id}`);
+          console.log(`📝 Created notification in database for user ${user.id} in organization ${data.organizationId}`);
           
           // Add push message to batch if token exists and is valid
           if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
@@ -169,12 +183,13 @@ export class NotificationService {
               data: { 
                 notificationId: notification.id,
                 type: data.type,
-                severity: data.severity
+                severity: data.severity,
+                organizationId: data.organizationId // Include organizationId in push data
               },
               priority: data.severity === 'CRITICAL' ? 'high' : 'normal',
               badge: 1
             });
-            console.log(`📬 Prepared push message for user ${user.id}`);
+            console.log(`📬 Prepared push message for user ${user.id} in organization ${data.organizationId}`);
           }
         } catch (error) {
           console.error(`❌ Error creating notification for user ${user.id}:`, error);
@@ -184,7 +199,7 @@ export class NotificationService {
       // Send push notifications in batches
       if (messages.length > 0) {
         try {
-          console.log(`🚀 Sending ${messages.length} push notifications...`);
+          console.log(`🚀 Sending ${messages.length} push notifications for organization ${data.organizationId}...`);
           const chunks = expo.chunkPushNotifications(messages);
           
           for (const chunk of chunks) {
@@ -192,12 +207,12 @@ export class NotificationService {
             console.log('📨 Push notification result:', ticketChunk);
           }
           
-          console.log('✅ Successfully sent all push notifications');
+          console.log(`✅ Successfully sent all push notifications for organization ${data.organizationId}`);
         } catch (error) {
           console.error('❌ Error sending push notifications:', error);
         }
       } else {
-        console.log('ℹ️ No push notifications to send');
+        console.log(`ℹ️ No push notifications to send for organization ${data.organizationId}`);
       }
       
     } catch (error) {

@@ -296,7 +296,7 @@ export const getLatestScadaData = async (orgId: string, forceRefresh = false): P
     }
 };
 
-// Get setpoint configurations
+// Get setpoint configurations for a specific organization
 const getSetpointConfigs = async (orgId: string): Promise<SetpointConfig[]> => {
     try {
         const setpoints = await prisma.$queryRaw<PrismaSetpoint[]>`
@@ -304,6 +304,7 @@ const getSetpointConfigs = async (orgId: string): Promise<SetpointConfig[]> => {
       "lowDeviation", "highDeviation",
       "createdAt", "updatedAt"
       FROM "Setpoint"
+      WHERE "organizationId" = ${orgId}
     `;
         return setpoints.map(setpoint => ({
             id: setpoint.id,
@@ -315,7 +316,7 @@ const getSetpointConfigs = async (orgId: string): Promise<SetpointConfig[]> => {
             highDeviation: setpoint.highDeviation
         }));
     } catch (error) {
-        console.error('Error fetching setpoint configs:', error);
+        console.error('Error fetching setpoint configs for organization:', orgId, error);
         return [];
     }
 };
