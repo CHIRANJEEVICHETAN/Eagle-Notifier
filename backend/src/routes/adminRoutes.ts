@@ -324,69 +324,35 @@ router.post('/organizations', async (req: Request, res: Response, next: NextFunc
       data: { name, scadaDbConfig, schemaConfig: schemaConfig || {} },
     });
 
-    // Insert default setpoints
-    const setpoints = [
-      {
-        name: 'HARDENING ZONE 1 TEMPERATURE',
-        type: 'temperature',
-        zone: 'zone1',
-        scadaField: 'hz1sv',
-        lowDeviation: -30.0,
-        highDeviation: 10.0
-      },
-      {
-        name: 'HARDENING ZONE 2 TEMPERATURE',
-        type: 'temperature',
-        zone: 'zone2',
-        scadaField: 'hz2sv',
-        lowDeviation: -10.0,
-        highDeviation: 10.0
-      },
-      {
-        name: 'CARBON POTENTIAL',
-        type: 'carbon',
-        zone: null,
-        scadaField: 'cpsv',
-        lowDeviation: -0.05,
-        highDeviation: 0.05
-      },
-      {
-        name: 'TEMPERING ZONE1 TEMPERATURE',
-        type: 'temperature',
-        zone: 'zone1',
-        scadaField: 'tz1sv',
-        lowDeviation: -30.0,
-        highDeviation: 10.0
-      },
-      {
-        name: 'TEMPERING ZONE2 TEMPERATURE',
-        type: 'temperature',
-        zone: 'zone2',
-        scadaField: 'tz2sv',
-        lowDeviation: -10.0,
-        highDeviation: 10.0
-      },
-      {
-        name: 'OIL TEMPERATURE',
-        type: 'temperature',
-        zone: null,
-        scadaField: 'oilpv',
-        lowDeviation: -10,
-        highDeviation: 20.0
+    // Create setpoints dynamically from column configuration
+    if (schemaConfig && schemaConfig.columnConfigs) {
+      try {
+        const columnConfigs = typeof schemaConfig.columnConfigs === 'string' 
+          ? JSON.parse(schemaConfig.columnConfigs) 
+          : schemaConfig.columnConfigs;
+        
+        for (const [columnName, columnConfig] of Object.entries(columnConfigs)) {
+          const config = columnConfig as any;
+          
+          // Only create setpoints for analog columns that have deviation values
+          if (config.isAnalog && config.lowDeviation !== undefined && config.highDeviation !== undefined) {
+            await prisma.setpoint.create({
+              data: {
+                name: config.name,
+                type: config.type,
+                zone: config.zone || null,
+                scadaField: columnName,
+                lowDeviation: config.lowDeviation,
+                highDeviation: config.highDeviation,
+                organization: { connect: { id: org.id } },
+              },
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error creating setpoints from column configuration:', error);
+        // Continue with organization creation even if setpoint creation fails
       }
-    ];
-    for (const sp of setpoints) {
-      await prisma.setpoint.create({
-        data: {
-          name: sp.name,
-          type: sp.type,
-          zone: sp.zone,
-          scadaField: sp.scadaField,
-          lowDeviation: sp.lowDeviation,
-          highDeviation: sp.highDeviation,
-          organization: { connect: { id: org.id } },
-        },
-      });
     }
 
     // Insert default meter limits

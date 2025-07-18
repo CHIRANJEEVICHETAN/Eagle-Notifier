@@ -127,7 +127,9 @@ const OrganizationManagement: React.FC = () => {
           type: 'temperature',
           unit: '°C',
           isAnalog: true,
-          isBinary: false
+          isBinary: false,
+          lowDeviation: -30.0,
+          highDeviation: 10.0
         };
       }
       // Pressure-related columns
@@ -137,7 +139,9 @@ const OrganizationManagement: React.FC = () => {
           type: 'pressure',
           unit: 'bar',
           isAnalog: true,
-          isBinary: false
+          isBinary: false,
+          lowDeviation: -5.0,
+          highDeviation: 5.0
         };
       }
       // Level-related columns
@@ -147,17 +151,21 @@ const OrganizationManagement: React.FC = () => {
           type: 'level',
           unit: '%',
           isAnalog: true,
-          isBinary: false
+          isBinary: false,
+          lowDeviation: -10.0,
+          highDeviation: 10.0
         };
       }
       // Carbon-related columns
-      else if (colLower.includes('carbon') || colLower.includes('carb')) {
+      else if (colLower.includes('carbon') || colLower.includes('carb') || colLower.includes('cp')) {
         autoConfig[col] = {
           name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
           type: 'carbon',
           unit: '%',
           isAnalog: true,
-          isBinary: false
+          isBinary: false,
+          lowDeviation: -0.05,
+          highDeviation: 0.05
         };
       }
       // Binary/failure columns
@@ -213,7 +221,9 @@ const OrganizationManagement: React.FC = () => {
           name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
           type: 'value',
           isAnalog: true,
-          isBinary: false
+          isBinary: false,
+          lowDeviation: -10.0,
+          highDeviation: 10.0
         };
       }
       
@@ -786,7 +796,9 @@ const OrganizationManagement: React.FC = () => {
     "zone": "zone1",
     "unit": "°C",
     "isAnalog": true,
-    "isBinary": false
+    "isBinary": false,
+    "lowDeviation": -30.0,
+    "highDeviation": 10.0
   },
   "hz1pv": {
     "name": "HARDENING ZONE 1 TEMPERATURE",
@@ -794,14 +806,18 @@ const OrganizationManagement: React.FC = () => {
     "zone": "zone1",
     "unit": "°C",
     "isAnalog": true,
-    "isBinary": false
+    "isBinary": false,
+    "lowDeviation": -30.0,
+    "highDeviation": 10.0
   },
   "oilpv": {
     "name": "OIL TEMPERATURE",
     "type": "temperature",
     "unit": "°C", 
     "isAnalog": true,
-    "isBinary": false
+    "isBinary": false,
+    "lowDeviation": -10.0,
+    "highDeviation": 20.0
   },
   "oiltemphigh": {
     "name": "OIL TEMPERATURE HIGH",
@@ -815,6 +831,15 @@ const OrganizationManagement: React.FC = () => {
     "zone": "zone1",
     "isAnalog": false,
     "isBinary": true
+  },
+  "cpsv": {
+    "name": "CARBON POTENTIAL",
+    "type": "carbon",
+    "unit": "%",
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -0.05,
+    "highDeviation": 0.05
   }
 }`}
                 </Text>
@@ -828,6 +853,8 @@ const OrganizationManagement: React.FC = () => {
                 <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 2 }}>• type: Alarm type (temperature, carbon, etc.)</Text>
                 <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 2 }}>• zone: Zone identifier (optional)</Text>
                 <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 8 }}>• unit: Unit of measurement (optional)</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 8 }}>• lowDeviation: Lower deviation for analog alarms (optional)</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 8 }}>• highDeviation: Upper deviation for analog alarms (optional)</Text>
               </View>
               
               <View style={{ marginBottom: 12 }}>

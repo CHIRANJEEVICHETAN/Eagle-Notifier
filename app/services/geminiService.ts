@@ -18,31 +18,51 @@ const EXAMPLE_JSON_CONFIG = `{
     "type": "temperature",
     "zone": "zone1",
     "unit": "°C",
-    "isAnalog": true
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -30.0,
+    "highDeviation": 10.0
   },
   "hz1pv": {
     "name": "HARDENING ZONE 1 TEMPERATURE",
     "type": "temperature", 
     "zone": "zone1",
     "unit": "°C",
-    "isAnalog": true
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -30.0,
+    "highDeviation": 10.0
   },
   "oilpv": {
     "name": "OIL TEMPERATURE",
     "type": "temperature",
     "unit": "°C", 
-    "isAnalog": true
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -10.0,
+    "highDeviation": 20.0
   },
   "oiltemphigh": {
     "name": "OIL TEMPERATURE HIGH",
     "type": "temperature",
+    "isAnalog": false,
     "isBinary": true
   },
   "hz1hfail": {
     "name": "HARDENING ZONE 1 HEATER FAILURE",
     "type": "heater",
     "zone": "zone1",
+    "isAnalog": false,
     "isBinary": true
+  },
+  "cpsv": {
+    "name": "CARBON POTENTIAL",
+    "type": "carbon",
+    "unit": "%",
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -0.05,
+    "highDeviation": 0.05
   }
 }`;
 
@@ -63,6 +83,8 @@ The JSON should follow this schema:
   - unit: string (optional, unit of measurement like "°C", "bar", "%")
   - isAnalog: boolean (true for analog alarms, false for binary)
   - isBinary: boolean (true for binary alarms, false for analog)
+  - lowDeviation: number (optional, lower deviation threshold for analog alarms)
+  - highDeviation: number (optional, upper deviation threshold for analog alarms)
 
 Example of valid JSON:
 ${EXAMPLE_JSON_CONFIG}
@@ -70,6 +92,9 @@ ${EXAMPLE_JSON_CONFIG}
 Important rules:
 - A column cannot be both analog and binary (isAnalog and isBinary cannot both be true)
 - At least one of isAnalog or isBinary must be true
+- lowDeviation and highDeviation are only applicable for analog alarms (isAnalog: true)
+- lowDeviation should be a negative number or 0
+- highDeviation should be a positive number or 0
 - Fix any missing quotes, commas, or brackets
 - Correct any spelling mistakes in property names
 - Ensure proper JSON formatting with consistent indentation
@@ -193,6 +218,21 @@ export const validateJsonSchema = (jsonInput: string): { isValid: boolean; error
       
       if (configObj.unit && typeof configObj.unit !== 'string') {
         errors.push(`Column ${columnName}: 'unit' must be a string`);
+      }
+      
+      // Check deviation fields for analog alarms
+      if (configObj.isAnalog) {
+        if (configObj.lowDeviation !== undefined && typeof configObj.lowDeviation !== 'number') {
+          errors.push(`Column ${columnName}: 'lowDeviation' must be a number`);
+        }
+        if (configObj.highDeviation !== undefined && typeof configObj.highDeviation !== 'number') {
+          errors.push(`Column ${columnName}: 'highDeviation' must be a number`);
+        }
+        if (configObj.lowDeviation !== undefined && configObj.highDeviation !== undefined) {
+          if (configObj.lowDeviation > configObj.highDeviation) {
+            errors.push(`Column ${columnName}: 'lowDeviation' cannot be greater than 'highDeviation'`);
+          }
+        }
       }
     }
     
