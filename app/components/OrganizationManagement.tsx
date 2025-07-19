@@ -2,7 +2,9 @@ import { useTheme } from "../context/ThemeContext";
 import { useState, useMemo } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Alert, FlatList, ActivityIndicator, RefreshControl } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from 'expo-document-picker';
 import { useOrganizations, Organization } from "../hooks/useOrganizations";
+import { checkAndFixJsonSyntax, validateJsonSchema } from "../services/geminiService";
 
 // Types for form fields
 interface ScadaDbConfigForm {
@@ -16,6 +18,7 @@ interface ScadaDbConfigForm {
 }
 interface SchemaConfigForm {
   columns: string; // comma-separated
+  columnConfigs: string; // JSON string for column configurations
 }
 interface OrgForm {
   name: string;
@@ -34,6 +37,7 @@ const defaultScadaDbConfig: ScadaDbConfigForm = {
 };
 const defaultSchemaConfig: SchemaConfigForm = {
   columns: '',
+  columnConfigs: '',
 };
 
 const OrganizationManagement: React.FC = () => {
@@ -61,6 +65,10 @@ const OrganizationManagement: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [isCheckingSyntax, setIsCheckingSyntax] = useState(false);
+  const [showSyntaxModal, setShowSyntaxModal] = useState(false);
+  const [syntaxResult, setSyntaxResult] = useState<{ success: boolean; correctedJson?: string; error?: string } | null>(null);
 
   // Parse org config to form
   const orgToForm = (org: Organization): OrgForm => {
@@ -82,6 +90,7 @@ const OrganizationManagement: React.FC = () => {
       const schema = typeof org.schemaConfig === 'string' ? JSON.parse(org.schemaConfig) : org.schemaConfig;
       schemaConfig = {
         columns: Array.isArray(schema.columns) ? schema.columns.join(', ') : '',
+        columnConfigs: schema.columnConfigs ? JSON.stringify(schema.columnConfigs, null, 2) : '',
       };
     } catch {}
     return {
@@ -96,6 +105,235 @@ const OrganizationManagement: React.FC = () => {
     if (!search) return organizations;
     return organizations.filter(org => org.name.toLowerCase().includes(search.toLowerCase()));
   }, [organizations, search]);
+
+  // Auto-generate column configurations
+  const handleAutoGenerate = () => {
+    const columns = form.schemaConfig.columns.split(',').map(s => s.trim()).filter(Boolean);
+    
+    if (columns.length === 0) {
+      Alert.alert('No Columns', 'Please enter column names first (comma-separated)');
+      return;
+    }
+    
+    const autoConfig: any = {};
+    
+    columns.forEach(col => {
+      const colLower = col.toLowerCase();
+      
+      // Temperature-related columns
+      if (colLower.includes('temp') || colLower.includes('hz') || colLower.includes('tz') || colLower.includes('oil')) {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'temperature',
+          unit: '°C',
+          isAnalog: true,
+          isBinary: false,
+          lowDeviation: -30.0,
+          highDeviation: 10.0
+        };
+      }
+      // Pressure-related columns
+      else if (colLower.includes('pressure') || colLower.includes('press') || colLower.includes('pr')) {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'pressure',
+          unit: 'bar',
+          isAnalog: true,
+          isBinary: false,
+          lowDeviation: -5.0,
+          highDeviation: 5.0
+        };
+      }
+      // Level-related columns
+      else if (colLower.includes('level') || colLower.includes('lvl')) {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'level',
+          unit: '%',
+          isAnalog: true,
+          isBinary: false,
+          lowDeviation: -10.0,
+          highDeviation: 10.0
+        };
+      }
+      // Carbon-related columns
+      else if (colLower.includes('carbon') || colLower.includes('carb') || colLower.includes('cp')) {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'carbon',
+          unit: '%',
+          isAnalog: true,
+          isBinary: false,
+          lowDeviation: -0.05,
+          highDeviation: 0.05
+        };
+      }
+      // Binary/failure columns
+      else if (colLower.includes('fail') || colLower.includes('high') || colLower.includes('low') || 
+               colLower.includes('alarm') || colLower.includes('status') || colLower.includes('on') || 
+               colLower.includes('off') || colLower.includes('run')) {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'status',
+          isAnalog: false,
+          isBinary: true
+        };
+      }
+      // Motor-related columns
+      else if (colLower.includes('motor') || colLower.includes('mtr')) {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'motor',
+          isAnalog: false,
+          isBinary: true
+        };
+      }
+      // Fan-related columns
+      else if (colLower.includes('fan')) {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'fan',
+          isAnalog: false,
+          isBinary: true
+        };
+      }
+      // Heater-related columns
+      else if (colLower.includes('heater') || colLower.includes('htr')) {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'heater',
+          isAnalog: false,
+          isBinary: true
+        };
+      }
+      // Conveyor-related columns
+      else if (colLower.includes('conveyor') || colLower.includes('conv')) {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'conveyor',
+          isAnalog: false,
+          isBinary: true
+        };
+      }
+      // Default analog column
+      else {
+        autoConfig[col] = {
+          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+          type: 'value',
+          isAnalog: true,
+          isBinary: false,
+          lowDeviation: -10.0,
+          highDeviation: 10.0
+        };
+      }
+      
+      // Add zone information if column name suggests it
+      if (colLower.includes('zone1') || colLower.includes('z1')) {
+        autoConfig[col].zone = 'zone1';
+      } else if (colLower.includes('zone2') || colLower.includes('z2')) {
+        autoConfig[col].zone = 'zone2';
+      }
+    });
+    
+    setForm(f => ({
+      ...f,
+      schemaConfig: {
+        ...f.schemaConfig,
+        columnConfigs: JSON.stringify(autoConfig, null, 2)
+      }
+    }));
+    
+    Alert.alert('Auto-Generated', `Generated configuration for ${Object.keys(autoConfig).length} columns`);
+  };
+
+  // Handle JSON file upload
+  const handleFileUpload = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const file = result.assets[0];
+      
+      if (!file) {
+        Alert.alert('Error', 'No file selected');
+        return;
+      }
+
+      // Read the file content
+      const response = await fetch(file.uri);
+      const fileContent = await response.text();
+      
+      // Try to parse the JSON
+      try {
+        const parsed = JSON.parse(fileContent);
+        
+        // Validate the schema
+        const validation = validateJsonSchema(fileContent);
+        if (!validation.isValid) {
+          Alert.alert('Validation Error', `Invalid JSON schema:\n${validation.errors.join('\n')}`);
+          return;
+        }
+        
+        setForm(f => ({
+          ...f,
+          schemaConfig: {
+            ...f.schemaConfig,
+            columnConfigs: JSON.stringify(parsed, null, 2)
+          }
+        }));
+        
+        Alert.alert('Success', 'JSON file loaded successfully!');
+        
+      } catch (parseError) {
+        Alert.alert('Parse Error', 'The selected file is not valid JSON');
+      }
+      
+    } catch (error) {
+      console.error('File upload error:', error);
+      Alert.alert('Error', 'Failed to read the selected file');
+    }
+  };
+
+  // Handle syntax checking with Gemini AI
+  const handleSyntaxCheck = async () => {
+    if (!form.schemaConfig.columnConfigs.trim()) {
+      Alert.alert('No Content', 'Please enter JSON configuration to check');
+      return;
+    }
+
+    setIsCheckingSyntax(true);
+    try {
+      const result = await checkAndFixJsonSyntax(form.schemaConfig.columnConfigs);
+      setSyntaxResult(result);
+      setShowSyntaxModal(true);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to check syntax. Please try again.');
+    } finally {
+      setIsCheckingSyntax(false);
+    }
+  };
+
+  // Apply corrected JSON
+  const applyCorrectedJson = () => {
+    if (syntaxResult?.correctedJson) {
+      setForm(f => ({
+        ...f,
+        schemaConfig: {
+          ...f.schemaConfig,
+          columnConfigs: syntaxResult.correctedJson!
+        }
+      }));
+      setShowSyntaxModal(false);
+      setSyntaxResult(null);
+      Alert.alert('Applied', 'Corrected JSON has been applied');
+    }
+  };
 
   // Handlers
   const handleSelectOrg = (org: Organization) => {
@@ -144,6 +382,39 @@ const OrganizationManagement: React.FC = () => {
       Alert.alert('Validation Error', 'Please fill all required fields.');
       return;
     }
+    
+    // Validate JSON configuration if provided
+    if (form.schemaConfig.columnConfigs.trim()) {
+      try {
+        const config = JSON.parse(form.schemaConfig.columnConfigs);
+        
+        // Validate column configurations
+        for (const [columnName, columnConfig] of Object.entries(config)) {
+          if (typeof columnConfig !== 'object' || !columnConfig) {
+            throw new Error(`Invalid configuration for column: ${columnName}`);
+          }
+          
+          const configObj = columnConfig as any;
+          
+          // Check if it's analog or binary
+          if (configObj.isAnalog && configObj.isBinary) {
+            throw new Error(`Column ${columnName} cannot be both analog and binary`);
+          }
+          
+          if (!configObj.isAnalog && !configObj.isBinary) {
+            throw new Error(`Column ${columnName} must be either analog or binary`);
+          }
+          
+          // Check required fields
+          if (!configObj.name || !configObj.type) {
+            throw new Error(`Column ${columnName} missing required fields: name and type`);
+          }
+        }
+      } catch (error) {
+        Alert.alert('Configuration Error', `Invalid JSON configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        return;
+      }
+    }
     // Utility to trim all string fields in an object
     const trimObjectStrings = (obj: any) => {
       const trimmed: any = {};
@@ -162,6 +433,7 @@ const OrganizationManagement: React.FC = () => {
     };
     const schemaConfig = {
       columns: trimmedSchemaConfig.columns.split(',').map((s: string) => s.trim()).filter(Boolean),
+      columnConfigs: trimmedSchemaConfig.columnConfigs ? JSON.parse(trimmedSchemaConfig.columnConfigs) : undefined,
     };
     setIsSaving(true);
     try {
@@ -302,8 +574,62 @@ const OrganizationManagement: React.FC = () => {
                   editable={isEditing}
                   onChangeText={val => setForm(f => ({ ...f, schemaConfig: { ...f.schemaConfig, columns: val } }))}
                   style={{ borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 8, backgroundColor: isDarkMode ? '#334155' : '#f9fafb', color: isDarkMode ? '#fff' : '#111827' }}
-                  placeholder="hz1sv, hz1pv, ..."
+                  placeholder="hz1sv, hz1pv, oilpv, ..."
                   placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
+                />
+              </View>
+              
+              {/* Column Configurations */}
+              <View style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={{ color: isDarkMode ? '#cbd5e1' : '#64748b', fontSize: 13 }}>Column Configurations (JSON)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b', marginRight: 4 }}>Auto-gen</Text>
+                    <TouchableOpacity 
+                      onPress={handleAutoGenerate}
+                      style={{ padding: 4, marginRight: 8 }}
+                    >
+                      <Ionicons name="flash" size={16} color={isDarkMode ? '#22c55e' : '#16a34a'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      onPress={handleFileUpload}
+                      style={{ padding: 4, marginRight: 8 }}
+                    >
+                      <Ionicons name="cloud-upload" size={16} color={isDarkMode ? '#f59e42' : '#ea580c'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      onPress={handleSyntaxCheck}
+                      disabled={isCheckingSyntax}
+                      style={{ padding: 4, marginRight: 8 }}
+                    >
+                      {isCheckingSyntax ? (
+                        <ActivityIndicator size={16} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
+                      ) : (
+                        <Ionicons name="checkmark-circle" size={16} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setShowConfigModal(true)} style={{ padding: 4 }}>
+                      <Ionicons name="help-circle-outline" size={16} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <TextInput
+                  value={form.schemaConfig.columnConfigs}
+                  editable={isEditing}
+                  onChangeText={val => setForm(f => ({ ...f, schemaConfig: { ...f.schemaConfig, columnConfigs: val } }))}
+                  style={{ 
+                    borderWidth: 1, 
+                    borderColor: '#e5e7eb', 
+                    borderRadius: 8, 
+                    padding: 8, 
+                    backgroundColor: isDarkMode ? '#334155' : '#f9fafb', 
+                    color: isDarkMode ? '#fff' : '#111827',
+                    minHeight: 100,
+                    textAlignVertical: 'top'
+                  }}
+                  placeholder="Enter JSON configuration for column alarms..."
+                  placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
+                  multiline
                 />
               </View>
             </ScrollView>
@@ -342,6 +668,7 @@ const OrganizationManagement: React.FC = () => {
           </View>
         </View>
       </Modal>
+      
       {/* Success Modal */}
       <Modal visible={showSuccessModal} animationType="fade" transparent>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
@@ -354,6 +681,7 @@ const OrganizationManagement: React.FC = () => {
           </View>
         </View>
       </Modal>
+      
       {/* Delete Confirmation Modal */}
       <Modal visible={showDeleteModal} animationType="fade" transparent>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
@@ -376,6 +704,184 @@ const OrganizationManagement: React.FC = () => {
                 <Text style={{ color: '#fff', fontWeight: 'bold' }}>Delete</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+      
+      {/* Syntax Check Result Modal */}
+      <Modal visible={showSyntaxModal} animationType="fade" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: 16, padding: 24, width: '95%', maxHeight: '90%' }}>
+            <ScrollView style={{ maxHeight: 400 }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: isDarkMode ? '#F8FAFC' : '#1E293B' }}>
+                {syntaxResult?.success ? 'Syntax Check Complete' : 'Syntax Check Failed'}
+              </Text>
+              
+              {syntaxResult?.success ? (
+                <View>
+                  <Text style={{ fontSize: 14, color: isDarkMode ? '#22c55e' : '#16a34a', marginBottom: 12 }}>
+                    ✅ JSON syntax is valid and has been corrected!
+                  </Text>
+                  <Text style={{ fontSize: 14, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 12 }}>
+                    Corrected JSON:
+                  </Text>
+                  <View style={{ backgroundColor: isDarkMode ? '#334155' : '#f1f5f9', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                    <Text style={{ fontFamily: 'monospace', fontSize: 11, color: isDarkMode ? '#e2e8f0' : '#475569' }}>
+                      {syntaxResult.correctedJson}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View>
+                  <Text style={{ fontSize: 14, color: isDarkMode ? '#f87171' : '#dc2626', marginBottom: 12 }}>
+                    ❌ Failed to fix JSON syntax
+                  </Text>
+                  <Text style={{ fontSize: 14, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 12 }}>
+                    Error: {syntaxResult?.error}
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+            
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+              <TouchableOpacity 
+                onPress={() => setShowSyntaxModal(false)} 
+                style={{ 
+                  flex: 1,
+                  padding: 12, 
+                  borderRadius: 8, 
+                  backgroundColor: '#e5e7eb',
+                  alignItems: 'center'
+                }}
+              >
+                <Text style={{ color: '#111827', fontWeight: 'bold' }}>Close</Text>
+              </TouchableOpacity>
+              
+              {syntaxResult?.success && (
+                <TouchableOpacity 
+                  onPress={applyCorrectedJson}
+                  style={{ 
+                    flex: 1,
+                    padding: 12, 
+                    borderRadius: 8, 
+                    backgroundColor: isDarkMode ? '#22c55e' : '#16a34a',
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>Apply Fix</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+      
+      {/* Configuration Help Modal */}
+      <Modal visible={showConfigModal} animationType="fade" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: isDarkMode ? '#1e293b' : '#fff', borderRadius: 16, padding: 24, width: '95%', maxHeight: '90%' }}>
+            <ScrollView style={{ maxHeight: 500 }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: isDarkMode ? '#F8FAFC' : '#1E293B' }}>Column Configuration Help</Text>
+              
+              <Text style={{ fontSize: 14, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 12 }}>
+                Configure how each column should be treated for alarm monitoring. Use this JSON format:
+              </Text>
+              
+              <View style={{ backgroundColor: isDarkMode ? '#334155' : '#f1f5f9', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                <Text style={{ fontFamily: 'monospace', fontSize: 12, color: isDarkMode ? '#e2e8f0' : '#475569' }}>
+{`{
+  "hz1sv": {
+    "name": "HARDENING ZONE 1 SETPOINT",
+    "type": "temperature",
+    "zone": "zone1",
+    "unit": "°C",
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -30.0,
+    "highDeviation": 10.0
+  },
+  "hz1pv": {
+    "name": "HARDENING ZONE 1 TEMPERATURE",
+    "type": "temperature", 
+    "zone": "zone1",
+    "unit": "°C",
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -30.0,
+    "highDeviation": 10.0
+  },
+  "oilpv": {
+    "name": "OIL TEMPERATURE",
+    "type": "temperature",
+    "unit": "°C", 
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -10.0,
+    "highDeviation": 20.0
+  },
+  "oiltemphigh": {
+    "name": "OIL TEMPERATURE HIGH",
+    "type": "temperature",
+    "isAnalog": false,
+    "isBinary": true
+  },
+  "hz1hfail": {
+    "name": "HARDENING ZONE 1 HEATER FAILURE",
+    "type": "heater",
+    "zone": "zone1",
+    "isAnalog": false,
+    "isBinary": true
+  },
+  "cpsv": {
+    "name": "CARBON POTENTIAL",
+    "type": "carbon",
+    "unit": "%",
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -0.05,
+    "highDeviation": 0.05
+  }
+}`}
+                </Text>
+              </View>
+              
+              <Text style={{ fontSize: 14, fontWeight: '600', color: isDarkMode ? '#F8FAFC' : '#1E293B', marginBottom: 8 }}>Configuration Options:</Text>
+              
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: isDarkMode ? '#60A5FA' : '#2563EB', marginBottom: 4 }}>Analog Alarms (isAnalog: true, isBinary: false):</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 2 }}>• name: Display name for the alarm</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 2 }}>• type: Alarm type (temperature, carbon, etc.)</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 2 }}>• zone: Zone identifier (optional)</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 8 }}>• unit: Unit of measurement (optional)</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 8 }}>• lowDeviation: Lower deviation for analog alarms (optional)</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 8 }}>• highDeviation: Upper deviation for analog alarms (optional)</Text>
+              </View>
+              
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: isDarkMode ? '#60A5FA' : '#2563EB', marginBottom: 4 }}>Binary Alarms (isAnalog: false, isBinary: true):</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 2 }}>• name: Display name for the alarm</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 2 }}>• type: Alarm type (heater, fan, etc.)</Text>
+                <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 8 }}>• zone: Zone identifier (optional)</Text>
+              </View>
+              
+              <Text style={{ fontSize: 12, color: isDarkMode ? '#fbbf24' : '#f59e42', fontStyle: 'italic' }}>
+                Note: For analog alarms, the system automatically pairs PV (process value) and SV (setpoint value) fields based on naming patterns.
+              </Text>
+            </ScrollView>
+            
+            <TouchableOpacity 
+              onPress={() => setShowConfigModal(false)} 
+              style={{ 
+                marginTop: 16, 
+                backgroundColor: isDarkMode ? '#2563eb' : '#3b82f6', 
+                borderRadius: 8, 
+                paddingVertical: 12, 
+                paddingHorizontal: 24,
+                alignItems: 'center'
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Got it!</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

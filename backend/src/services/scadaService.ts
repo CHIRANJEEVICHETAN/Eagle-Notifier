@@ -65,7 +65,7 @@ export const SCADA_POLLING_INTERVAL = parseInt(
 
 // Cache for last fetch time to respect polling interval
 let lastFetchTime = 0;
-let cachedScadaData: ScadaData | null = null;
+let cachedScadaData: any = null;
 
 // Keep track of consecutive errors for backoff strategy
 let consecutiveErrors = 0;
@@ -75,44 +75,127 @@ const MAX_CONSECUTIVE_ERRORS = 5;
 let lastProcessedTimestamp: string | null = null;
 let cachedProcessedAlarms: any = null;
 
+// Dynamic ScadaData interface - will be built from org schema config
 export interface ScadaData {
-    // Analog Values
-    hz1sv: number;
-    hz1pv: number;
-    hz2sv: number;
-    hz2pv: number;
-    cpsv: number;
-    cppv: number;
-    tz1sv: number;
-    tz1pv: number;
-    tz2sv: number;
-    tz2pv: number;
-    oilpv: number;
-
-    // Binary Values
-    oiltemphigh: boolean;
-    oillevelhigh: boolean;
-    oillevellow: boolean;
-    hz1hfail: boolean;
-    hz2hfail: boolean;
-    hardconfail: boolean;
-    hardcontraip: boolean;
-    oilconfail: boolean;
-    oilcontraip: boolean;
-    hz1fanfail: boolean;
-    hz2fanfail: boolean;
-    hz1fantrip: boolean;
-    hz2fantrip: boolean;
-    tempconfail: boolean;
-    tempcontraip: boolean;
-    tz1fanfail: boolean;
-    tz2fanfail: boolean;
-    tz1fantrip: boolean;
-    tz2fantrip: boolean;
-
+    [key: string]: any; // Dynamic properties based on org schema
     id: string;
     created_timestamp: Date;
 }
+
+// Organization schema configuration interface
+interface OrganizationSchemaConfig {
+    columns: string[];
+    table?: string;
+    columnConfigs?: {
+        [columnName: string]: {
+            name: string;
+            type: string;
+            zone?: string;
+            unit?: string;
+            isAnalog?: boolean;
+            isBinary?: boolean;
+        };
+    };
+}
+
+// Get organization schema configuration
+const getOrganizationSchemaConfig = async (orgId: string): Promise<OrganizationSchemaConfig> => {
+    try {
+        const org = await prisma.organization.findUnique({
+            where: { id: orgId },
+            select: { schemaConfig: true, scadaDbConfig: true }
+        });
+
+        if (!org) {
+            throw new Error(`Organization not found: ${orgId}`);
+        }
+
+        // Parse schema config
+        const schemaConfig = typeof org.schemaConfig === 'string' 
+            ? JSON.parse(org.schemaConfig) 
+            : org.schemaConfig;
+
+        // Parse SCADA DB config to get table name
+        const scadaDbConfig = typeof org.scadaDbConfig === 'string'
+            ? JSON.parse(org.scadaDbConfig)
+            : org.scadaDbConfig;
+
+        return {
+            columns: schemaConfig.columns || [],
+            table: scadaDbConfig.table || 'jk2' // Default fallback
+        };
+    } catch (error) {
+        console.error('Error fetching organization schema config:', error);
+        // Return default schema for backward compatibility
+        return {
+            columns: [
+                'hz1sv', 'hz1pv', 'hz2sv', 'hz2pv', 'cpsv', 'cppv', 
+                'tz1sv', 'tz1pv', 'tz2sv', 'tz2pv', 'oilpv',
+                'oiltemphigh', 'oillevelhigh', 'oillevellow',
+                'hz1hfail', 'hz2hfail', 'hardconfail', 'hardcontraip',
+                'oilconfail', 'oilcontraip', 'hz1fanfail', 'hz2fanfail',
+                'hz1fantrip', 'hz2fantrip', 'tempconfail', 'tempcontraip',
+                'tz1fanfail', 'tz2fanfail', 'tz1fantrip', 'tz2fantrip',
+                'id', 'created_timestamp'
+            ],
+            table: 'jk2'
+        };
+    }
+};
+
+// Build dynamic SELECT query based on organization schema
+const buildDynamicSelectQuery = (columns: string[], table: string): string => {
+    if (!columns || columns.length === 0) {
+        throw new Error('No columns defined in organization schema config');
+    }
+
+    // Ensure required columns are always included
+    const requiredColumns = ['id', 'created_timestamp'];
+    const allColumns = [...new Set([...columns, ...requiredColumns])];
+    
+    const columnList = allColumns.join(', ');
+    
+    return `
+        SELECT ${columnList}
+        FROM ${table}
+        ORDER BY created_timestamp DESC 
+        LIMIT 1
+    `;
+};
+
+// Build dynamic SELECT query for historical data
+const buildDynamicHistoryQuery = (
+    columns: string[], 
+    table: string, 
+    whereClause: string, 
+    sortBy: string, 
+    sortOrder: string,
+    limit: number,
+    offset: number
+): string => {
+    if (!columns || columns.length === 0) {
+        throw new Error('No columns defined in organization schema config');
+    }
+
+    // Ensure required columns are always included
+    const requiredColumns = ['id', 'created_timestamp'];
+    const allColumns = [...new Set([...columns, ...requiredColumns])];
+    
+    const columnList = allColumns.join(', ');
+    
+    return `
+        SELECT ${columnList}
+        FROM ${table}
+        ${whereClause}
+        ORDER BY ${sortBy === 'timestamp' ? 'created_timestamp' : sortBy} ${sortOrder === 'desc' ? 'DESC' : 'ASC'}
+        LIMIT $${limit} OFFSET $${offset}
+    `;
+};
+
+// Build dynamic COUNT query for pagination
+const buildDynamicCountQuery = (table: string, whereClause: string): string => {
+    return `SELECT COUNT(*) FROM ${table} ${whereClause}`;
+};
 
 interface SetpointConfig {
     id: string;
@@ -240,21 +323,22 @@ export const getLatestScadaData = async (orgId: string, forceRefresh = false): P
         const client = await getClientWithRetry(orgId);
 
         try {
-            const query = `
-              SELECT 
-                hz1sv, hz1pv, hz2sv, hz2pv, cpsv, cppv, 
-                tz1sv, tz1pv, tz2sv, tz2pv, oilpv,
-                oiltemphigh, oillevelhigh, oillevellow,
-                hz1hfail, hz2hfail, hardconfail, hardcontraip,
-                oilconfail, oilcontraip, hz1fanfail, hz2fanfail,
-                hz1fantrip, hz2fantrip, tempconfail, tempcontraip,
-                tz1fanfail, tz2fanfail, tz1fantrip, tz2fantrip,
-                id, created_timestamp
-              FROM jk2 
-              ORDER BY created_timestamp DESC 
-              LIMIT 1
-            `;
+            // Get organization schema configuration
+            const schemaConfig = await getOrganizationSchemaConfig(orgId);
+            
+            if (DEBUG) {
+                console.log(`📊 Using dynamic schema for org ${orgId}:`);
+                console.log(`  Table: ${schemaConfig.table}`);
+                console.log(`  Columns: ${schemaConfig.columns.join(', ')}`);
+            }
+
+            // Build dynamic query
+            const query = buildDynamicSelectQuery(schemaConfig.columns, schemaConfig.table || 'jk2');
     
+            if (DEBUG) {
+                console.log(`📊 Dynamic query: ${query}`);
+            }
+
             const result = await client.query(query);
             
             // Reset consecutive errors counter on success
@@ -267,6 +351,7 @@ export const getLatestScadaData = async (orgId: string, forceRefresh = false): P
                 console.warn('⚠️ No SCADA data rows returned from query');
             } else if (DEBUG) {
                 console.log(`📊 Fresh SCADA data fetched at ${new Date().toISOString()}`);
+                console.log(`📊 Available fields: ${Object.keys(cachedScadaData).join(', ')}`);
             }
             
             return cachedScadaData;
@@ -329,9 +414,9 @@ const createEnhancedNotification = async (
     setPoint: string,
     severity: 'critical' | 'warning' | 'info',
     type: string,
+    orgId: string,
     zone?: string,
-    scadaTimestamp?: Date,
-    orgId?: string
+    scadaTimestamp?: Date
 ) => {
     try {
         // SUPER_ADMIN users are always excluded from notifications by NotificationService
@@ -422,6 +507,190 @@ const createEnhancedNotification = async (
     }
 };
 
+// Dynamic alarm configuration based on available columns
+const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: OrganizationSchemaConfig) => {
+    const availableColumns = schemaConfig.columns;
+    const analogConfigs = [];
+    const binaryConfigs = [];
+
+    // If columnConfigs are provided, use them for dynamic configuration
+    if (schemaConfig.columnConfigs) {
+        for (const [columnName, config] of Object.entries(schemaConfig.columnConfigs)) {
+            if (!availableColumns.includes(columnName)) continue;
+
+            if (config.isAnalog) {
+                // For analog fields, we need to find the corresponding SV/PV pair
+                const isPV = columnName.endsWith('pv');
+                const isSV = columnName.endsWith('sv');
+                
+                if (isPV) {
+                    // Find corresponding SV field
+                    const svField = availableColumns.find(col => 
+                        col.endsWith('sv') && 
+                        col.replace('pv', 'sv') === columnName.replace('pv', 'sv')
+                    );
+                    
+                    analogConfigs.push({
+                        name: config.name,
+                        type: config.type,
+                        zone: config.zone,
+                        pvField: columnName,
+                        svField: svField || '', // Empty string if no SV field
+                        unit: config.unit
+                    });
+                } else if (isSV) {
+                    // Find corresponding PV field
+                    const pvField = availableColumns.find(col => 
+                        col.endsWith('pv') && 
+                        col.replace('sv', 'pv') === columnName.replace('sv', 'pv')
+                    );
+                    
+                    if (pvField) {
+                        analogConfigs.push({
+                            name: config.name,
+                            type: config.type,
+                            zone: config.zone,
+                            pvField,
+                            svField: columnName,
+                            unit: config.unit
+                        });
+                    }
+                } else {
+                    // Single field analog (like oilpv)
+                    analogConfigs.push({
+                        name: config.name,
+                        type: config.type,
+                        zone: config.zone,
+                        pvField: columnName,
+                        svField: '', // No SV field
+                        unit: config.unit
+                    });
+                }
+            } else if (config.isBinary) {
+                binaryConfigs.push({
+                    field: columnName,
+                    name: config.name,
+                    type: config.type,
+                    zone: config.zone
+                });
+            }
+        }
+    } else {
+        // Fallback to pattern-based configuration for backward compatibility
+        const analogPatterns = [
+            {
+                pattern: /^hz1(sv|pv)$/,
+                name: 'HARDENING ZONE 1 TEMPERATURE',
+                type: 'temperature',
+                zone: 'zone1',
+                unit: '°C'
+            },
+            {
+                pattern: /^hz2(sv|pv)$/,
+                name: 'HARDENING ZONE 2 TEMPERATURE',
+                type: 'temperature',
+                zone: 'zone2',
+                unit: '°C'
+            },
+            {
+                pattern: /^cp(sv|pv)$/,
+                name: 'CARBON POTENTIAL',
+                type: 'carbon',
+                unit: '%'
+            },
+            {
+                pattern: /^tz1(sv|pv)$/,
+                name: 'TEMPERING ZONE1 TEMPERATURE',
+                type: 'temperature',
+                zone: 'zone1',
+                unit: '°C'
+            },
+            {
+                pattern: /^tz2(sv|pv)$/,
+                name: 'TEMPERING ZONE2 TEMPERATURE',
+                type: 'temperature',
+                zone: 'zone2',
+                unit: '°C'
+            },
+            {
+                pattern: /^oilpv$/,
+                name: 'OIL TEMPERATURE',
+                type: 'temperature',
+                unit: '°C'
+            }
+        ];
+
+        // Find matching analog fields
+        for (const pattern of analogPatterns) {
+            const svField = availableColumns.find(col => pattern.pattern.test(col) && col.endsWith('sv'));
+            const pvField = availableColumns.find(col => pattern.pattern.test(col) && col.endsWith('pv'));
+            
+            // For oilpv, we only have PV field, no SV field
+            if (pattern.name === 'OIL TEMPERATURE') {
+                if (pvField) {
+                    analogConfigs.push({
+                        name: pattern.name,
+                        type: pattern.type,
+                        zone: pattern.zone,
+                        pvField,
+                        svField: '', // Empty string to indicate no SV field
+                        unit: pattern.unit
+                    });
+                }
+            } else if (svField && pvField) {
+                // For other fields, require both SV and PV
+                analogConfigs.push({
+                    name: pattern.name,
+                    type: pattern.type,
+                    zone: pattern.zone,
+                    pvField,
+                    svField,
+                    unit: pattern.unit
+                });
+            }
+        }
+
+        // Define potential binary field patterns
+        const binaryPatterns = [
+            { pattern: 'oiltemphigh', name: 'OIL TEMPERATURE HIGH', type: 'temperature' },
+            { pattern: 'oillevelhigh', name: 'OIL LEVEL HIGH', type: 'level' },
+            { pattern: 'oillevellow', name: 'OIL LEVEL LOW', type: 'level' },
+            { pattern: 'hz1hfail', name: 'HARDENING ZONE 1 HEATER FAILURE', type: 'heater', zone: 'zone1' },
+            { pattern: 'hz2hfail', name: 'HARDENING ZONE 2 HEATER FAILURE', type: 'heater', zone: 'zone2' },
+            { pattern: 'hz1fanfail', name: 'HARDENING ZONE 1 FAN FAILURE', type: 'fan', zone: 'zone1' },
+            { pattern: 'hz2fanfail', name: 'HARDENING ZONE 2 FAN FAILURE', type: 'fan', zone: 'zone2' },
+            { pattern: 'tz1fanfail', name: 'TEMPERING ZONE 1 FAN FAILURE', type: 'fan', zone: 'zone1' },
+            { pattern: 'tz2fanfail', name: 'TEMPERING ZONE 2 FAN FAILURE', type: 'fan', zone: 'zone2' }
+        ];
+
+        // Find matching binary fields
+        for (const pattern of binaryPatterns) {
+            if (availableColumns.includes(pattern.pattern)) {
+                binaryConfigs.push({
+                    field: pattern.pattern,
+                    name: pattern.name,
+                    type: pattern.type,
+                    zone: pattern.zone
+                });
+            }
+        }
+    }
+
+    if (DEBUG) {
+        console.log(`🔍 Dynamic alarm configs for org:`);
+        console.log(`  Analog configs: ${analogConfigs.length}`);
+        console.log(`  Binary configs: ${binaryConfigs.length}`);
+        analogConfigs.forEach(config => {
+            console.log(`    - ${config.name}: ${config.pvField}/${config.svField}`);
+        });
+        binaryConfigs.forEach(config => {
+            console.log(`    - ${config.name}: ${config.field}`);
+        });
+    }
+
+    return { analogConfigs, binaryConfigs };
+};
+
 /**
  * Process and format alarms for a specific organization.
  * @param orgId - Organization ID
@@ -448,6 +717,9 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
             }
             throw new Error('No SCADA data available');
         }
+
+        // Get organization schema configuration
+        const schemaConfig = await getOrganizationSchemaConfig(orgId);
 
         // Check if this is the same timestamp as previously processed
         const scadaTimestamp = parseISTTimestamp(scadaData.created_timestamp);
@@ -488,60 +760,13 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
         // even when the underlying SCADA data hasn't changed
         const alarmTimestamp = new Date();
         
+        // Get dynamic alarm configurations based on available columns
+        const { analogConfigs, binaryConfigs } = getDynamicAlarmConfigs(scadaData, schemaConfig);
+        
         const analogAlarms = [];
         const binaryAlarms = [];
 
         // Process Analog Alarms
-        const analogConfigs = [
-            {
-                name: 'HARDENING ZONE 1 TEMPERATURE',
-                type: 'temperature',
-                zone: 'zone1',
-                pvField: 'hz1pv',
-                svField: 'hz1sv',
-                unit: '°C'
-            },
-            {
-                name: 'HARDENING ZONE 2 TEMPERATURE',
-                type: 'temperature',
-                zone: 'zone2',
-                pvField: 'hz2pv',
-                svField: 'hz2sv',
-                unit: '°C'
-            },
-            {
-                name: 'CARBON POTENTIAL',
-                type: 'carbon',
-                pvField: 'cppv',
-                svField: 'cpsv',
-                unit: '%'
-            },
-            {
-                name: 'TEMPERING ZONE1 TEMPERATURE',
-                type: 'temperature',
-                zone: 'zone1',
-                pvField: 'tz1pv',
-                svField: 'tz1sv',
-                unit: '°C'
-            },
-            {
-                name: 'TEMPERING ZONE2 TEMPERATURE',
-                type: 'temperature',
-                zone: 'zone2',
-                pvField: 'tz2pv',
-                svField: 'tz2sv',
-                unit: '°C'
-            },
-            {
-                name: 'OIL TEMPERATURE',
-                type: 'temperature',
-                pvField: 'oilpv',
-                svField: 'oilpv',
-                unit: '°C'
-            }
-        ];
-
-        // Process each analog alarm
         for (const config of analogConfigs) {
             const setpoint = setpointConfigs.find(sp => {
                 const nameMatch = sp.name.trim().toLowerCase() === config.name.trim().toLowerCase();
@@ -571,8 +796,16 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
                 }
             }
 
-            const currentValue = scadaData[config.pvField as keyof ScadaData] as number;
-            const setValue = scadaData[config.svField as keyof ScadaData] as number;
+            const currentValue = scadaData[config.pvField] as number;
+            
+            // Handle case where there's no SV field (like oilpv)
+            let setValue: number;
+            if (config.svField === '') {
+                // For Oil Temperature, use a default setpoint or the current value
+                setValue = currentValue; // Use current value as setpoint for now
+            } else {
+                setValue = scadaData[config.svField] as number;
+            }
 
             // Update default deviations based on alarm type
             const getDefaultDeviation = (type: string, isHigh: boolean = false) => {
@@ -639,71 +872,16 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
                     formattedSetPoint,
                     severity,
                     config.type,
+                    orgId,
                     config.zone,
-                    parseISTTimestamp(scadaData.created_timestamp),
-                    orgId
+                    parseISTTimestamp(scadaData.created_timestamp)
                 );
             }
         }
 
         // Process Binary Alarms
-        const binaryConfigs = [
-            {
-                field: 'oiltemphigh',
-                name: 'OIL TEMPERATURE HIGH',
-                type: 'temperature'
-            },
-            {
-                field: 'oillevelhigh',
-                name: 'OIL LEVEL HIGH',
-                type: 'level'
-            },
-            {
-                field: 'oillevellow',
-                name: 'OIL LEVEL LOW',
-                type: 'level'
-            },
-            {
-                field: 'hz1hfail',
-                name: 'HARDENING ZONE 1 HEATER FAILURE',
-                type: 'heater',
-                zone: 'zone1'
-            },
-            {
-                field: 'hz2hfail',
-                name: 'HARDENING ZONE 2 HEATER FAILURE',
-                type: 'heater',
-                zone: 'zone2'
-            },
-            {
-                field: 'hz1fanfail',
-                name: 'HARDENING ZONE 1 FAN FAILURE',
-                type: 'fan',
-                zone: 'zone1'
-            },
-            {
-                field: 'hz2fanfail',
-                name: 'HARDENING ZONE 2 FAN FAILURE',
-                type: 'fan',
-                zone: 'zone2'
-            },
-            {
-                field: 'tz1fanfail',
-                name: 'TEMPERING ZONE 1 FAN FAILURE',
-                type: 'fan',
-                zone: 'zone1'
-            },
-            {
-                field: 'tz2fanfail',
-                name: 'TEMPERING ZONE 2 FAN FAILURE',
-                type: 'fan',
-                zone: 'zone2'
-            }
-        ];
-
-        // Process each binary alarm
         for (const config of binaryConfigs) {
-            const value = scadaData[config.field as keyof ScadaData] as boolean;
+            const value = scadaData[config.field] as boolean;
             const severity = calculateBinarySeverity(value);
             const status = value ? 'FAILURE' : 'NORMAL';
 
@@ -728,9 +906,9 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
                     'NORMAL',
                     severity,
                     config.type,
+                    orgId,
                     config.zone,
-                    parseISTTimestamp(scadaData.created_timestamp),
-                    orgId
+                    parseISTTimestamp(scadaData.created_timestamp)
                 );
             }
         }
@@ -822,55 +1000,44 @@ export const getScadaAlarmHistory = async (
       const exactSearchValue = searchQuery.toLowerCase();
       whereClause += whereClause ? " AND " : " WHERE ";
       
-      // Enhanced search - search through all relevant numeric fields with exact value matching
-      whereClause += "(LOWER(hz1sv::text) = $" + (params.length + 1) + 
-                     " OR LOWER(hz1pv::text) = $" + (params.length + 1) + 
-                     " OR LOWER(hz2sv::text) = $" + (params.length + 1) + 
-                     " OR LOWER(hz2pv::text) = $" + (params.length + 1) +
-                     " OR LOWER(cpsv::text) = $" + (params.length + 1) +
-                     " OR LOWER(cppv::text) = $" + (params.length + 1) +
-                     " OR LOWER(tz1sv::text) = $" + (params.length + 1) +
-                     " OR LOWER(tz1pv::text) = $" + (params.length + 1) +
-                     " OR LOWER(tz2sv::text) = $" + (params.length + 1) +
-                     " OR LOWER(tz2pv::text) = $" + (params.length + 1) +
-                     " OR LOWER(oilpv::text) = $" + (params.length + 1) +
-                     " OR hz1pv::text LIKE $" + (params.length + 2) + 
-                     " OR hz2pv::text LIKE $" + (params.length + 2) + 
-                     " OR cppv::text LIKE $" + (params.length + 2) +
-                     " OR tz1pv::text LIKE $" + (params.length + 2) +
-                     " OR tz2pv::text LIKE $" + (params.length + 2) +
-                     " OR oilpv::text LIKE $" + (params.length + 2) + ")";
+      // Get organization schema configuration for dynamic search
+      const schemaConfig = await getOrganizationSchemaConfig(orgId);
+      
+      // Build dynamic search query based on available columns
+      const searchConditions = schemaConfig.columns
+        .filter(col => col !== 'id' && col !== 'created_timestamp')
+        .map(col => `LOWER(${col}::text) = $${params.length + 1} OR ${col}::text LIKE $${params.length + 2}`)
+        .join(' OR ');
+      
+      whereClause += `(${searchConditions})`;
       
       // Add both exact match and pattern match parameters
       params.push(exactSearchValue);
       params.push(searchPattern);
     }
     
+    // Get organization schema configuration
+    const schemaConfig = await getOrganizationSchemaConfig(orgId);
+    
     // Count total records for pagination
     const client = await getClientWithRetry(orgId);
     
     try {
       // Count total records for pagination
-      const countQuery = `SELECT COUNT(*) FROM jk2 ${whereClause}`;
+      const countQuery = buildDynamicCountQuery(schemaConfig.table || 'jk2', whereClause);
       const countResult = await client.query(countQuery, params);
       const total = parseInt(countResult.rows[0].count);
       
       // Get data with pagination, filtering, and sorting
-      const query = `
-        SELECT 
-          hz1sv, hz1pv, hz2sv, hz2pv, cpsv, cppv, 
-          tz1sv, tz1pv, tz2sv, tz2pv, oilpv,
-          oiltemphigh, oillevelhigh, oillevellow,
-          hz1hfail, hz2hfail, hardconfail, hardcontraip,
-          oilconfail, oilcontraip, hz1fanfail, hz2fanfail,
-          hz1fantrip, hz2fantrip, tempconfail, tempcontraip,
-          tz1fanfail, tz2fanfail, tz1fantrip, tz2fantrip,
-          id, created_timestamp
-        FROM jk2
-        ${whereClause}
-        ORDER BY ${sortBy === 'timestamp' ? 'created_timestamp' : sortBy} ${sortOrder === 'desc' ? 'DESC' : 'ASC'}
-        LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-      `;
+      const query = buildDynamicHistoryQuery(
+        schemaConfig.columns,
+        schemaConfig.table || 'jk2',
+        whereClause,
+        sortBy,
+        sortOrder,
+        params.length + 1,
+        params.length + 2
+      );
       
       // Add limit and offset to params
       params.push(limit, offset);
@@ -1008,60 +1175,24 @@ async function processScadaDataRow(orgId: string, scadaData: ScadaData) {
   const analogAlarms = [];
   const binaryAlarms = [];
   
-  // Reuse the existing alarm configuration from processAndFormatAlarms
-  const analogConfigs = [
-    {
-      name: 'HARDENING ZONE 1 TEMPERATURE',
-      type: 'temperature',
-      zone: 'zone1',
-      pvField: 'hz1pv',
-      svField: 'hz1sv',
-      unit: '°C'
-    },
-    {
-      name: 'HARDENING ZONE 2 TEMPERATURE',
-      type: 'temperature',
-      zone: 'zone2',
-      pvField: 'hz2pv',
-      svField: 'hz2sv',
-      unit: '°C'
-    },
-    {
-      name: 'CARBON POTENTIAL',
-      type: 'carbon',
-      pvField: 'cppv',
-      svField: 'cpsv',
-      unit: '%'
-    },
-    {
-      name: 'TEMPERING ZONE1 TEMPERATURE',
-      type: 'temperature',
-      zone: 'zone1',
-      pvField: 'tz1pv',
-      svField: 'tz1sv',
-      unit: '°C'
-    },
-    {
-      name: 'TEMPERING ZONE2 TEMPERATURE',
-      type: 'temperature',
-      zone: 'zone2',
-      pvField: 'tz2pv',
-      svField: 'tz2sv',
-      unit: '°C'
-    },
-    {
-      name: 'OIL TEMPERATURE',
-      type: 'temperature',
-      pvField: 'oilpv',
-      svField: 'oilpv',
-      unit: '°C'
-    }
-  ];
+  // Get organization schema configuration for dynamic alarm processing
+  const schemaConfig = await getOrganizationSchemaConfig(orgId);
+  
+  // Get dynamic alarm configurations based on available columns
+  const { analogConfigs, binaryConfigs } = getDynamicAlarmConfigs(scadaData, schemaConfig);
   
   // Process analog alarms
   for (const config of analogConfigs) {
-    const currentValue = scadaData[config.pvField as keyof ScadaData] as number;
-    const setValue = scadaData[config.svField as keyof ScadaData] as number;
+    const currentValue = scadaData[config.pvField] as number;
+    
+    // Handle case where there's no SV field (like oilpv)
+    let setValue: number;
+    if (config.svField === '') {
+      // For Oil Temperature, use a default setpoint or the current value
+      setValue = currentValue; // Use current value as setpoint for now
+    } else {
+      setValue = scadaData[config.svField] as number;
+    }
     
     // Use the same deviation logic as in original function
     const getDefaultDeviation = (type: string, isHigh: boolean = false) => {
@@ -1111,63 +1242,8 @@ async function processScadaDataRow(orgId: string, scadaData: ScadaData) {
   }
   
   // Process binary alarms
-  const binaryConfigs = [
-    {
-      field: 'oiltemphigh',
-      name: 'OIL TEMPERATURE HIGH',
-      type: 'temperature'
-    },
-    {
-      field: 'oillevelhigh',
-      name: 'OIL LEVEL HIGH',
-      type: 'level'
-    },
-    {
-      field: 'oillevellow',
-      name: 'OIL LEVEL LOW',
-      type: 'level'
-    },
-    {
-      field: 'hz1hfail',
-      name: 'HARDENING ZONE 1 HEATER FAILURE',
-      type: 'heater',
-      zone: 'zone1'
-    },
-    {
-      field: 'hz2hfail',
-      name: 'HARDENING ZONE 2 HEATER FAILURE',
-      type: 'heater',
-      zone: 'zone2'
-    },
-    {
-      field: 'hz1fanfail',
-      name: 'HARDENING ZONE 1 FAN FAILURE',
-      type: 'fan',
-      zone: 'zone1'
-    },
-    {
-      field: 'hz2fanfail',
-      name: 'HARDENING ZONE 2 FAN FAILURE',
-      type: 'fan',
-      zone: 'zone2'
-    },
-    {
-      field: 'tz1fanfail',
-      name: 'TEMPERING ZONE 1 FAN FAILURE',
-      type: 'fan',
-      zone: 'zone1'
-    },
-    {
-      field: 'tz2fanfail',
-      name: 'TEMPERING ZONE 2 FAN FAILURE',
-      type: 'fan',
-      zone: 'zone2'
-    }
-  ];
-  
-  // Process binary alarms
   for (const config of binaryConfigs) {
-    const value = scadaData[config.field as keyof ScadaData] as boolean;
+    const value = scadaData[config.field] as boolean;
     const severity = calculateBinarySeverity(value);
     const status = value ? 'FAILURE' : 'NORMAL';
     
@@ -1225,21 +1301,17 @@ export const getScadaAnalyticsData = async (orgId: string, timeFilter: string) =
       console.log(`Duration: ${durationMs}ms (${timeFilter})`);
     }
     
+    // Get organization schema configuration
+    const schemaConfig = await getOrganizationSchemaConfig(orgId);
+    
     const client = await getClientWithRetry(orgId);
     
     try {
-      // Get historical data within the time range
+      // Build dynamic query for historical data
+      const columnList = schemaConfig.columns.join(', ');
       const query = `
-        SELECT 
-          hz1sv, hz1pv, hz2sv, hz2pv, cpsv, cppv, 
-          tz1sv, tz1pv, tz2sv, tz2pv, oilpv,
-          oiltemphigh, oillevelhigh, oillevellow,
-          hz1hfail, hz2hfail, hardconfail, hardcontraip,
-          oilconfail, oilcontraip, hz1fanfail, hz2fanfail,
-          hz1fantrip, hz2fantrip, tempconfail, tempcontraip,
-          tz1fanfail, tz2fanfail, tz1fantrip, tz2fantrip,
-          id, created_timestamp
-        FROM jk2
+        SELECT ${columnList}
+        FROM ${schemaConfig.table || 'jk2'}
         WHERE created_timestamp >= $1 AND created_timestamp <= $2
         ORDER BY created_timestamp ASC
       `;
@@ -1316,61 +1388,22 @@ export const getScadaAnalyticsData = async (orgId: string, timeFilter: string) =
         }
       });
       
+      // Get dynamic alarm configurations for analytics
+      const { analogConfigs, binaryConfigs } = getDynamicAlarmConfigs(result.rows[0] || {}, schemaConfig);
+      
       // Prepare analog data series with highly distinct colors
-      const analogDataConfigs = [
-        {
-          name: 'HARDENING ZONE 1 TEMPERATURE',
-          color: '#FF1744', // Bright Red - Highly visible
-          pvField: 'hz1pv',
-          svField: 'hz1sv',
-          unit: '°C',
-          type: 'hardening_temperature',
-          zone: 'zone1'
-        },
-        {
-          name: 'HARDENING ZONE 2 TEMPERATURE',
-          color: '#FF9800', // Bright Orange - Distinct from HZ1
-          pvField: 'hz2pv',
-          svField: 'hz2sv',
-          unit: '°C',
-          type: 'hardening_temperature',
-          zone: 'zone2'
-        },
-        {
-          name: 'CARBON POTENTIAL (CP %)',
-          color: '#9C27B0', // Purple - Easily distinguishable
-          pvField: 'cppv',
-          svField: 'cpsv',
-          unit: '%',
-          type: 'carbon'
-        },
-        {
-          name: 'OIL TEMPERATURE',
-          color: '#795548', // Brown - Distinct color
-          pvField: 'oilpv',
-          svField: 'oilpv',
-          unit: '°C',
-          type: 'temperature'
-        },
-        {
-          name: 'TEMPERING ZONE 1 TEMPERATURE',
-          color: '#00E676', // Bright Green - Highly visible, contrasts with red HZ1
-          pvField: 'tz1pv',
-          svField: 'tz1sv',
-          unit: '°C',
-          type: 'tempering_temperature',
-          zone: 'zone1'
-        },
-        {
-          name: 'TEMPERING ZONE 2 TEMPERATURE',
-          color: '#2196F3', // Blue - Distinct from TZ1 green
-          pvField: 'tz2pv',
-          svField: 'tz2sv',
-          unit: '°C',
-          type: 'tempering_temperature',
-          zone: 'zone2'
-        }
-      ];
+      const analogDataConfigs = analogConfigs.map((config, index) => {
+        const colors = ['#FF1744', '#FF9800', '#9C27B0', '#795548', '#00E676', '#2196F3'];
+        return {
+          name: config.name,
+          color: colors[index % colors.length],
+          pvField: config.pvField,
+          svField: config.svField,
+          unit: config.unit,
+          type: config.type,
+          zone: config.zone
+        };
+      });
 
       // Fetch setpoint configurations from Prisma
       const setpointConfigs = await prisma.setpoint.findMany();
@@ -1409,7 +1442,7 @@ export const getScadaAnalyticsData = async (orgId: string, timeFilter: string) =
           name: config.name,
           color: config.color,
           data: sampledData.map(row => {
-            const value = row[config.pvField as keyof ScadaData] as number;
+            const value = row[config.pvField] as number;
             if (value === null || value === undefined || isNaN(value)) {
               console.warn(`⚠️ Invalid value for ${config.pvField}:`, value);
               return 0;
@@ -1417,28 +1450,58 @@ export const getScadaAnalyticsData = async (orgId: string, timeFilter: string) =
             return parseFloat(value.toFixed(2));
           }),
           setpoint: sampledData.map(row => {
-            const value = row[config.svField as keyof ScadaData] as number;
-            return value || 0;
+            // Handle case where there's no SV field (like oilpv)
+            if (config.svField === '') {
+              const pvValue = row[config.pvField] as number;
+              return pvValue || 0;
+            } else {
+              const value = row[config.svField] as number;
+              return value || 0;
+            }
           }),
           thresholds: {
             critical: { 
               low: sampledData.map(row => {
-                const sv = row[config.svField as keyof ScadaData] as number;
-                return sv + lowDeviation;
+                // Handle case where there's no SV field (like oilpv)
+                if (config.svField === '') {
+                  const pvValue = row[config.pvField] as number;
+                  return pvValue + lowDeviation;
+                } else {
+                  const sv = row[config.svField] as number;
+                  return sv + lowDeviation;
+                }
               }),
               high: sampledData.map(row => {
-                const sv = row[config.svField as keyof ScadaData] as number;
-                return sv + highDeviation;
+                // Handle case where there's no SV field (like oilpv)
+                if (config.svField === '') {
+                  const pvValue = row[config.pvField] as number;
+                  return pvValue + highDeviation;
+                } else {
+                  const sv = row[config.svField] as number;
+                  return sv + highDeviation;
+                }
               })
             },
             warning: {
               low: sampledData.map(row => {
-                const sv = row[config.svField as keyof ScadaData] as number;
-                return sv + (lowDeviation * 0.8); // 80% of critical deviation for warning
+                // Handle case where there's no SV field (like oilpv)
+                if (config.svField === '') {
+                  const pvValue = row[config.pvField] as number;
+                  return pvValue + (lowDeviation * 0.8); // 80% of critical deviation for warning
+                } else {
+                  const sv = row[config.svField] as number;
+                  return sv + (lowDeviation * 0.8); // 80% of critical deviation for warning
+                }
               }),
               high: sampledData.map(row => {
-                const sv = row[config.svField as keyof ScadaData] as number;
-                return sv + (highDeviation * 0.8); // 80% of critical deviation for warning
+                // Handle case where there's no SV field (like oilpv)
+                if (config.svField === '') {
+                  const pvValue = row[config.pvField] as number;
+                  return pvValue + (highDeviation * 0.8); // 80% of critical deviation for warning
+                } else {
+                  const sv = row[config.svField] as number;
+                  return sv + (highDeviation * 0.8); // 80% of critical deviation for warning
+                }
               })
             }
           },
@@ -1447,77 +1510,28 @@ export const getScadaAnalyticsData = async (orgId: string, timeFilter: string) =
       }));
       
       // Prepare binary data series with distinct colors
-      const binaryDataConfigs = [
-        {
-          field: 'oillevelhigh',
-          name: 'OIL LEVEL HIGH',
-          color: '#FF6384' // Red-Pink
-        },
-        {
-          field: 'oillevellow',
-          name: 'OIL LEVEL LOW',
-          color: '#FF8C94' // Light Red-Pink
-        },
-        {
-          field: 'hz1hfail',
-          name: 'HARDENING ZONE 1 HEATER FAILURE',
-          color: '#36A2EB' // Blue
-        },
-        {
-          field: 'hz2hfail',
-          name: 'HARDENING ZONE 2 HEATER FAILURE',
-          color: '#4BC0C0' // Teal
-        },
-        // {
-        //   field: 'hardconfail',
-        //   name: 'HARDENING CONVEYOR FAILURE',
-        //   color: '#FFCE56' // Yellow
-        // },
-        {
-          field: 'oiltemphigh',
-          name: 'OIL TEMPERATURE HIGH',
-          color: '#9966FF' // Purple
-        },
-        {
-          field: 'hz1fanfail',
-          name: 'HARDENING ZONE 1 FAN FAILURE',
-          color: '#FF9F40' // Orange
-        },
-        {
-          field: 'hz2fanfail',
-          name: 'HARDENING ZONE 2 FAN FAILURE',
-          color: '#4CAF50' // Green
-        },
-        // {
-        //   field: 'tempconfail',
-        //   name: 'TEMPERING CONVEYOR FAILURE',
-        //   color: '#E91E63' // Pink
-        // },
-        {
-          field: 'tz1fanfail',
-          name: 'TEMPERING ZONE 1 FAN FAILURE',
-          color: '#2196F3' // Light Blue
-        },
-        {
-          field: 'tz2fanfail',
-          name: 'TEMPERING ZONE 2 FAN FAILURE',
-          color: '#00BCD4' // Cyan
-        }
-      ];
+      const binaryDataConfigs = binaryConfigs.map((config, index) => {
+        const colors = ['#FF6384', '#FF8C94', '#36A2EB', '#4BC0C0', '#9966FF', '#FF9F40', '#4CAF50', '#2196F3', '#00BCD4'];
+        return {
+          field: config.field,
+          name: config.name,
+          color: colors[index % colors.length]
+        };
+      });
       
-      const binaryData = binaryDataConfigs.map(config => ({
-        name: config.name,
-        color: config.color,
-        data: sampledData.map(row => {
-          const value = row[config.field as keyof ScadaData] as boolean;
-          // Handle null/undefined values by returning 0 (no failure)
-          if (value === null || value === undefined) {
-            console.warn(`⚠️ Invalid boolean value for ${config.field}:`, value);
-            return 0;
-          }
-          return value ? 1 : 0;
-        })
-      }));
+              const binaryData = binaryDataConfigs.map(config => ({
+          name: config.name,
+          color: config.color,
+          data: sampledData.map(row => {
+            const value = row[config.field] as boolean;
+            // Handle null/undefined values by returning 0 (no failure)
+            if (value === null || value === undefined) {
+              console.warn(`⚠️ Invalid boolean value for ${config.field}:`, value);
+              return 0;
+            }
+            return value ? 1 : 0;
+          })
+        }));
       
       if (DEBUG) {
         console.log('📊 Analytics data prepared successfully');
