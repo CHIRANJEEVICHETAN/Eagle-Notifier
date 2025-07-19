@@ -63,9 +63,9 @@ const METRICS_DATA = [
   },
   {
     icon: 'alert-circle-outline',
-    value: '23',
-    title: 'Active Alarms',
-    subtitle: '5 critical',
+    value: '4',
+    title: 'Active Organizations',
+    subtitle: 'Out of 12',
     color: '#EF4444', // Red
   },
   {
