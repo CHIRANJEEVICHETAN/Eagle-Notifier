@@ -37,14 +37,20 @@ export const useLatestMeterReading = () => {
 export const useMeterHistory = (hours: number = 1, startTime?: string) => {
   const { organizationId, authState } = useAuth();
   const enabled = authState.isAuthenticated && !!authState.user;
+  
+  console.log('🔍 useMeterHistory hook called:', { hours, startTime, organizationId, enabled });
+  
   return useQuery({
     queryKey: METER_KEYS.history(hours, startTime),
     queryFn: () => {
       if (!organizationId) throw new Error('organizationId is required');
+      console.log('🔍 useMeterHistory queryFn executing with organizationId:', organizationId);
       return fetchMeterHistory(hours, 1, 20, startTime, organizationId);
     },
     staleTime: 1000 * 60 * 3, // 3 minutes
     enabled,
+    retry: 1, // Reduce retries to avoid spam
+    retryDelay: 1000, // 1 second delay
   });
 };
 

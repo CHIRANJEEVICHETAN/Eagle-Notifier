@@ -23,6 +23,8 @@ import {
 } from '../../hooks/useNotifications';
 import { Notification } from '../../types/notification';
 
+type NotificationType = 'ALARM' | 'SYSTEM' | 'MAINTENANCE' | 'INFO' | 'PREDICTIVE';
+
 export default function NotificationsScreen() {
   const { isDarkMode } = useTheme();
   const router = useRouter();
@@ -138,11 +140,12 @@ export default function NotificationsScreen() {
       LOW: isDarkMode ? '#10B981' : '#34D399',
     };
     
-    const typeIcons = {
+    const typeIcons: Record<NotificationType, string> = {
       ALARM: 'alarm-outline',
       SYSTEM: 'desktop-outline',
       MAINTENANCE: 'construct-outline',
       INFO: 'information-circle-outline',
+      PREDICTIVE: 'trending-up',
     };
     
     return (

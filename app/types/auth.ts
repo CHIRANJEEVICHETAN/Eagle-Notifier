@@ -1,10 +1,10 @@
-export type UserRole = 'OPERATOR' | 'ADMIN';
+export type UserRole = 'OPERATOR' | 'ADMIN' | 'SUPER_ADMIN';
 
 export interface User {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: UserRole;
   organizationId: string | null;
   avatar?: string;
   pushToken?: string | null;

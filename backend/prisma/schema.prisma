@@ -24,6 +24,15 @@ model Organization {
   schemaConfig  Json    // Alarm logic, column mapping, etc.
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  
+  // Predictive Maintenance specific fields
+  mlModelConfig     Json?     // ML model configuration
+  trainingSchedule  Json?     // Automated training schedule
+  modelVersion      String?   // Current model version
+  modelAccuracy     Float?    // Current model accuracy
+  lastTrainingDate  DateTime? // Last training completion
+  predictionEnabled Boolean   @default(false)
+  
   users        User[]
   notifications Notification[]
   alarms       Alarm[]
@@ -34,6 +43,11 @@ model Organization {
   setpoints    Setpoint[]
   meterLimits  MeterLimit[]
   notificationSettings NotificationSettings[]
+  
+  // Predictive Maintenance relations
+  predictionAlerts  PredictionAlert[]
+  modelMetrics      ModelMetrics[]
+  trainingLogs      TrainingLog[]
 }
 
 model User {
@@ -56,6 +70,10 @@ model User {
   notificationSettings NotificationSettings[]
   organizationId  String?
   organization    Organization? @relation(fields: [organizationId], references: [id])
+  
+  // ML Security relations
+  mlAuditLogs     MLAuditLog[]
+  securityIncidents SecurityIncident[]
 }
 
 enum AlarmType {
@@ -267,4 +285,141 @@ model FurnaceReport {
   metadata            Json?
   organizationId      String
   organization        Organization @relation(fields: [organizationId], references: [id])
-} 
+}
+
+// Predictive Maintenance Models
+
+model PredictionAlert {
+  id              String    @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  
+  type            String    // 'PREDICTIVE'
+  component       String    // Predicted failing component
+  probability     Float     // Failure probability (0-1)
+  confidence      Float     // Model confidence
+  timeToFailure   Int       // Minutes until predicted failure
+  modelVersion    String    // Model version used
+  
+  isAccurate      Boolean?  // User feedback
+  feedbackAt      DateTime?
+  feedbackBy      String?
+  
+  createdAt       DateTime  @default(now())
+  resolvedAt      DateTime?
+  
+  @@index([organizationId, createdAt])
+}
+
+model ModelMetrics {
+  id              String    @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  
+  version         String
+  accuracy        Float
+  precision       Float
+  recall          Float
+  auc             Float
+  
+  trainingTime    Int       // Training duration in seconds
+  dataPoints      Int       // Number of training samples
+  features        String[]  // Feature names used
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([organizationId, version])
+}
+
+model TrainingLog {
+  id              String    @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  
+  status          String    // 'STARTED', 'COMPLETED', 'FAILED'
+  version         String
+  startedAt       DateTime
+  completedAt     DateTime?
+  
+  config          Json      // Training configuration
+  metrics         Json?     // Training metrics
+  errorMessage    String?   // Error details if failed
+  
+  @@index([organizationId, startedAt])
+}
+
+// Error Logging Model
+model ErrorLog {
+  id              String    @id @default(uuid())
+  organizationId  String
+  serviceName     String
+  operationName   String
+  errorName       String
+  errorMessage    String    @db.Text
+  category        String    // ErrorCategory enum as string
+  severity        String    // ErrorSeverity enum as string
+  correlationId   String    @unique
+  stackTrace      String?   @db.Text
+  context         Json      // Additional context data
+  timestamp       DateTime  @default(now())
+  resolved        Boolean   @default(false)
+  resolvedAt      DateTime?
+  resolvedBy      String?
+  resolutionNotes String?   @db.Text
+  
+  @@index([organizationId, timestamp])
+  @@index([category, severity])
+  @@index([correlationId])
+  @@index([resolved])
+}
+
+// ML Security and Audit Models
+
+model MLAuditLog {
+  id              String    @id @default(uuid())
+  auditId         String    @unique
+  organizationId  String
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  action          String    // ML operation type
+  resource        String    // API endpoint or resource
+  method          String?   // HTTP method
+  ip              String?   // Client IP address
+  userAgent       String?   // Client user agent
+  requestData     String?   @db.Text // Sanitized request data
+  responseData    String?   @db.Text // Sanitized response data
+  timestamp       DateTime  @default(now())
+  status          String    // 'STARTED', 'COMPLETED', 'FAILED'
+  duration        Int?      // Operation duration in ms
+  statusCode      Int?      // HTTP status code
+  completedAt     DateTime?
+  errorMessage    String?   @db.Text
+  
+  @@index([organizationId, timestamp])
+  @@index([userId, timestamp])
+  @@index([action, timestamp])
+  @@index([status])
+}
+
+model SecurityIncident {
+  id              String    @id @default(uuid())
+  organizationId  String
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  type            String    // 'SUSPICIOUS_PATTERN', 'RATE_LIMIT_EXCEEDED', etc.
+  pattern         String?   // Detected pattern if applicable
+  request         String?   @db.Text // Sanitized request data
+  ip              String?   // Client IP address
+  userAgent       String?   // Client user agent
+  timestamp       DateTime  @default(now())
+  severity        String    // 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
+  resolved        Boolean   @default(false)
+  resolvedAt      DateTime?
+  resolvedBy      String?
+  resolutionNotes String?   @db.Text
+  
+  @@index([organizationId, timestamp])
+  @@index([type, severity])
+  @@index([resolved])
+  @@index([severity, timestamp])
+}

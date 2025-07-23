@@ -9,13 +9,27 @@ import adminRoutes from './src/routes/adminRoutes';
 import scadaRoutes from './src/routes/scadaRoutes';
 import maintenanceRoutes from './src/routes/maintenanceRoutes';
 import reportRoutes from './src/routes/reportRoutes';
-import { processAndFormatAlarms } from './src/services/scadaService';
 import { testAllOrgScadaConnections } from './src/config/scadaDb';
 import prisma from './src/config/db';
 import authRoutes from './src/routes/authRoutes';
 import operatorRoutes from './src/routes/operatorRoutes';
 import meterRoutes from './src/routes/meterRoutes';
+import predictiveAlertRoutes from './src/routes/predictiveAlertRoutes';
+import trainingRoutes from './src/routes/trainingRoutes';
+import errorHandlingRoutes from './src/routes/errorHandlingRoutes';
+import securityRoutes from './src/routes/securityRoutes';
+import performanceRoutes from './src/routes/performanceRoutes';
+import modelDeploymentRoutes from './src/routes/modelDeploymentRoutes';
+import { securityMonitoringService } from './src/services/securityMonitoringService';
 import BackgroundMonitoringService from './src/services/backgroundMonitoringService';
+import { trainingMonitor } from './src/services/trainingMonitor';
+import { trainingScheduler } from './src/services/trainingScheduler';
+import { enhancedPredictionService } from './src/services/errorHandling/enhancedPredictionService';
+import { performanceMonitoringService } from './src/services/performanceMonitoringService';
+import { batchPredictionService } from './src/services/batchPredictionService';
+import { modelDeploymentService } from './src/services/modelDeploymentService';
+import { modelDeploymentMonitoringService } from './src/services/modelDeploymentMonitoringService';
+import { modelDeploymentPipeline } from './src/services/modelDeploymentPipeline';
 
 // Load environment variables
 dotenv.config();
@@ -87,6 +101,12 @@ app.use('/api/scada', scadaRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/meter', meterRoutes);
+app.use('/api/predictive-alerts', predictiveAlertRoutes);
+app.use('/api/training', trainingRoutes);
+app.use('/api/error-handling', errorHandlingRoutes);
+app.use('/api/security', securityRoutes);
+app.use('/api/performance', performanceRoutes);
+app.use('/api/model-deployment', modelDeploymentRoutes);
 
 // Route not found handler
 app.use((req, res) => {
@@ -130,9 +150,26 @@ async function startServer() {
     console.log('🔍 Testing SCADA database connections for all organizations...');
     await testAllOrgScadaConnections();
 
+    // Initialize enhanced prediction service
+    console.log('🤖 Initializing enhanced prediction service with error handling...');
+    await enhancedPredictionService.initializeModels();
+
+    // Initialize security monitoring service
+    console.log('🔒 Security monitoring service initialized and running...');
+
+    // Initialize performance monitoring service
+    console.log('📊 Performance monitoring service initialized and running...');
+    
+    // Initialize model deployment services
+    console.log('🚀 Model deployment and monitoring services initialized...');
+
     // Start the background monitoring service
     console.log('🚀 Starting background monitoring service...');
     await BackgroundMonitoringService.start();
+
+    // Initialize training scheduler and monitor
+    console.log('🤖 ML training services ready (scheduler and monitor will be initialized later)');
+    // TODO: Initialize training scheduler and monitor when node-cron issues are resolved
 
     // Start server
     app.listen(PORT, () => {
@@ -149,6 +186,12 @@ async function startServer() {
       console.log('/api/maintenance routes (maintenance operations)');
       console.log('/api/reports routes (reporting functions)');
       console.log('/api/meter routes (meter readings)');
+      console.log('/api/predictive-alerts routes (predictive maintenance alerts)');
+      console.log('/api/training routes (ML model training and management)');
+      console.log('/api/error-handling routes (error monitoring and circuit breaker management)');
+      console.log('/api/security routes (security monitoring and audit)');
+      console.log('/api/performance routes (performance monitoring and optimization)');
+      console.log('/api/model-deployment routes (model deployment and version management)');
 
       console.log(`⏱️ Background monitoring interval: ${MONITORING_INTERVAL}ms`);
       console.log('✅ Server initialization complete');
@@ -166,6 +209,22 @@ process.on('SIGTERM', async () => {
   // Stop background monitoring service
   BackgroundMonitoringService.stop();
   
+  // Stop enhanced prediction service
+  enhancedPredictionService.shutdown();
+  
+  // Stop performance monitoring service
+  performanceMonitoringService.shutdown();
+  
+  // Stop batch prediction service
+  batchPredictionService.shutdown();
+  
+  // Stop model deployment monitoring service
+  modelDeploymentMonitoringService.stopMonitoring();
+  
+  // Stop training services
+  await trainingScheduler.shutdown();
+  trainingMonitor.stop();
+  
   // Disconnect Prisma client
   await prisma.$disconnect();
   
@@ -178,6 +237,22 @@ process.on('SIGINT', async () => {
   
   // Stop background monitoring service
   BackgroundMonitoringService.stop();
+  
+  // Stop enhanced prediction service
+  enhancedPredictionService.shutdown();
+  
+  // Stop performance monitoring service
+  performanceMonitoringService.shutdown();
+  
+  // Stop batch prediction service
+  batchPredictionService.shutdown();
+  
+  // Stop model deployment monitoring service
+  modelDeploymentMonitoringService.stopMonitoring();
+  
+  // Stop training services
+  await trainingScheduler.shutdown();
+  trainingMonitor.stop();
   
   // Disconnect Prisma client
   await prisma.$disconnect();

@@ -10,6 +10,14 @@ interface GeminiResponse {
   }>;
 }
 
+interface GeminiErrorResponse {
+  error: {
+    code: number;
+    message: string;
+    status: string;
+  };
+}
+
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 const EXAMPLE_JSON_CONFIG = `{
@@ -98,10 +106,20 @@ Important rules:
 - Fix any missing quotes, commas, or brackets
 - Correct any spelling mistakes in property names
 - Ensure proper JSON formatting with consistent indentation
-- Return ONLY the corrected JSON, no explanations or markdown formatting`;
+- Return ONLY the corrected JSON, no explanations, no markdown formatting, no code blocks
+- Do not wrap the JSON in \`\`\`json or \`\`\` blocks
+- Return pure JSON only`;
 
 export const checkAndFixJsonSyntax = async (jsonInput: string): Promise<{ success: boolean; correctedJson?: string; error?: string }> => {
   try {
+    // Check if API key is properly configured
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === 'Your-Gemini-API-Key' || GEMINI_API_KEY.length < 10) {
+      return { 
+        success: false, 
+        error: 'Gemini API key not configured. Please set the GEMINI_API_KEY environment variable.' 
+      };
+    }
+
     // First, try to parse the JSON to see if it's already valid
     try {
       JSON.parse(jsonInput);
@@ -118,51 +136,90 @@ ${jsonInput}
 
 Return ONLY the corrected JSON:`;
 
+    const requestBody = {
+      contents: [
+        {
+          parts: [
+            {
+              text: prompt
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        topK: 1,
+        topP: 0.1,
+        maxOutputTokens: 2048,
+      }
+    };
+
+    console.log('Sending request to Gemini API...');
+    console.log('API URL:', GEMINI_API_URL);
+    console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          topK: 1,
-          topP: 0.1,
-          maxOutputTokens: 2048,
-        }
-      })
+      body: JSON.stringify(requestBody)
     });
 
+    console.log('Gemini API response status:', response.status);
+    console.log('Gemini API response headers:', Object.fromEntries(response.headers.entries()));
+
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+      let errorMessage = `Gemini API error: ${response.status} ${response.statusText}`;
+      
+      try {
+        const errorData: GeminiErrorResponse = await response.json();
+        if (errorData.error) {
+          errorMessage = `Gemini API error: ${errorData.error.status} - ${errorData.error.message}`;
+        }
+      } catch (parseError) {
+        // If we can't parse the error response, use the default message
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data: GeminiResponse = await response.json();
+    console.log('Gemini API response data:', JSON.stringify(data, null, 2));
     
     if (!data.candidates || data.candidates.length === 0) {
       throw new Error('No response from Gemini API');
     }
 
     const correctedText = data.candidates[0].content.parts[0].text.trim();
+    console.log('Corrected text from Gemini:', correctedText);
+    
+    // Clean the response text - remove markdown code blocks if present
+    let cleanedText = correctedText;
+    
+    // Remove markdown code blocks (```json ... ```)
+    if (cleanedText.startsWith('```json') && cleanedText.endsWith('```')) {
+      cleanedText = cleanedText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanedText.startsWith('```') && cleanedText.endsWith('```')) {
+      cleanedText = cleanedText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    
+    // Remove any leading/trailing whitespace
+    cleanedText = cleanedText.trim();
+    
+    console.log('Cleaned text from Gemini:', cleanedText);
     
     // Try to parse the corrected JSON to ensure it's valid
     try {
-      const parsed = JSON.parse(correctedText);
+      const parsed = JSON.parse(cleanedText);
       return { 
         success: true, 
         correctedJson: JSON.stringify(parsed, null, 2) 
       };
     } catch (parseError) {
-      throw new Error('Gemini returned invalid JSON');
+      console.error('JSON parse error:', parseError);
+      console.error('Failed to parse text:', cleanedText);
+      throw new Error(`Gemini returned invalid JSON: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`);
     }
 
   } catch (error) {

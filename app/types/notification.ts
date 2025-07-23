@@ -1,4 +1,4 @@
-export type NotificationType = 'ALARM' | 'SYSTEM' | 'MAINTENANCE' | 'INFO';
+export type NotificationType = 'ALARM' | 'SYSTEM' | 'MAINTENANCE' | 'INFO' | 'PREDICTIVE';
 export type NotificationPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface Notification {

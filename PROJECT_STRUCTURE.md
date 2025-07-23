@@ -2,6 +2,16 @@
 ```
 Eagle-Notifier
 ├─ .easignore
+├─ .kiro
+│  ├─ specs
+│  │  └─ predictive-maintenance-multitenant
+│  │     ├─ design.md
+│  │     ├─ requirements.md
+│  │     └─ tasks.md
+│  └─ steering
+│     ├─ product.md
+│     ├─ structure.md
+│     └─ tech.md
 ├─ app
 │  ├─ (auth)
 │  │  ├─ login.tsx
@@ -35,8 +45,13 @@ Eagle-Notifier
 │  │  │     └─ users
 │  │  │        └─ index.tsx
 │  │  ├─ superAdmin
+│  │  │  ├─ globalSearch
+│  │  │  │  └─ index.tsx
 │  │  │  ├─ index.tsx
-│  │  │  └─ _layout.tsx
+│  │  │  ├─ orgManagement
+│  │  │  │  └─ index.tsx
+│  │  │  └─ userManagement
+│  │  │     └─ index.tsx
 │  │  └─ _layout.tsx
 │  ├─ +not-found.tsx
 │  ├─ api
@@ -56,6 +71,7 @@ Eagle-Notifier
 │  │  ├─ ReportGenerator.tsx
 │  │  ├─ ResolutionModal.tsx
 │  │  ├─ SetpointConfigModal.tsx
+│  │  ├─ SuperAdminUserManagement.tsx
 │  │  ├─ TimeRangePicker.tsx
 │  │  └─ UpdateModal.tsx
 │  ├─ context
@@ -69,13 +85,16 @@ Eagle-Notifier
 │  │  ├─ useMeterReadings.ts
 │  │  ├─ useMeterReports.ts
 │  │  ├─ useNotifications.ts
+│  │  ├─ useOrganizations.ts
 │  │  ├─ useReportGenerator.ts
-│  │  └─ useSetpoints.ts
+│  │  ├─ useSetpoints.ts
+│  │  └─ useSuperAdminUsers.ts
 │  ├─ index.tsx
 │  ├─ NotificationProvider.tsx
 │  ├─ onboarding.tsx
 │  ├─ services
-│  │  └─ ExcelReportService.ts
+│  │  ├─ ExcelReportService.ts
+│  │  └─ geminiService.ts
 │  ├─ store
 │  │  ├─ useAlarmStore.ts
 │  │  └─ useMeterReportStore.ts
@@ -107,6 +126,7 @@ Eagle-Notifier
 ├─ backend
 │  ├─ .dockerignore
 │  ├─ Dockerfile
+│  ├─ jest.config.js
 │  ├─ package-lock.json
 │  ├─ package.json
 │  ├─ password.js
@@ -139,15 +159,46 @@ Eagle-Notifier
 │  │  │  ├─ meterRoutes.ts
 │  │  │  ├─ notifications.ts
 │  │  │  ├─ operatorRoutes.ts
+│  │  │  ├─ predictiveAlertRoutes.ts
+│  │  │  ├─ PREDICTIVE_API_ENDPOINTS.md
 │  │  │  ├─ reportRoutes.ts
 │  │  │  └─ scadaRoutes.ts
 │  │  ├─ services
+│  │  │  ├─ backgroundMonitoringService.ts
+│  │  │  ├─ examples
+│  │  │  │  ├─ dataProcessorExample.ts
+│  │  │  │  ├─ predictionServiceExample.ts
+│  │  │  │  ├─ predictiveAlertControllerExample.ts
+│  │  │  │  └─ trainingServiceExample.ts
+│  │  │  ├─ integration
+│  │  │  │  ├─ dataProcessorIntegration.ts
+│  │  │  │  ├─ modelCacheIntegration.ts
+│  │  │  │  └─ trainingServiceIntegration.ts
+│  │  │  ├─ modelCacheService.ts
 │  │  │  ├─ notificationService.ts
-│  │  │  └─ scadaService.ts
+│  │  │  ├─ organizationDataProcessor.ts
+│  │  │  ├─ predictionService.ts
+│  │  │  ├─ predictiveAlertController.ts
+│  │  │  ├─ README_DataProcessor.md
+│  │  │  ├─ README_ModelCache.md
+│  │  │  ├─ README_PredictionService.md
+│  │  │  ├─ README_PredictiveAlertController.md
+│  │  │  ├─ README_TrainingService.md
+│  │  │  ├─ scadaService.ts
+│  │  │  ├─ trainingService.ts
+│  │  │  └─ __tests__
+│  │  │     ├─ modelCacheService.test.ts
+│  │  │     ├─ organizationDataProcessor.test.ts
+│  │  │     ├─ predictionService.test.ts
+│  │  │     ├─ predictiveAlertController.test.ts
+│  │  │     ├─ test-endpoints.js
+│  │  │     └─ trainingService.test.ts
 │  │  ├─ types
 │  │  │  └─ prisma.ts
-│  │  └─ utils
-│  │     └─ logger.ts
+│  │  ├─ utils
+│  │  │  └─ logger.ts
+│  │  └─ __tests__
+│  │     └─ setup.ts
 │  ├─ structure.md
 │  └─ tsconfig.json
 ├─ cesconfig.json
@@ -160,8 +211,16 @@ Eagle-Notifier
 ├─ global.css
 ├─ metro.config.js
 ├─ ml
+│  ├─ artifacts
+│  ├─ models
+│  ├─ README.md
+│  ├─ requirements.txt
+│  └─ scripts
 ├─ nativewind-env.d.ts
+├─ OLD_PROJECT_STRUCTURE.md
 ├─ package.json
+├─ PredictiveMaintenance_README.md
+├─ Predictive_README.md
 ├─ prettier.config.js
 ├─ README.md
 ├─ tailwind.config.js

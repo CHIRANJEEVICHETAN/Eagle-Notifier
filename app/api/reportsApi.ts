@@ -1,6 +1,6 @@
 import { ReportTimeRange } from '../components/ReportGenerator';
 import { apiConfig } from './config';
-import * as SecureStore from 'expo-secure-store';
+import { getOrgHeaders } from './auth';
 
 export interface ReportFilters {
   timeRange: ReportTimeRange;
@@ -35,7 +35,7 @@ export interface ReportData {
 
 export const reportsApi = {
   // Fetch report data
-  fetchReportData: async (filters: ReportFilters): Promise<ReportData> => {
+  fetchReportData: async (filters: ReportFilters, organizationId?: string): Promise<ReportData> => {
     const { timeRange, alarmTypes, severities } = filters;
     
     // Format parameters
@@ -53,16 +53,17 @@ export const reportsApi = {
     }
     
     try {
-      // Get auth token from secure store
-      const token = await SecureStore.getItemAsync('token');
+      if (!organizationId) {
+        throw new Error('Organization ID is required for reports');
+      }
+      
+      const headers = await getOrgHeaders(organizationId);
       
       // Since we want to use a front-end approach, we'll fetch basic data and process it
       const alarmsResponse = await fetch(
         `${apiConfig.apiUrl}/alarms/history?${params.toString()}`,
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers,
         }
       );
       

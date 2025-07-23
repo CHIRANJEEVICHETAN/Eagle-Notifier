@@ -3,12 +3,14 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Alarm } from '../types/alarm';
 import { Ionicons } from '@expo/vector-icons';
 import { formatDistanceToNow } from 'date-fns';
+import { PredictiveAlertCard } from './PredictiveAlertCard';
 
 interface AlarmCardProps {
   alarm: Alarm;
   onAcknowledge?: () => void;
   onResolve?: () => void;
   onPress?: () => void;
+  onFeedback?: (isAccurate: boolean) => void;
 }
 
 export const AlarmCard: React.FC<AlarmCardProps> = ({
@@ -16,9 +18,27 @@ export const AlarmCard: React.FC<AlarmCardProps> = ({
   onAcknowledge,
   onResolve,
   onPress,
+  onFeedback,
 }) => {
-  // Determine color based on severity
+  // If this is a predictive alert, use the specialized component
+  if (alarm.alarmType === 'predictive' || alarm.type === 'predictive') {
+    return (
+      <PredictiveAlertCard
+        alarm={alarm}
+        onAcknowledge={onAcknowledge}
+        onResolve={onResolve}
+        onPress={onPress}
+        onFeedback={onFeedback}
+      />
+    );
+  }
+  // Determine color based on severity and type
   const severityColor = useMemo(() => {
+    // Special styling for predictive alerts
+    if (alarm.alarmType === 'predictive' || alarm.type === 'predictive') {
+      return 'bg-blue-50 dark:bg-blue-900 border-blue-400';
+    }
+    
     switch (alarm.severity) {
       case 'critical':
         return 'bg-red-100 dark:bg-red-900 border-red-500';
@@ -29,7 +49,7 @@ export const AlarmCard: React.FC<AlarmCardProps> = ({
       default:
         return 'bg-gray-100 dark:bg-gray-800 border-gray-400';
     }
-  }, [alarm.severity]);
+  }, [alarm.severity, alarm.alarmType, alarm.type]);
   
   // Determine icon based on alarm type
   const typeIcon = useMemo(() => {
@@ -52,6 +72,8 @@ export const AlarmCard: React.FC<AlarmCardProps> = ({
         return 'flask-outline';
       case 'oil':
         return 'color-fill-outline';
+      case 'predictive':
+        return 'analytics-outline';
       default:
         return 'alert-circle-outline';
     }

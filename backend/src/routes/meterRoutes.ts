@@ -22,7 +22,7 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
  * @access  Public
  */
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
-  const { voltage, current, frequency, pf, energy, power } = req.body;
+  const { voltage, current, frequency, pf, energy, power, organizationId } = req.body;
   
   // Validate required fields
   if (voltage === undefined || current === undefined || 
@@ -35,8 +35,17 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
-  // Get database client
-  const client = await getClientWithRetry(getRequestOrgId(req));
+  // Validate organization ID
+  if (!organizationId) {
+    logError('Missing organization ID for meter readings', req.body);
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Organization ID is required' 
+    });
+  }
+
+  // Get database client using organization ID from request body
+  const client = await getClientWithRetry(organizationId);
   
   try {
     // Insert data into meter_readings table
@@ -51,7 +60,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
     const meterId = result.rows[0].meter_id;
     
     // Check for threshold violations and send notifications
-    await checkThresholdViolations({ voltage, current, frequency, pf, energy, power }, getRequestOrgId(req));
+    await checkThresholdViolations({ voltage, current, frequency, pf, energy, power }, organizationId);
     
     // Return success response
     return res.status(201).json({
@@ -79,7 +88,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
  * @desc    Get latest meter readings
  * @access  Private
  */
-router.get('/latest', asyncHandler(async (req: Request, res: Response) => {
+router.get('/latest', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const client = await getClientWithRetry(getRequestOrgId(req));
   
   try {
@@ -122,7 +131,7 @@ router.get('/latest', asyncHandler(async (req: Request, res: Response) => {
  * @desc    Get historical meter readings with pagination
  * @access  Private
  */
-router.get('/history', asyncHandler(async (req: Request, res: Response) => {
+router.get('/history', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const client = await getClientWithRetry(getRequestOrgId(req));
   
   // Parse pagination parameters
@@ -224,7 +233,7 @@ router.get('/history', asyncHandler(async (req: Request, res: Response) => {
  * @desc    Get all meter parameter limits
  * @access  Private
  */
-router.get('/limits', asyncHandler(async (req: Request, res: Response) => {
+router.get('/limits', authenticate, asyncHandler(async (req: Request, res: Response) => {
   try {
     const limits = await prisma.meterLimit.findMany({
       orderBy: { parameter: 'asc' }

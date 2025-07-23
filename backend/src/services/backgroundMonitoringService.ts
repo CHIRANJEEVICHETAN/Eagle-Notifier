@@ -1,6 +1,9 @@
 import { processAndFormatAlarms } from './scadaService';
 import prisma from '../config/db';
 import { isMaintenanceModeActive } from '../controllers/maintenanceController';
+import { PredictiveAlertController, OrganizationContext } from './predictiveAlertController';
+import { PredictionService } from './predictionService';
+import { OrganizationDataProcessor } from './organizationDataProcessor';
 
 const DEBUG = process.env.NODE_ENV === 'development';
 
@@ -117,7 +120,7 @@ export class BackgroundMonitoringService {
   }
 
   /**
-   * Monitor a specific organization
+   * Monitor a specific organization with hybrid alert processing
    */
   private static async monitorOrganization(orgId: string, orgName: string): Promise<void> {
     const startTime = Date.now();
@@ -133,13 +136,42 @@ export class BackgroundMonitoringService {
         return;
       }
 
-      // Process alarms for the organization
+      // Get organization configuration for predictive alerts
+      const organization = await prisma.organization.findUnique({
+        where: { id: orgId },
+        select: {
+          id: true,
+          name: true,
+          scadaDbConfig: true,
+          schemaConfig: true,
+          mlModelConfig: true,
+          predictionEnabled: true
+        }
+      });
+
+      if (!organization) {
+        throw new Error(`Organization not found: ${orgId}`);
+      }
+
+      // Process traditional rule-based alarms
       const result = await processAndFormatAlarms(orgId, false);
       
+      // Process predictive alerts if enabled for this organization
+      let predictionResult = null;
+      if (organization.predictionEnabled && organization.mlModelConfig) {
+        try {
+          predictionResult = await this.processPredictiveAlerts(organization);
+        } catch (predError) {
+          console.error(`⚠️ Predictive alert processing failed for ${orgName}:`, predError);
+          // Continue with rule-based alerts even if predictive fails
+        }
+      }
+
       const processingTime = Date.now() - startTime;
       
       if (DEBUG) {
-        console.log(`📊 ${orgName}: Processed ${result.analogAlarms.length} analog + ${result.binaryAlarms.length} binary alarms (${processingTime}ms)`);
+        const predMsg = predictionResult ? ` + predictive analysis` : '';
+        console.log(`📊 ${orgName}: Processed ${result.analogAlarms.length} analog + ${result.binaryAlarms.length} binary alarms${predMsg} (${processingTime}ms)`);
       }
 
       // Update monitoring status
@@ -151,6 +183,81 @@ export class BackgroundMonitoringService {
       
       // Update monitoring status with error
       this.updateMonitoringStatus(orgId, orgName, false, errorMessage);
+    }
+  }
+
+  /**
+   * Process predictive alerts for an organization
+   */
+  private static async processPredictiveAlerts(organization: any): Promise<any> {
+    try {
+      // Initialize services if needed
+      const predictionService = new PredictionService();
+      const dataProcessor = new OrganizationDataProcessor(
+        organization.id,
+        organization.schemaConfig || {}
+      );
+
+      // Get latest SCADA data for the organization
+      const latestData = await this.getLatestScadaData(organization.id);
+      if (!latestData || latestData.length === 0) {
+        if (DEBUG) {
+          console.log(`📊 No recent SCADA data for predictive analysis: ${organization.name}`);
+        }
+        return null;
+      }
+
+      // Process data for ML features
+      const processedFeatures = await dataProcessor.processData(latestData);
+      
+      // Get prediction from ML model
+      const predictionResult = await predictionService.predict(processedFeatures);
+
+      // Create organization context for alert processing
+      const orgContext: OrganizationContext = {
+        organizationId: organization.id,
+        scadaConfig: organization.scadaDbConfig,
+        schemaConfig: organization.schemaConfig,
+        modelConfig: organization.mlModelConfig
+      };
+
+      // Generate and broadcast predictive alerts
+      const alerts = await PredictiveAlertController.analyzeData(
+        latestData,
+        orgContext,
+        predictionResult
+      );
+
+      if (DEBUG && alerts.length > 0) {
+        console.log(`🤖 Generated ${alerts.length} predictive alerts for ${organization.name}`);
+      }
+
+      return predictionResult;
+    } catch (error) {
+      console.error(`❌ Error processing predictive alerts for ${organization.name}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get latest SCADA data for predictive analysis
+   */
+  private static async getLatestScadaData(organizationId: string): Promise<any[]> {
+    try {
+      // This would typically fetch from the organization's SCADA database
+      // For now, we'll return a placeholder that would be replaced with actual SCADA data fetching
+      // The actual implementation would use the organization's SCADA connection
+      
+      if (DEBUG) {
+        console.log(`📊 Fetching latest SCADA data for organization ${organizationId}`);
+      }
+
+      // Placeholder - in real implementation, this would fetch from SCADA DB
+      // using the organization's scadaDbConfig
+      return [];
+    } catch (error) {
+      console.error(`❌ Error fetching SCADA data for organization ${organizationId}:`, error);
+      return [];
     }
   }
 

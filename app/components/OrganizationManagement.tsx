@@ -119,12 +119,18 @@ const OrganizationManagement: React.FC = () => {
     
     columns.forEach(col => {
       const colLower = col.toLowerCase();
-      
-      // Temperature-related columns
-      if (colLower.includes('temp') || colLower.includes('hz') || colLower.includes('tz') || colLower.includes('oil')) {
-        autoConfig[col] = {
-          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+      let config: any = {};
+      // --- Analog Temperature (with zone detection) ---
+      if (/^(hz|tz)\d+(sv|pv)$/.test(colLower)) {
+        // e.g., hz1sv, hz1pv, tz2sv, tz2pv
+        const zoneMatch = colLower.match(/^(hz|tz)(\d+)/);
+        const zoneType = zoneMatch ? (zoneMatch[1] === 'hz' ? 'HARDENING' : 'TEMPERING') : '';
+        const zoneNum = zoneMatch ? zoneMatch[2] : '';
+        const isSetpoint = colLower.endsWith('sv');
+        config = {
+          name: `${zoneType} ZONE ${zoneNum} ${isSetpoint ? 'SETPOINT' : 'TEMPERATURE'}`,
           type: 'temperature',
+          zone: `zone${zoneNum}`,
           unit: '°C',
           isAnalog: true,
           isBinary: false,
@@ -132,34 +138,11 @@ const OrganizationManagement: React.FC = () => {
           highDeviation: 10.0
         };
       }
-      // Pressure-related columns
-      else if (colLower.includes('pressure') || colLower.includes('press') || colLower.includes('pr')) {
-        autoConfig[col] = {
-          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
-          type: 'pressure',
-          unit: 'bar',
-          isAnalog: true,
-          isBinary: false,
-          lowDeviation: -5.0,
-          highDeviation: 5.0
-        };
-      }
-      // Level-related columns
-      else if (colLower.includes('level') || colLower.includes('lvl')) {
-        autoConfig[col] = {
-          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
-          type: 'level',
-          unit: '%',
-          isAnalog: true,
-          isBinary: false,
-          lowDeviation: -10.0,
-          highDeviation: 10.0
-        };
-      }
-      // Carbon-related columns
-      else if (colLower.includes('carbon') || colLower.includes('carb') || colLower.includes('cp')) {
-        autoConfig[col] = {
-          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+      // --- Analog Carbon ---
+      else if (/^cp[sp]v$/.test(colLower)) {
+        // e.g., cpsv, cppv
+        config = {
+          name: colLower === 'cpsv' ? 'CARBON POTENTIAL SETPOINT' : 'CARBON POTENTIAL',
           type: 'carbon',
           unit: '%',
           isAnalog: true,
@@ -168,56 +151,143 @@ const OrganizationManagement: React.FC = () => {
           highDeviation: 0.05
         };
       }
-      // Binary/failure columns
-      else if (colLower.includes('fail') || colLower.includes('high') || colLower.includes('low') || 
-               colLower.includes('alarm') || colLower.includes('status') || colLower.includes('on') || 
-               colLower.includes('off') || colLower.includes('run')) {
-        autoConfig[col] = {
-          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
-          type: 'status',
+      // --- Analog Oil Temperature ---
+      else if (colLower === 'oilpv') {
+        config = {
+          name: 'OIL TEMPERATURE',
+          type: 'temperature',
+          unit: '°C',
+          isAnalog: true,
+          isBinary: false,
+          lowDeviation: -10.0,
+          highDeviation: 20.0
+        };
+      }
+      // --- Binary Oil Temperature High ---
+      else if (colLower === 'oiltemphigh') {
+        config = {
+          name: 'OIL TEMPERATURE HIGH',
+          type: 'temperature',
           isAnalog: false,
           isBinary: true
         };
       }
-      // Motor-related columns
-      else if (colLower.includes('motor') || colLower.includes('mtr')) {
-        autoConfig[col] = {
-          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
-          type: 'motor',
+      // --- Binary Oil Level High/Low ---
+      else if (colLower === 'oillevelhigh') {
+        config = {
+          name: 'OIL LEVEL HIGH',
+          type: 'level',
+          isAnalog: false,
+          isBinary: true
+        };
+      } else if (colLower === 'oillevellow') {
+        config = {
+          name: 'OIL LEVEL LOW',
+          type: 'level',
           isAnalog: false,
           isBinary: true
         };
       }
-      // Fan-related columns
-      else if (colLower.includes('fan')) {
-        autoConfig[col] = {
-          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
-          type: 'fan',
-          isAnalog: false,
-          isBinary: true
-        };
-      }
-      // Heater-related columns
-      else if (colLower.includes('heater') || colLower.includes('htr')) {
-        autoConfig[col] = {
-          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+      // --- Binary Heater Failure ---
+      else if (/^hz\d+hfail$/.test(colLower)) {
+        const zoneNum = colLower.match(/^hz(\d+)hfail$/)?.[1];
+        config = {
+          name: `HARDENING ZONE ${zoneNum} HEATER FAILURE`,
           type: 'heater',
+          zone: `zone${zoneNum}`,
           isAnalog: false,
           isBinary: true
         };
       }
-      // Conveyor-related columns
-      else if (colLower.includes('conveyor') || colLower.includes('conv')) {
-        autoConfig[col] = {
-          name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
+      // --- Binary Conveyor Failure/Trip ---
+      else if (colLower === 'hardconfail') {
+        config = {
+          name: 'HARDENING CONVEYOR FAILURE',
+          type: 'conveyor',
+          isAnalog: false,
+          isBinary: true
+        };
+      } else if (colLower === 'hardcontraip') {
+        config = {
+          name: 'HARDENING CONVEYOR TRIP',
+          type: 'conveyor',
+          isAnalog: false,
+          isBinary: true
+        };
+      } else if (colLower === 'oilconfail') {
+        config = {
+          name: 'OIL CONVEYOR FAILURE',
+          type: 'conveyor',
+          isAnalog: false,
+          isBinary: true
+        };
+      } else if (colLower === 'oilcontraip') {
+        config = {
+          name: 'OIL CONVEYOR TRIP',
           type: 'conveyor',
           isAnalog: false,
           isBinary: true
         };
       }
-      // Default analog column
+      // --- Binary Fan Failure/Trip (HARDENING) ---
+      else if (/^hz\d+fanfail$/.test(colLower)) {
+        const zoneNum = colLower.match(/^hz(\d+)fanfail$/)?.[1];
+        config = {
+          name: `HARDENING ZONE ${zoneNum} FAN FAILURE`,
+          type: 'fan',
+          zone: `zone${zoneNum}`,
+          isAnalog: false,
+          isBinary: true
+        };
+      } else if (/^hz\d+fantrip$/.test(colLower)) {
+        const zoneNum = colLower.match(/^hz(\d+)fantrip$/)?.[1];
+        config = {
+          name: `HARDENING ZONE ${zoneNum} FAN TRIP`,
+          type: 'fan',
+          zone: `zone${zoneNum}`,
+          isAnalog: false,
+          isBinary: true
+        };
+      }
+      // --- Binary Fan Failure/Trip (TEMPERING) ---
+      else if (/^tz\d+fanfail$/.test(colLower)) {
+        const zoneNum = colLower.match(/^tz(\d+)fanfail$/)?.[1];
+        config = {
+          name: `TEMPERING ZONE ${zoneNum} FAN FAILURE`,
+          type: 'fan',
+          zone: `zone${zoneNum}`,
+          isAnalog: false,
+          isBinary: true
+        };
+      } else if (/^tz\d+fantrip$/.test(colLower)) {
+        const zoneNum = colLower.match(/^tz(\d+)fantrip$/)?.[1];
+        config = {
+          name: `TEMPERING ZONE ${zoneNum} FAN TRIP`,
+          type: 'fan',
+          zone: `zone${zoneNum}`,
+          isAnalog: false,
+          isBinary: true
+        };
+      }
+      // --- Binary Temp Controller Failure/Trip ---
+      else if (colLower === 'tempconfail') {
+        config = {
+          name: 'TEMPERATURE CONTROLLER FAILURE',
+          type: 'controller',
+          isAnalog: false,
+          isBinary: true
+        };
+      } else if (colLower === 'tempcontraip') {
+        config = {
+          name: 'TEMPERATURE CONTROLLER TRIP',
+          type: 'controller',
+          isAnalog: false,
+          isBinary: true
+        };
+      }
+      // --- Default: Analog value ---
       else {
-        autoConfig[col] = {
+        config = {
           name: col.toUpperCase().replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
           type: 'value',
           isAnalog: true,
@@ -226,13 +296,7 @@ const OrganizationManagement: React.FC = () => {
           highDeviation: 10.0
         };
       }
-      
-      // Add zone information if column name suggests it
-      if (colLower.includes('zone1') || colLower.includes('z1')) {
-        autoConfig[col].zone = 'zone1';
-      } else if (colLower.includes('zone2') || colLower.includes('z2')) {
-        autoConfig[col].zone = 'zone2';
-      }
+      autoConfig[col] = config;
     });
     
     setForm(f => ({
@@ -310,9 +374,32 @@ const OrganizationManagement: React.FC = () => {
     setIsCheckingSyntax(true);
     try {
       const result = await checkAndFixJsonSyntax(form.schemaConfig.columnConfigs);
+      
+      if (!result.success) {
+        // Show specific error message
+        if (result.error?.includes('API key not configured')) {
+          Alert.alert(
+            'Gemini API Not Configured', 
+            'The Gemini API key is not configured. Please contact your administrator to set up the GEMINI_API_KEY environment variable.',
+            [
+              { text: 'OK', style: 'default' },
+              { text: 'Try Manual Fix', onPress: () => {
+                // Show the syntax modal with manual instructions
+                setSyntaxResult({ success: false, error: 'Please manually fix the JSON syntax errors.' });
+                setShowSyntaxModal(true);
+              }}
+            ]
+          );
+        } else {
+          Alert.alert('Syntax Check Failed', result.error || 'Failed to check syntax. Please try again.');
+        }
+        return;
+      }
+      
       setSyntaxResult(result);
       setShowSyntaxModal(true);
     } catch (error) {
+      console.error('Syntax check error:', error);
       Alert.alert('Error', 'Failed to check syntax. Please try again.');
     } finally {
       setIsCheckingSyntax(false);
@@ -632,6 +719,113 @@ const OrganizationManagement: React.FC = () => {
                   multiline
                 />
               </View>
+
+              {/* Predictive Maintenance Config */}
+              <Text style={{ fontWeight: '600', color: isDarkMode ? '#F8FAFC' : '#1E293B', marginTop: 16 }}>Predictive Maintenance</Text>
+              
+              {/* Enable Predictions Toggle */}
+              <View style={{ 
+                flexDirection: 'row', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: 12,
+                paddingVertical: 8
+              }}>
+                <Text style={{ color: isDarkMode ? '#F8FAFC' : '#1E293B', fontSize: 16 }}>
+                  Enable ML Predictions
+                </Text>
+                <View style={{
+                  width: 50,
+                  height: 30,
+                  borderRadius: 15,
+                  backgroundColor: (selectedOrg?.predictionEnabled || false) ? '#22c55e' : '#94a3b8',
+                  justifyContent: 'center',
+                  paddingHorizontal: 2
+                }}>
+                  <View style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 13,
+                    backgroundColor: '#ffffff',
+                    alignSelf: (selectedOrg?.predictionEnabled || false) ? 'flex-end' : 'flex-start'
+                  }} />
+                </View>
+              </View>
+
+              {selectedOrg?.predictionEnabled && (
+                <>
+                  {/* Model Version */}
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ color: isDarkMode ? '#cbd5e1' : '#64748b', fontSize: 13 }}>Model Version</Text>
+                    <Text style={{ 
+                      color: isDarkMode ? '#F8FAFC' : '#1E293B',
+                      fontSize: 14,
+                      fontWeight: '600',
+                      paddingVertical: 8
+                    }}>
+                      {selectedOrg.modelVersion || 'Not Available'}
+                    </Text>
+                  </View>
+
+                  {/* Model Accuracy */}
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ color: isDarkMode ? '#cbd5e1' : '#64748b', fontSize: 13 }}>Model Accuracy</Text>
+                    <Text style={{ 
+                      color: selectedOrg.modelAccuracy && selectedOrg.modelAccuracy > 0.8 ? '#22c55e' : '#f59e0b',
+                      fontSize: 14,
+                      fontWeight: '600',
+                      paddingVertical: 8
+                    }}>
+                      {selectedOrg.modelAccuracy ? `${(selectedOrg.modelAccuracy * 100).toFixed(1)}%` : 'Not Available'}
+                    </Text>
+                  </View>
+
+                  {/* Last Training Date */}
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ color: isDarkMode ? '#cbd5e1' : '#64748b', fontSize: 13 }}>Last Training</Text>
+                    <Text style={{ 
+                      color: isDarkMode ? '#F8FAFC' : '#1E293B',
+                      fontSize: 14,
+                      fontWeight: '600',
+                      paddingVertical: 8
+                    }}>
+                      {selectedOrg.lastTrainingDate ? new Date(selectedOrg.lastTrainingDate).toLocaleDateString() : 'Never'}
+                    </Text>
+                  </View>
+
+                  {/* Quick Actions */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        backgroundColor: isDarkMode ? '#059669' : '#10b981',
+                        borderRadius: 6,
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                        Configure ML
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        backgroundColor: isDarkMode ? '#7c3aed' : '#8b5cf6',
+                        borderRadius: 6,
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                        View Performance
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </ScrollView>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
               {isEditing ? (
@@ -787,6 +981,20 @@ const OrganizationManagement: React.FC = () => {
                 Configure how each column should be treated for alarm monitoring. Use this JSON format:
               </Text>
               
+              <Text style={{ fontSize: 14, fontWeight: '600', color: isDarkMode ? '#60A5FA' : '#2563EB', marginBottom: 8 }}>
+                🚀 Auto-Generation Support:
+              </Text>
+              <Text style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#64748b', marginBottom: 12 }}>
+                The auto-generate button (⚡) can automatically detect and configure columns based on naming patterns:
+              </Text>
+              <View style={{ backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderRadius: 6, padding: 8, marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b', marginBottom: 4 }}>• Temperature zones: hz1sv, hz1pv, tz2sv, tz2pv</Text>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b', marginBottom: 4 }}>• Carbon potential: cpsv, cppv</Text>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b', marginBottom: 4 }}>• Oil sensors: oilpv, oiltemphigh, oillevelhigh</Text>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b', marginBottom: 4 }}>• Equipment failures: hz1hfail, hardconfail, hz1fanfail</Text>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b' }}>• Controller alarms: tempconfail, tempcontraip</Text>
+              </View>
+              
               <View style={{ backgroundColor: isDarkMode ? '#334155' : '#f1f5f9', borderRadius: 8, padding: 12, marginBottom: 16 }}>
                 <Text style={{ fontFamily: 'monospace', fontSize: 12, color: isDarkMode ? '#e2e8f0' : '#475569' }}>
 {`{
@@ -810,6 +1018,24 @@ const OrganizationManagement: React.FC = () => {
     "lowDeviation": -30.0,
     "highDeviation": 10.0
   },
+  "cpsv": {
+    "name": "CARBON POTENTIAL SETPOINT",
+    "type": "carbon",
+    "unit": "%",
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -0.05,
+    "highDeviation": 0.05
+  },
+  "cppv": {
+    "name": "CARBON POTENTIAL",
+    "type": "carbon",
+    "unit": "%",
+    "isAnalog": true,
+    "isBinary": false,
+    "lowDeviation": -0.05,
+    "highDeviation": 0.05
+  },
   "oilpv": {
     "name": "OIL TEMPERATURE",
     "type": "temperature",
@@ -822,6 +1048,12 @@ const OrganizationManagement: React.FC = () => {
   "oiltemphigh": {
     "name": "OIL TEMPERATURE HIGH",
     "type": "temperature",
+    "isAnalog": false,
+    "isBinary": true
+  },
+  "oillevelhigh": {
+    "name": "OIL LEVEL HIGH",
+    "type": "level",
     "isAnalog": false,
     "isBinary": true
   },

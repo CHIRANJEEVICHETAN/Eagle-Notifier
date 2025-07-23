@@ -103,15 +103,23 @@ export const authorize = (roles: string[]) => {
 }; 
 
 export function getRequestOrgId(req: Request): string {
+  // Check for organization ID in header first (for multi-tenant API calls)
+  const headerOrgId = req.headers['x-organization-id'];
+  if (typeof headerOrgId === 'string' && headerOrgId) {
+    return headerOrgId;
+  }
+  
   // If SUPER_ADMIN, allow specifying org via query/body
   if (req.user?.role === 'SUPER_ADMIN') {
     const orgId = req.query.organizationId || req.body.organizationId || req.user.organizationId;
     if (typeof orgId === 'string' && orgId) return orgId;
     throw createError('organizationId is required for SUPER_ADMIN actions', 400);
   }
+  
   // For regular users, require org from user context
   if (typeof req.user?.organizationId === 'string' && req.user.organizationId) {
     return req.user.organizationId;
   }
+  
   throw createError('Organization context missing. Please contact support.', 400);
 } 

@@ -30,6 +30,13 @@ const SUPER_ADMIN_SECTIONS = [
     description: 'Manage users across all organizations. Assign roles, reset passwords, and more.'
   },
   {
+    key: 'predictive-maintenance',
+    icon: 'analytics-outline',
+    title: 'Predictive Maintenance',
+    route: '/(dashboard)/superAdmin/predictiveMaintenanceManagement',
+    description: 'Configure ML models, training schedules, and monitor predictive maintenance performance.'
+  },
+  {
     key: 'global-search',
     icon: 'search-outline',
     title: 'Global Search & Analytics',
@@ -42,6 +49,7 @@ const CARD_COLORS = [
   // Soft, theme-aware, not too vibrant
   { light: ['#e0e7ff', '#f1f5f9'], dark: ['#1e293b', '#334155'] }, // Org
   { light: ['#fef9c3', '#f1f5f9'], dark: ['#334155', '#1e293b'] }, // User
+  { light: ['#dcfce7', '#f1f5f9'], dark: ['#334155', '#1e293b'] }, // Predictive Maintenance
   { light: ['#cffafe', '#f1f5f9'], dark: ['#334155', '#1e293b'] }, // Search
 ];
 

@@ -15,7 +15,8 @@ export type AlarmType =
   | 'fan' 
   | 'heater' 
   | 'carbon' 
-  | 'oil';
+  | 'oil'
+  | 'predictive';
 
 export type Zone = 'zone1' | 'zone2';
 
@@ -57,7 +58,15 @@ export interface Alarm {
   };
   resolvedAt?: string;
   resolutionMessage?: string;
-  alarmType?: 'analog' | 'binary';
+  alarmType?: 'analog' | 'binary' | 'predictive';
+  // Predictive alert specific fields
+  confidence?: number;
+  timeToFailure?: number;
+  predictedComponent?: string;
+  modelVersion?: string;
+  isAccurate?: boolean;
+  feedbackAt?: string;
+  feedbackBy?: string;
 }
 
 export interface AlarmHistory {

@@ -7,6 +7,13 @@ export interface Organization {
   name: string;
   scadaDbConfig: string;
   schemaConfig: string;
+  // Predictive Maintenance fields
+  mlModelConfig?: string;
+  trainingSchedule?: string;
+  modelVersion?: string;
+  modelAccuracy?: number;
+  lastTrainingDate?: string;
+  predictionEnabled?: boolean;
 }
 
 interface OrgForm {

@@ -637,6 +637,11 @@ export function ReportGenerator({
             </Text>
             <View style={styles.filterContainer}>
               {renderFilterButton(
+                'Predictive', 
+                alarmTypes.includes('predictive'), 
+                () => toggleAlarmType('predictive')
+              )}
+              {renderFilterButton(
                 'Temperature', 
                 alarmTypes.includes('temperature'), 
                 () => toggleAlarmType('temperature')

@@ -17,7 +17,9 @@ import { FlashList } from '@shopify/flash-list';
 import { useTheme } from '../../context/ThemeContext';
 import { AlarmDetails } from '../../components/AlarmDetails';
 import { useAlarmHistory } from '../../hooks/useAlarms';
+import { usePredictiveAlertHistory } from '../../hooks/usePredictiveAlerts';
 import { Alarm } from '../../types/alarm';
+import { PredictiveAlertCard } from '../../components/PredictiveAlertCard';
 
 // Centralised timezone utilities
 import { formatTimestampIST } from '../../utils/timezoneUtils';
@@ -86,23 +88,46 @@ export default function AlarmHistoryScreen() {
     sortOrder: 'desc',
   });
 
-  // Extract and filter analog and binary alarms
-  const { filteredAnalogAlarms, filteredBinaryAlarms } = useMemo(() => {
-    if (!alarmHistoryData?.alarms) {
-      return { filteredAnalogAlarms: [], filteredBinaryAlarms: [] };
-    }
+  // Fetch predictive alert history
+  const {
+    data: predictiveHistoryData,
+    isLoading: predictiveLoading,
+    refetch: refetchPredictive,
+  } = usePredictiveAlertHistory({
+    page: currentPage,
+    limit,
+    status: 'all',
+    hours: 168, // Default to 7 days
+    sortBy: 'timestamp',
+    sortOrder: 'desc',
+  });
 
+  // Extract and filter analog, binary alarms, and predictive alerts
+  const { filteredAnalogAlarms, filteredBinaryAlarms, filteredPredictiveAlerts } = useMemo(() => {
     const analog: Alarm[] = [];
     const binary: Alarm[] = [];
+    const predictive: Alarm[] = [];
 
-    alarmHistoryData.alarms.forEach((record: AlarmHistoryRecord) => {
-      if (record.analogAlarms) {
-        analog.push(...record.analogAlarms);
-      }
-      if (record.binaryAlarms) {
-        binary.push(...record.binaryAlarms);
-      }
-    });
+    // Process traditional alarms
+    if (alarmHistoryData?.alarms) {
+      alarmHistoryData.alarms.forEach((record: AlarmHistoryRecord) => {
+        if (record.analogAlarms) {
+          analog.push(...record.analogAlarms);
+        }
+        if (record.binaryAlarms) {
+          binary.push(...record.binaryAlarms);
+        }
+      });
+    }
+
+    // Process predictive alerts
+    if (predictiveHistoryData?.alerts) {
+      predictive.push(...predictiveHistoryData.alerts.map((alert: Alarm) => ({
+        ...alert,
+        alarmType: 'predictive' as const,
+        type: 'predictive'
+      })));
+    }
 
     // Filter to show only the specified alarms
     // For each description, find the most recent alarm (avoid duplicates)
@@ -122,13 +147,36 @@ export default function AlarmHistoryScreen() {
       )[0];
     }).filter(Boolean); // Remove undefined entries
 
-    return { filteredAnalogAlarms, filteredBinaryAlarms };
-  }, [alarmHistoryData]);
+    // For predictive alerts, show all recent ones (no filtering by description)
+    const filteredPredictiveAlerts = predictive.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    ).slice(0, 20); // Show last 20 predictive alerts
 
-  // Combine both alarm types for a single list view with sections
+    return { filteredAnalogAlarms, filteredBinaryAlarms, filteredPredictiveAlerts };
+  }, [alarmHistoryData, predictiveHistoryData]);
+
+  // Combine all alarm types for a single list view with sections
   const combinedAlarms = useMemo(() => {
     // Create a combined list with section headers
     const combined = [];
+
+    // Add predictive alerts section header
+    if (filteredPredictiveAlerts.length > 0) {
+      combined.push({
+        id: 'predictive-header',
+        isHeader: true,
+        title: 'Predictive',
+        count: filteredPredictiveAlerts.length,
+      });
+
+      // Add predictive alerts
+      combined.push(
+        ...filteredPredictiveAlerts.map((alert) => ({
+          ...alert,
+          isHeader: false,
+        }))
+      );
+    }
 
     // Add analog alarms section header
     if (filteredAnalogAlarms.length > 0) {
@@ -167,14 +215,14 @@ export default function AlarmHistoryScreen() {
     }
 
     return combined;
-  }, [filteredAnalogAlarms, filteredBinaryAlarms]);
+  }, [filteredAnalogAlarms, filteredBinaryAlarms, filteredPredictiveAlerts]);
 
   // Handle refresh
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([refetch(), refetchPredictive()]);
     setRefreshing(false);
-  }, [refetch]);
+  }, [refetch, refetchPredictive]);
 
   // Handle view alarm details
   const handleViewAlarm = useCallback(
@@ -247,6 +295,18 @@ export default function AlarmHistoryScreen() {
         );
       }
 
+      // Handle predictive alerts differently
+      if (item.alarmType === 'predictive' || item.type === 'predictive') {
+        return (
+          <View style={styles.predictiveAlertWrapper}>
+            <PredictiveAlertCard
+              alarm={item}
+              onPress={() => handleViewAlarm(item)}
+            />
+          </View>
+        );
+      }
+
       return (
         <TouchableOpacity
           style={[styles.alarmItem, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}
@@ -292,7 +352,7 @@ export default function AlarmHistoryScreen() {
   );
 
   // Render loading state
-  if (isLoading && !refreshing) {
+  if ((isLoading || predictiveLoading) && !refreshing) {
     return (
       <SafeAreaView
         style={[styles.container, { backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
@@ -493,5 +553,9 @@ const styles = StyleSheet.create({
   },
   fullListContainer: {
     flex: 1,
+  },
+  predictiveAlertWrapper: {
+    marginHorizontal: 16,
+    marginBottom: 8,
   },
 });

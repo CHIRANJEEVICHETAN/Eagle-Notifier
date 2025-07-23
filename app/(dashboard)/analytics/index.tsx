@@ -20,11 +20,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 import { useRouter } from 'expo-router';
 import { useAnalyticsData } from '../../hooks/useAlarms';
+import { usePredictiveAlerts } from '../../hooks/usePredictiveAlerts';
 import { formatTimestampIST } from '../../utils/timezoneUtils';
 import { useQueryClient } from '@tanstack/react-query';
 
 // Types
-type GraphType = 'analog' | 'binary';
+type GraphType = 'analog' | 'binary' | 'predictive';
 type TimeRange = '10s' | '15s' | '20s' | '1m' | '2m';
 
 // Binary alarm interfaces
@@ -53,6 +54,101 @@ interface LineProps {
   endY: number;
   color: string;
 }
+
+// Predictive Chart Component
+interface PredictiveChartProps {
+  predictiveData: any[];
+  timeRange: TimeRange;
+}
+
+const PredictiveChart: React.FC<PredictiveChartProps> = ({ predictiveData, timeRange }) => {
+  const { isDarkMode } = useTheme();
+  
+  const theme = {
+    background: isDarkMode ? '#1F2937' : '#FFFFFF',
+    text: isDarkMode ? '#F3F4F6' : '#1F2937',
+    subtext: isDarkMode ? '#9CA3AF' : '#6B7280',
+    border: isDarkMode ? '#374151' : '#E5E7EB',
+  };
+
+  // Group alerts by confidence level
+  const confidenceGroups = useMemo(() => {
+    const groups = {
+      high: predictiveData.filter(alert => (alert.confidence || 0) >= 0.9),
+      medium: predictiveData.filter(alert => (alert.confidence || 0) >= 0.7 && (alert.confidence || 0) < 0.9),
+      low: predictiveData.filter(alert => (alert.confidence || 0) < 0.7),
+    };
+    return groups;
+  }, [predictiveData]);
+
+  return (
+    <View style={[styles.chartContainer, { backgroundColor: theme.background }]}>
+      <Text style={[styles.chartTitle, { color: theme.text }]}>
+        Predictive Alerts Analytics
+      </Text>
+      
+      <View style={styles.predictiveStatsContainer}>
+        <View style={[styles.statCard, { backgroundColor: '#EF4444' }]}>
+          <Text style={styles.statNumber}>{confidenceGroups.high.length}</Text>
+          <Text style={styles.statLabel}>High Confidence</Text>
+          <Text style={styles.statSubLabel}>≥90%</Text>
+        </View>
+        
+        <View style={[styles.statCard, { backgroundColor: '#F59E0B' }]}>
+          <Text style={styles.statNumber}>{confidenceGroups.medium.length}</Text>
+          <Text style={styles.statLabel}>Medium Confidence</Text>
+          <Text style={styles.statSubLabel}>70-89%</Text>
+        </View>
+        
+        <View style={[styles.statCard, { backgroundColor: '#10B981' }]}>
+          <Text style={styles.statNumber}>{confidenceGroups.low.length}</Text>
+          <Text style={styles.statLabel}>Low Confidence</Text>
+          <Text style={styles.statSubLabel}>&lt;70%</Text>
+        </View>
+      </View>
+
+      {predictiveData.length === 0 ? (
+        <View style={styles.emptyPredictiveState}>
+          <Ionicons name="analytics-outline" size={48} color={theme.subtext} />
+          <Text style={[styles.emptyStateText, { color: theme.subtext }]}>
+            No predictive alerts in selected time range
+          </Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.predictiveAlertsList}>
+          {predictiveData.slice(0, 10).map((alert, index) => (
+            <View key={alert.id || index} style={[styles.predictiveAlertItem, { borderColor: theme.border }]}>
+              <View style={styles.predictiveAlertHeader}>
+                <Text style={[styles.predictiveAlertTitle, { color: theme.text }]}>
+                  {alert.description || 'Predictive Alert'}
+                </Text>
+                <View style={[
+                  styles.confidenceBadge,
+                  { 
+                    backgroundColor: (alert.confidence || 0) >= 0.9 ? '#EF4444' : 
+                                   (alert.confidence || 0) >= 0.7 ? '#F59E0B' : '#10B981'
+                  }
+                ]}>
+                  <Text style={styles.confidenceText}>
+                    {Math.round((alert.confidence || 0) * 100)}%
+                  </Text>
+                </View>
+              </View>
+              
+              <Text style={[styles.predictiveAlertComponent, { color: theme.subtext }]}>
+                Component: {alert.predictedComponent || 'Unknown'}
+              </Text>
+              
+              <Text style={[styles.predictiveAlertTime, { color: theme.subtext }]}>
+                Time to failure: {alert.timeToFailure ? `${alert.timeToFailure} min` : 'Unknown'}
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+};
 
 // Update Line component with better visibility
 const Line = ({ startX, startY, endX, endY, color }: LineProps) => {
@@ -1064,6 +1160,9 @@ export default function AnalyticsScreen() {
   
   // Fetch real-time analytics data
   const { data: analyticsData, isLoading, error, refetch } = useAnalyticsData(timeRange);
+  
+  // Import predictive alerts hook
+  const { data: predictiveData, refetch: refetchPredictive } = usePredictiveAlerts();
 
   // Invalidate cache immediately when timeRange changes for instant switching
   useEffect(() => {
@@ -1082,28 +1181,37 @@ export default function AnalyticsScreen() {
 
   // Toggle between graph types
   const toggleGraph = useCallback(() => {
-    // Update graph type
-    setActiveGraph(prev => prev === 'analog' ? 'binary' : 'analog');
+    // Update graph type - cycle through analog -> binary -> predictive -> analog
+    setActiveGraph(prev => {
+      if (prev === 'analog') return 'binary';
+      if (prev === 'binary') return 'predictive';
+      return 'analog';
+    });
   }, []);
 
   // Pull to refresh functionality
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refetch();
+      await Promise.all([refetch(), refetchPredictive()]);
       // Also invalidate the query to force a fresh fetch
       queryClient.invalidateQueries({ queryKey: ['scada-analytics', timeRange] });
+      queryClient.invalidateQueries({ queryKey: ['predictive-alerts'] });
     } catch (error) {
       console.error('Error refreshing analytics data:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [refetch, queryClient, timeRange]);
+  }, [refetch, refetchPredictive, queryClient, timeRange]);
 
   // Update animation when graph type changes
   useEffect(() => {
+    let toValue = 0;
+    if (activeGraph === 'binary') toValue = 1;
+    if (activeGraph === 'predictive') toValue = 2;
+    
     Animated.timing(animatedValue, {
-      toValue: activeGraph === 'analog' ? 0 : 1,
+      toValue,
       duration: 300,
       easing: Easing.bezier(0.4, 0, 0.2, 1),
       useNativeDriver: true,
@@ -1187,14 +1295,22 @@ export default function AnalyticsScreen() {
               }
             ]}>
               <Ionicons
-                name={activeGraph === 'analog' ? 'analytics' : 'toggle'}
+                name={
+                  activeGraph === 'analog' ? 'analytics' : 
+                  activeGraph === 'binary' ? 'toggle' : 
+                  'trending-up'
+                }
                 size={22}
                 color="#FFFFFF"
                 style={styles.toggleIcon}
               />
             </Animated.View>
             <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '600' }}>
-              {activeGraph === 'analog' ? 'Switch to Binary View' : 'Switch to Analog View'}
+              {
+                activeGraph === 'analog' ? 'Switch to Binary View' : 
+                activeGraph === 'binary' ? 'Switch to Predictive View' : 
+                'Switch to Analog View'
+              }
             </Text>
           </View>
           
@@ -1375,10 +1491,15 @@ export default function AnalyticsScreen() {
               timeLabels={istTimeLabels}
               timeRange={timeRange}
             />
-          ) : (
+          ) : activeGraph === 'binary' ? (
             <BinaryChart 
               alarmData={analyticsData.binaryData || []} 
               timeLabels={istTimeLabels}
+              timeRange={timeRange}
+            />
+          ) : (
+            <PredictiveChart 
+              predictiveData={predictiveData?.predictiveAlerts || []}
               timeRange={timeRange}
             />
           )
@@ -1596,5 +1717,87 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Predictive Chart Styles
+  predictiveStatsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: 16,
+  },
+  statCard: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    minWidth: 80,
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  statSubLabel: {
+    fontSize: 10,
+    color: '#FFFFFF',
+    opacity: 0.8,
+    marginTop: 2,
+  },
+  emptyPredictiveState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  predictiveAlertsList: {
+    maxHeight: 300,
+  },
+  predictiveAlertItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    marginBottom: 8,
+  },
+  predictiveAlertHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  predictiveAlertTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  confidenceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  confidenceText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  predictiveAlertComponent: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  predictiveAlertTime: {
+    fontSize: 12,
+  },
+  chartContainer: {
+    padding: 16,
+    margin: 8,
+    borderRadius: 8,
+  },
+  chartTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16,
+    textAlign: 'center',
   },
 }); 

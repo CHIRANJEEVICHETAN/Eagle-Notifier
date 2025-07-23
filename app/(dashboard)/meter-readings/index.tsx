@@ -534,11 +534,31 @@ export default function MeterReadingsScreen() {
     refetch: refetchHistory
   } = useMeterHistory(selectedTimeframe);
 
-  const { 
+  // Debug logging for meter history
+  useEffect(() => {
+    console.log('🔍 Meter history state:', {
+      isLoading: isHistoryLoading,
+      isError: isHistoryError,
+      hasData: !!historyData,
+      dataLength: historyData?.readings?.length || 0
+    });
+    }, [isHistoryLoading, isHistoryError, historyData]);
+
+  const {  
     data: limitsData,
     isLoading: isLimitsLoading,
     refetch: refetchLimits
   } = useMeterLimits();
+
+  // Cache clearing function
+  const clearMeterCache = useCallback(() => {
+    console.log('🧹 Clearing meter cache...');
+    queryClient.removeQueries({ queryKey: ['meter'] });
+    queryClient.invalidateQueries({ queryKey: ['meter'] });
+    refetchHistory();
+    refetchLatest();
+    refetchLimits();
+  }, [queryClient, refetchHistory, refetchLatest, refetchLimits]);
 
   // Add safe number formatting function at the top of the component
   const formatNumber = (value: number | undefined | null, decimals: number = 1): string => {
@@ -742,17 +762,23 @@ export default function MeterReadingsScreen() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      console.log('🔄 Manual refresh triggered - clearing cache first...');
+      // Clear cache first to ensure fresh data
+      queryClient.removeQueries({ queryKey: ['meter'] });
+      queryClient.invalidateQueries({ queryKey: ['meter'] });
+      
       await Promise.all([
         refetchLatest(),
         refetchHistory(),
         refetchLimits()
       ]);
+      console.log('✅ Manual refresh completed successfully');
     } catch (error) {
-      console.error('Error refreshing data:', error);
+      console.error('❌ Error refreshing data:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchLatest, refetchHistory, refetchLimits]);
+  }, [queryClient, refetchLatest, refetchHistory, refetchLimits]);
 
   // Set up auto-refresh every 3 minutes
   useEffect(() => {

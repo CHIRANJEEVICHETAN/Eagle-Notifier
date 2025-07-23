@@ -7,7 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
-  FlatList,
   Image,
   Platform,
   Dimensions,
@@ -22,7 +21,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { AlarmDetails } from '../../components/AlarmDetails';
 import { useActiveAlarms, useUpdateAlarmStatus, ALARM_KEYS, ScadaAlarmResponse } from '../../hooks/useAlarms';
-import { Alarm, AlarmSeverity } from '../../types/alarm';
+import { Alarm } from '../../types/alarm';
 import * as Notifications from 'expo-notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -33,6 +32,9 @@ import { useSetpoints, useUpdateSetpoint, Setpoint } from '../../hooks/useSetpoi
 import { SetpointConfigModal } from '../../components/SetpointConfigModal';
 import { useMaintenance } from '../../context/MaintenanceContext';
 import { useUnreadCount } from '../../hooks/useNotifications';
+import { usePredictiveAlerts, usePredictiveAlertFeedback, useUpdatePredictiveAlertStatus } from '../../hooks/usePredictiveAlerts';
+import { PredictiveAlertCard } from '../../components/PredictiveAlertCard';
+import { PredictiveAlertFilters, PredictiveAlertFilterOptions } from '../../components/PredictiveAlertFilters';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const DEVICE_WIDTH = Dimensions.get('window').width;
@@ -61,7 +63,7 @@ const THEME = {
     status: {
       normal: '#1E293B',
       warning: '#FFEB3B',
-      critical: '#FF0000', 
+      critical: '#FF0000',
       success: '#4CAF50'
     },
     border: '#334155',
@@ -90,97 +92,60 @@ const THEME = {
 };
 
 const windowWidth = Dimensions.get('window').width;
-const windowHeight = Dimensions.get('window').height;
 
 const highDPIPhones = 380;
 const lowDPIPhones = 365;
 
-// Card Shadow Styles
-const CARD_SHADOW = Platform.select({
-  ios: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-  },
-  android: {
-    elevation: 8,
-  },
-});
-
-// Animation Constants
-const SCALE_ANIMATION_CONFIG = {
-  duration: 200,
-  useNativeDriver: true,
-};
-
 // Card Dimensions
 const SCREEN_PADDING = 16;
-const CARD_MARGIN = 8;
-const CARD_WIDTH = (SCREEN_WIDTH - (SCREEN_PADDING * 2) - (CARD_MARGIN * 2)) / 2;
 
 // Add these type definitions after the SCREEN_WIDTH constant
 type CardScales = Map<string, Animated.Value>;
-
-interface AlarmData {
-  id: string;
-  description: string;
-  severity: 'critical' | 'warning' | 'info';
-  status: 'active' | 'acknowledged' | 'resolved';
-  type: string;
-  value: string;
-  unit?: string;
-  setPoint: string;
-  lowLimit?: number;
-  highLimit?: number;
-  timestamp: string;
-  zone?: string;
-}
 
 // Helper function to correctly format timestamps to show IST time consistently in 12-hour format
 const formatTimestamp = (timestamp: string): string => {
   try {
     // Always use a consistent approach for both development and production
     // by manually calculating IST time from UTC
-    
+
     // Parse the ISO string to Date object
     const date = new Date(timestamp);
-    
+
     // Get UTC components
     const utcHours = date.getUTCHours();
     const utcMinutes = date.getUTCMinutes();
     const utcSeconds = date.getUTCSeconds();
-    
+
     // Add IST offset (+5:30)
     let istHours = utcHours + 5;
     let istMinutes = utcMinutes + 30;
-    
+
     // Handle minute overflow
     if (istMinutes >= 60) {
       istHours += 1;
       istMinutes -= 60;
     }
-    
+
     // Handle hour overflow
     if (istHours >= 24) {
       istHours -= 24;
     }
-    
+
     // Convert to 12-hour format
     let displayHours = istHours;
     const ampm = istHours >= 12 ? 'PM' : 'AM';
-    
+
     if (istHours === 0) {
       displayHours = 12; // 12 AM
     } else if (istHours > 12) {
       displayHours = istHours - 12; // Convert to 12-hour format
     }
-    
+
     // Format the time components
     const hours = displayHours.toString().padStart(2, '0');
     const minutes = istMinutes.toString().padStart(2, '0');
     const seconds = utcSeconds.toString().padStart(2, '0');
-    
+
     return `${hours}:${minutes}:${seconds} ${ampm}`;
   } catch (error) {
     console.error('Error formatting timestamp:', error);
@@ -195,7 +160,7 @@ export default function OperatorDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const isSuperAdmin = authState?.user?.role === 'SUPER_ADMIN';
-  
+
   // Alarm Data and Mutations
   const { data: alarmData, isLoading, isError, error, refetch } = useActiveAlarms();
   const updateAlarmStatus = useUpdateAlarmStatus();
@@ -217,8 +182,25 @@ export default function OperatorDashboard() {
   const [resolutionModalVisible, setResolutionModalVisible] = useState(false);
   const [severityFilter, setSeverityFilter] = useState<AlarmSeverityFilter>('all');
 
+  // Predictive alert filters
+  const [predictiveAlertFilters, setPredictiveAlertFilters] = useState<PredictiveAlertFilterOptions>({
+    status: 'all',
+    confidence: 'all',
+    timeToFailure: 'all',
+    component: 'all',
+    sortBy: 'timestamp',
+    sortOrder: 'desc',
+  });
+
   // Get unread notifications count
   const { data: unreadNotifications = 0 } = useUnreadCount();
+
+  // Predictive alerts data and mutations
+  const { data: predictiveAlertData, isLoading: predictiveAlertsLoading, refetch: refetchPredictiveAlerts } = usePredictiveAlerts();
+  const predictiveAlertFeedback = usePredictiveAlertFeedback();
+  const updatePredictiveAlertStatus = useUpdatePredictiveAlertStatus();
+
+
 
   // Admin-only state
   const [selectedSetpoint, setSelectedSetpoint] = useState<Setpoint | null>(null);
@@ -226,18 +208,11 @@ export default function OperatorDashboard() {
 
   // Animation State
   const [notificationBadgeScale] = useState(new Animated.Value(1));
-  const [cardScales] = useState<CardScales>(() => new Map());
-
-  // Monitoring State
-  const [previousBinaryStates, setPreviousBinaryStates] = useState<Record<string, string>>({});
-  const [alarmStates, setAlarmStates] = useState<Record<string, boolean>>({});
 
   // Memoized Values
-  const analogAlarms = useMemo(() => alarmData?.analogAlarms || [], [alarmData]);
-  const binaryAlarms = useMemo(() => alarmData?.binaryAlarms || [], [alarmData]);
   const isScadaMaintenanceMode = useMemo(() =>
     isSuperAdmin ? false : alarmData?.maintenanceMode || false,
-  [alarmData, isSuperAdmin]);
+    [alarmData, isSuperAdmin]);
 
   const filteredAnalogAlarms = useMemo(() => {
     if (!alarmData?.analogAlarms) return [];
@@ -274,21 +249,108 @@ export default function OperatorDashboard() {
     [alarmData]
   );
 
-  // Callbacks
-  const animateCard = useCallback(
-    (id: string, toValue: number) => {
-      const scale = cardScales.get(id);
-      if (scale) {
-        Animated.spring(scale, {
-          toValue,
-          useNativeDriver: true,
-          tension: 300,
-          friction: 20,
-        }).start();
+  // Predictive alerts memoized values
+  const predictiveAlerts = useMemo(() => predictiveAlertData?.predictiveAlerts || [], [predictiveAlertData]);
+
+  const filteredPredictiveAlerts = useMemo(() => {
+    if (!predictiveAlerts.length) return [];
+
+    let filtered = [...predictiveAlerts];
+
+    // Status filter
+    if (predictiveAlertFilters.status !== 'all') {
+      filtered = filtered.filter(alert => alert.status === predictiveAlertFilters.status);
+    }
+
+    // Confidence filter
+    if (predictiveAlertFilters.confidence !== 'all') {
+      filtered = filtered.filter(alert => {
+        const confidence = (alert.confidence || 0) * 100;
+        switch (predictiveAlertFilters.confidence) {
+          case 'high': return confidence >= 90;
+          case 'medium': return confidence >= 70 && confidence < 90;
+          case 'low': return confidence < 70;
+          default: return true;
+        }
+      });
+    }
+
+    // Time to failure filter
+    if (predictiveAlertFilters.timeToFailure !== 'all') {
+      filtered = filtered.filter(alert => {
+        const timeToFailure = alert.timeToFailure || 0;
+        switch (predictiveAlertFilters.timeToFailure) {
+          case 'immediate': return timeToFailure < 30;
+          case 'short': return timeToFailure >= 30 && timeToFailure <= 120;
+          case 'medium': return timeToFailure > 120;
+          default: return true;
+        }
+      });
+    }
+
+    // Component filter
+    if (predictiveAlertFilters.component !== 'all') {
+      filtered = filtered.filter(alert => alert.predictedComponent === predictiveAlertFilters.component);
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      let aValue, bValue;
+
+      switch (predictiveAlertFilters.sortBy) {
+        case 'confidence':
+          aValue = a.confidence || 0;
+          bValue = b.confidence || 0;
+          break;
+        case 'timeToFailure':
+          aValue = a.timeToFailure || 0;
+          bValue = b.timeToFailure || 0;
+          break;
+        default: // timestamp
+          aValue = new Date(a.timestamp).getTime();
+          bValue = new Date(b.timestamp).getTime();
       }
-    },
-    [cardScales]
-  );
+
+      return predictiveAlertFilters.sortOrder === 'desc' ? bValue - aValue : aValue - bValue;
+    });
+
+    return filtered;
+  }, [predictiveAlerts, predictiveAlertFilters]);
+
+  const predictiveAlertCount = useMemo(() => predictiveAlerts.length, [predictiveAlerts]);
+
+  const availableComponents = useMemo(() => {
+    const components = new Set<string>();
+    predictiveAlerts.forEach(alert => {
+      if (alert.predictedComponent) {
+        components.add(alert.predictedComponent);
+      }
+    });
+    return Array.from(components);
+  }, [predictiveAlerts]);
+
+  // Combined alerts for unified display - moved after filtered alarms are defined
+  const allAlerts = useMemo(() => {
+    const combined = [];
+
+    // Add traditional alarms
+    if (filteredAnalogAlarms.length > 0) {
+      combined.push(...filteredAnalogAlarms.map(alarm => ({ ...alarm, alertType: 'traditional' as const })));
+    }
+    if (filteredBinaryAlarms.length > 0) {
+      combined.push(...filteredBinaryAlarms.map(alarm => ({ ...alarm, alertType: 'traditional' as const })));
+    }
+
+    // Add predictive alerts
+    if (filteredPredictiveAlerts.length > 0) {
+      combined.push(...filteredPredictiveAlerts.map(alert => ({ ...alert, alertType: 'predictive' as const })));
+    }
+
+    // Sort by timestamp (newest first)
+    return combined.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [filteredAnalogAlarms, filteredBinaryAlarms, filteredPredictiveAlerts]);
+
+  // Callbacks
 
   const handleAcknowledge = useCallback(
     (id: string) => {
@@ -319,17 +381,20 @@ export default function OperatorDashboard() {
 
     // Use the queryClient to fetch with force refresh parameter
     try {
-      await queryClient.fetchQuery({
-        queryKey: ALARM_KEYS.scada(true),
-        queryFn: async () => {
-          const headers = await getAuthHeader();
-          const { data } = await axios.get<ScadaAlarmResponse>(
-            `${apiConfig.apiUrl}/api/scada/alarms?force=true`,
-            { headers }
-          );
-          return data;
-        },
-      });
+      await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: ALARM_KEYS.scada(true),
+          queryFn: async () => {
+            const headers = await getAuthHeader();
+            const { data } = await axios.get<ScadaAlarmResponse>(
+              `${apiConfig.apiUrl}/api/scada/alarms?force=true`,
+              { headers }
+            );
+            return data;
+          },
+        }),
+        refetchPredictiveAlerts()
+      ]);
 
       // Update refresh timestamp to force re-render of timestamp components
       setRefreshTimestamp(Date.now());
@@ -339,11 +404,33 @@ export default function OperatorDashboard() {
     } finally {
       setRefreshing(false);
     }
-  }, [queryClient]);
+  }, [queryClient, refetchPredictiveAlerts]);
 
   const handleSeverityFilter = useCallback((severity: AlarmSeverityFilter) => {
     setSeverityFilter((prev) => (prev === severity ? 'all' : severity));
   }, []);
+
+  // Predictive alert callbacks
+  const handlePredictiveAlertAcknowledge = useCallback(
+    (id: string) => {
+      updatePredictiveAlertStatus.mutate({ id, status: 'acknowledged' });
+    },
+    [updatePredictiveAlertStatus]
+  );
+
+  const handlePredictiveAlertResolve = useCallback(
+    (id: string, resolutionMessage?: string) => {
+      updatePredictiveAlertStatus.mutate({ id, status: 'resolved', resolutionMessage });
+    },
+    [updatePredictiveAlertStatus]
+  );
+
+  const handlePredictiveAlertFeedback = useCallback(
+    (alertId: string, isAccurate: boolean) => {
+      predictiveAlertFeedback.mutate({ alertId, isAccurate });
+    },
+    [predictiveAlertFeedback]
+  );
 
   // This function will now be even safer with additional checks
   const handleConfigureSetpoint = useCallback(
@@ -576,112 +663,141 @@ export default function OperatorDashboard() {
             ]}>
               SCADA in maintenance mode - showing last known data
             </Text>
-                     </View>
-         )}
-         
-         <View style={styles.summaryCardsRow}>
-        <TouchableOpacity
-          onPress={() => handleSeverityFilter('critical')}
-          style={[
-            styles.summaryCardItem,
-            {
-              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
-              borderColor:
-                severityFilter === 'critical'
-                  ? THEME.dark.status.critical
-                  : isDarkMode
-                    ? THEME.dark.border
-                    : THEME.light.border,
-              borderWidth: severityFilter === 'critical' ? 2 : 1,
-            },
-          ]}>
-          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.critical }]}>
-            <Ionicons name="alert-circle" size={16} color={THEME.dark.text.primary} />
           </View>
-          <Text
-            style={[
-              styles.summaryCount,
-              { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
-            ]}>
-            {criticalCount}
-          </Text>
-          <Text
-            style={[
-              styles.summaryLabel,
-              { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
-            ]}>
-            Critical
-          </Text>
-        </TouchableOpacity>
+        )}
 
-        <TouchableOpacity
-          onPress={() => handleSeverityFilter('warning')}
-          style={[
-            styles.summaryCardItem,
-            {
-              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
-              borderColor:
-                severityFilter === 'warning'
-                  ? THEME.dark.status.warning
-                  : isDarkMode
-                    ? THEME.dark.border
-                    : THEME.light.border,
-              borderWidth: severityFilter === 'warning' ? 2 : 1,
-            },
-          ]}>
-          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.warning }]}>
-            <Ionicons name="warning" size={16} color={THEME.dark.text.primary} />
-          </View>
-          <Text
+        <View style={styles.summaryCardsRow}>
+          <TouchableOpacity
+            onPress={() => handleSeverityFilter('critical')}
             style={[
-              styles.summaryCount,
-              { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+              styles.summaryCardItem,
+              {
+                backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+                borderColor:
+                  severityFilter === 'critical'
+                    ? THEME.dark.status.critical
+                    : isDarkMode
+                      ? THEME.dark.border
+                      : THEME.light.border,
+                borderWidth: severityFilter === 'critical' ? 2 : 1,
+              },
             ]}>
-            {warningCount}
-          </Text>
-          <Text
-            style={[
-              styles.summaryLabel,
-              { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
-            ]}>
-            Warning
-          </Text>
-        </TouchableOpacity>
+            <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.critical }]}>
+              <Ionicons name="alert-circle" size={16} color={THEME.dark.text.primary} />
+            </View>
+            <Text
+              style={[
+                styles.summaryCount,
+                { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+              ]}>
+              {criticalCount}
+            </Text>
+            <Text
+              style={[
+                styles.summaryLabel,
+                { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+              ]}>
+              Critical
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => handleSeverityFilter('info')}
-          style={[
-            styles.summaryCardItem,
-            {
-              backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
-              borderColor:
-                severityFilter === 'info'
-                  ? THEME.dark.status.success
-                  : isDarkMode
-                    ? THEME.dark.border
-                    : THEME.light.border,
-              borderWidth: severityFilter === 'info' ? 2 : 1,
-            },
-          ]}>
-          <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.success }]}>
-            <Ionicons name="information-circle" size={16} color={THEME.dark.text.primary} />
-          </View>
-          <Text
+          <TouchableOpacity
+            onPress={() => handleSeverityFilter('warning')}
             style={[
-              styles.summaryCount,
-              { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+              styles.summaryCardItem,
+              {
+                backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+                borderColor:
+                  severityFilter === 'warning'
+                    ? THEME.dark.status.warning
+                    : isDarkMode
+                      ? THEME.dark.border
+                      : THEME.light.border,
+                borderWidth: severityFilter === 'warning' ? 2 : 1,
+              },
             ]}>
-            {infoCount}
-          </Text>
-          <Text
+            <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.warning }]}>
+              <Ionicons name="warning" size={16} color={THEME.dark.text.primary} />
+            </View>
+            <Text
+              style={[
+                styles.summaryCount,
+                { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+              ]}>
+              {warningCount}
+            </Text>
+            <Text
+              style={[
+                styles.summaryLabel,
+                { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+              ]}>
+              Warning
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => handleSeverityFilter('info')}
             style={[
-              styles.summaryLabel,
-              { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+              styles.summaryCardItem,
+              {
+                backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+                borderColor:
+                  severityFilter === 'info'
+                    ? THEME.dark.status.success
+                    : isDarkMode
+                      ? THEME.dark.border
+                      : THEME.light.border,
+                borderWidth: severityFilter === 'info' ? 2 : 1,
+              },
             ]}>
-            Info
-          </Text>
-        </TouchableOpacity>
-         </View>
+            <View style={[styles.summaryIcon, { backgroundColor: THEME.dark.status.success }]}>
+              <Ionicons name="information-circle" size={16} color={THEME.dark.text.primary} />
+            </View>
+            <Text
+              style={[
+                styles.summaryCount,
+                { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+              ]}>
+              {infoCount}
+            </Text>
+            <Text
+              style={[
+                styles.summaryLabel,
+                { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+              ]}>
+              Info
+            </Text>
+          </TouchableOpacity>
+
+          {/* Predictive Alerts Summary Card */}
+          <TouchableOpacity
+            style={[
+              styles.summaryCardItem,
+              {
+                backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+                borderColor: '#3B82F6', // Blue for predictive
+                borderWidth: 1,
+              },
+            ]}>
+            <View style={[styles.summaryIcon, { backgroundColor: '#3B82F6' }]}>
+              <Ionicons name="analytics" size={16} color={THEME.dark.text.primary} />
+            </View>
+            <Text
+              style={[
+                styles.summaryCount,
+                { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+              ]}>
+              {predictiveAlertCount}
+            </Text>
+            <Text
+              style={[
+                styles.summaryLabel,
+                { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+              ]}>
+              Predictive
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -951,6 +1067,68 @@ export default function OperatorDashboard() {
             ))}
           </View>
         </View>
+
+        {/* Predictive Alerts Section */}
+        <View style={styles.alarmSection}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+                ]}>
+                Predictive Alerts
+              </Text>
+              <PredictiveAlertFilters
+                filters={predictiveAlertFilters}
+                onFiltersChange={setPredictiveAlertFilters}
+                availableComponents={availableComponents}
+              />
+            </View>
+            <Text
+              style={[
+                styles.sectionSubtitle,
+                { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+              ]}>
+              AI-powered failure predictions
+            </Text>
+          </View>
+
+          {predictiveAlertsLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={isDarkMode ? '#60A5FA' : '#2563EB'} />
+              <Text style={[styles.loadingText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                Loading predictive alerts...
+              </Text>
+            </View>
+          ) : filteredPredictiveAlerts.length === 0 ? (
+            <View style={styles.emptyStateContainer}>
+              <Ionicons
+                name="analytics-outline"
+                size={48}
+                color={isDarkMode ? '#475569' : '#94A3B8'}
+              />
+              <Text style={[styles.emptyStateText, { color: isDarkMode ? '#94A3B8' : '#64748B' }]}>
+                No predictive alerts at this time
+              </Text>
+              <Text style={[styles.emptyStateSubtext, { color: isDarkMode ? '#64748B' : '#9CA3AF' }]}>
+                The AI system is monitoring your equipment
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.predictiveAlertsContainer}>
+              {filteredPredictiveAlerts.map((alert: Alarm) => (
+                <PredictiveAlertCard
+                  key={alert.id}
+                  alarm={alert}
+                  onAcknowledge={() => handlePredictiveAlertAcknowledge(alert.id)}
+                  onResolve={() => handlePredictiveAlertResolve(alert.id)}
+                  onFeedback={(isAccurate) => handlePredictiveAlertFeedback(alert.id, isAccurate)}
+                />
+              ))}
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -1055,7 +1233,7 @@ export default function OperatorDashboard() {
   // Define styles inside the component to access isDarkMode
   const styles = StyleSheet.create({
     container: {
-    flex: 1,
+      flex: 1,
     },
     header: {
       flexDirection: 'row',
@@ -1285,6 +1463,7 @@ export default function OperatorDashboard() {
     alarmCardTitle: {
       fontSize: 13,
       fontWeight: '600',
+      marginBottom: 4,
       flex: 1,
       marginRight: 8,
     },
@@ -1508,6 +1687,93 @@ export default function OperatorDashboard() {
     maintenanceOverlayProgressText: {
       marginLeft: 8,
     },
+    // Predictive alerts styles
+    sectionTitleRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    predictiveAlertsContainer: {
+      marginTop: 8,
+    },
+    emptyStateSubtext: {
+      fontSize: 14,
+      marginTop: 4,
+      textAlign: 'center',
+    },
+    // Unified Alert Dashboard Styles
+    unifiedAlertSection: {
+      marginHorizontal: 16,
+      marginVertical: 12,
+    },
+    unifiedAlertList: {
+      marginTop: 12,
+    },
+    alertWrapper: {
+      marginBottom: 8,
+    },
+    traditionalAlarmCard: {
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    alarmCardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 12,
+    },
+    alarmCardLeft: {
+      flex: 1,
+      marginRight: 12,
+    },
+    alarmCardSubtitle: {
+      fontSize: 14,
+      opacity: 0.8,
+    },
+    alarmCardRight: {
+      alignItems: 'flex-end',
+    },
+    alarmCardValue: {
+      fontSize: 16,
+      fontWeight: '700',
+      marginBottom: 2,
+    },
+    alarmCardTime: {
+      fontSize: 12,
+      opacity: 0.7,
+    },
+    emptyAlertsState: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 40,
+    },
+    emptyAlertsText: {
+      fontSize: 16,
+      marginTop: 12,
+      textAlign: 'center',
+    },
+    viewAllButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      marginTop: 12,
+    },
+    viewAllButtonText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '600',
+      marginRight: 8,
+    },
   });
 
   const { isMaintenanceMode } = useMaintenance();
@@ -1716,26 +1982,26 @@ export default function OperatorDashboard() {
           )}
           {/* Theme Button - Only for operators */}
           {isOperator && (
-          <TouchableOpacity
-            style={[
-              styles.headerButton,
-              {
-                backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)',
-              },
-            ]}
-            onPress={toggleTheme}>
-            <Ionicons
-              name={isDarkMode ? 'sunny-outline' : 'moon-outline'}
-              size={windowWidth > highDPIPhones ? 16 : 14}
-              color={isDarkMode ? '#94A3B8' : '#475569'}
-            />
-            <Text style={[
-              styles.headerButtonLabel,
-              { color: isDarkMode ? '#94A3B8' : '#475569' }
-            ]}>
-              Theme
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.headerButton,
+                {
+                  backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.5)' : 'rgba(241, 245, 249, 0.8)',
+                },
+              ]}
+              onPress={toggleTheme}>
+              <Ionicons
+                name={isDarkMode ? 'sunny-outline' : 'moon-outline'}
+                size={windowWidth > highDPIPhones ? 16 : 14}
+                color={isDarkMode ? '#94A3B8' : '#475569'}
+              />
+              <Text style={[
+                styles.headerButtonLabel,
+                { color: isDarkMode ? '#94A3B8' : '#475569' }
+              ]}>
+                Theme
+              </Text>
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -1780,6 +2046,124 @@ export default function OperatorDashboard() {
           }>
           {/* Status Summary */}
           {renderSummaryCards()}
+
+          {/* Unified Alert Dashboard */}
+          <View style={styles.unifiedAlertSection}>
+            <View style={styles.sectionHeader}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+                ]}>
+                All Alerts
+              </Text>
+              <Text
+                style={[
+                  styles.sectionSubtitle,
+                  { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+                ]}>
+                Traditional and predictive alerts combined
+              </Text>
+            </View>
+
+            {/* Predictive Alert Filters */}
+            <PredictiveAlertFilters
+              filters={predictiveAlertFilters}
+              onFiltersChange={setPredictiveAlertFilters}
+              availableComponents={availableComponents}
+            />
+
+            <View style={styles.unifiedAlertList}>
+              {allAlerts.length === 0 ? (
+                <View style={styles.emptyAlertsState}>
+                  <Ionicons
+                    name="notifications-off-outline"
+                    size={48}
+                    color={isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary}
+                  />
+                  <Text
+                    style={[
+                      styles.emptyAlertsText,
+                      { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+                    ]}>
+                    No alerts at this time
+                  </Text>
+                </View>
+              ) : (
+                allAlerts.slice(0, 10).map((alert) => (
+                  <View key={`${alert.alertType}-${alert.id}`} style={styles.alertWrapper}>
+                    {alert.alertType === 'predictive' ? (
+                      <PredictiveAlertCard
+                        alarm={alert}
+                        onAcknowledge={() => handlePredictiveAlertAcknowledge(alert.id)}
+                        onResolve={() => handlePredictiveAlertResolve(alert.id)}
+                        onFeedback={(isAccurate) => handlePredictiveAlertFeedback(alert.id, isAccurate)}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.traditionalAlarmCard,
+                          {
+                            backgroundColor: isDarkMode ? THEME.dark.cardBg : THEME.light.cardBg,
+                            borderColor: alert.severity === 'critical' ? '#EF4444' :
+                              alert.severity === 'warning' ? '#F59E0B' : '#10B981',
+                            borderLeftWidth: 4,
+                          },
+                        ]}>
+                        <View style={styles.alarmCardHeader}>
+                          <View style={styles.alarmCardLeft}>
+                            <Text
+                              style={[
+                                styles.alarmCardTitle,
+                                { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+                              ]}>
+                              {alert.description}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.alarmCardSubtitle,
+                                { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+                              ]}>
+                              {alert.type} • {alert.zone ? `Zone ${alert.zone.replace('zone', '')}` : 'No Zone'}
+                            </Text>
+                          </View>
+                          <View style={styles.alarmCardRight}>
+                            <Text
+                              style={[
+                                styles.alarmCardValue,
+                                { color: isDarkMode ? THEME.dark.text.primary : THEME.light.text.primary },
+                              ]}>
+                              {alert.value}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.alarmCardTime,
+                                { color: isDarkMode ? THEME.dark.text.secondary : THEME.light.text.secondary },
+                              ]}>
+                              {formatTimestamp(alert.timestamp)}
+                            </Text>
+                          </View>
+                        </View>
+                        {renderActionButtons(alert, alert.alarmType === 'analog')}
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
+
+              {allAlerts.length > 10 && (
+                <TouchableOpacity
+                  style={[styles.viewAllButton, { backgroundColor: isDarkMode ? THEME.dark.primary : THEME.light.primary }]}
+                  onPress={() => router.push('/(dashboard)/alarms/history' as any)}
+                >
+                  <Text style={styles.viewAllButtonText}>
+                    View All {allAlerts.length} Alerts
+                  </Text>
+                  <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
 
           {/* Alarm Sections */}
           {renderAlarmSections()}
@@ -1847,7 +2231,7 @@ export default function OperatorDashboard() {
               route: '/(dashboard)/profile',
               active: false,
             },
-          ].map((item, index) => (
+          ].map((item) => (
             <TouchableOpacity
               key={item.name}
               style={styles.navItem}

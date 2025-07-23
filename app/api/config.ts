@@ -56,7 +56,7 @@ export const PUSH_NOTIFICATION_ENDPOINT = process.env.EXPO_PUBLIC_PUSH_NOTIFICAT
 
 export const SCADA_INTERVAL = process.env.EXPO_PUBLIC_SCADA_INTERVAL || '30000';
 
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyD-9T2YWm6xKZ0jqnrxEtlQgad_Y5Yym4A';
+export const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '';
 
 // Common request timeout in milliseconds
 export const REQUEST_TIMEOUT = 30000; 

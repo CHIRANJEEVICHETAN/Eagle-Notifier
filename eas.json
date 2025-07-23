@@ -5,12 +5,12 @@
   },
   "build": {
     "development": {
-      "node": "22.14.0",
+      "node": "22.17.0",
       "developmentClient": true,
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_PROJECT_ID": "72e44855-a2b8-4fb2-bacb-2a39760c6ccd",
-        "EXPO_PUBLIC_APP_VERSION": "1.2.3",
+        "EXPO_PUBLIC_APP_VERSION": "1.2.4",
         "EXPO_PUBLIC_PUSH_NOTIFICATION_ENDPOINT": "/api/notifications/token",
         "EXPO_PUBLIC_API_URL": "https://eagle-notifier-server-eyckc9gmbvf7bqgq.centralindia-01.azurewebsites.net",
         "EXPO_PUBLIC_SCADA_INTERVAL": "30000",
@@ -20,10 +20,10 @@
     },
     "preview": {
       "distribution": "internal",
-      "node": "22.14.0",
+      "node": "22.17.0",
       "env": {
         "EXPO_PUBLIC_PROJECT_ID": "72e44855-a2b8-4fb2-bacb-2a39760c6ccd",
-        "EXPO_PUBLIC_APP_VERSION": "1.2.3",
+        "EXPO_PUBLIC_APP_VERSION": "1.2.4",
         "EXPO_PUBLIC_API_URL": "https://eagle-notifier-server-eyckc9gmbvf7bqgq.centralindia-01.azurewebsites.net",
         "EXPO_PUBLIC_PUSH_NOTIFICATION_ENDPOINT": "/api/notifications/token",
         "EXPO_PUBLIC_SCADA_INTERVAL": "30000",
@@ -33,10 +33,10 @@
     },
     "production": {
       "autoIncrement": true,
-      "node": "22.14.0",
+      "node": "22.17.0",
       "env": {
         "EXPO_PUBLIC_PROJECT_ID": "72e44855-a2b8-4fb2-bacb-2a39760c6ccd",
-        "EXPO_PUBLIC_APP_VERSION": "1.2.3",
+        "EXPO_PUBLIC_APP_VERSION": "1.2.4",
         "EXPO_PUBLIC_API_URL": "https://eagle-notifier-server-eyckc9gmbvf7bqgq.centralindia-01.azurewebsites.net",
         "EXPO_PUBLIC_PUSH_NOTIFICATION_ENDPOINT": "/api/notifications/token",
         "EXPO_PUBLIC_SCADA_INTERVAL": "30000",

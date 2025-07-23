@@ -95,6 +95,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (data && data.alarmId) {
         console.log('Navigate to alarm:', data.alarmId);
       }
+      if (data && data.notificationId) {
+        console.log('Notification ID:', data.notificationId);
+      }
+      if (data && data.type === 'PREDICTIVE') {
+        console.log('Predictive alert notification received');
+      }
     });
     return () => {
       if (notificationListener.current) notificationListener.current.remove();
