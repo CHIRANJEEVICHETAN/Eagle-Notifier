@@ -48,7 +48,7 @@ interface OrganizationSchemaConfig {
     "table": "jk2",
     "sslmode": "require",
     "database": "Notifier-Main-DB",
-    "password": "AVNS_KWwwVH1tHbmNBCL1nKH"
+    "password": "<REDACTED>"
   },
   "schemaConfig": {
     "columns": [
