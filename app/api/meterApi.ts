@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { apiConfig } from './config';
-import { getAuthHeader } from './auth';
+import { getOrgHeaders } from './auth';
 
 // Types for meter readings
 interface MeterReading {
@@ -66,7 +66,11 @@ export interface MeterReport {
  */
 export const fetchLatestReading = async (organizationId?: string): Promise<MeterReading> => {
   try {
-    const headers = await getAuthHeader();
+    if (!organizationId) {
+      throw new Error('Organization ID is required for meter readings');
+    }
+    
+    const headers = await getOrgHeaders(organizationId);
     const { data } = await axios.get(`${apiConfig.apiUrl}/api/meter/latest`, { headers });
     return data.data;
   } catch (error) {
@@ -86,7 +90,14 @@ export const fetchMeterHistory = async (
   organizationId?: string
 ): Promise<PaginatedMeterReadings> => {
   try {
-    const headers = await getAuthHeader();
+    if (!organizationId) {
+      throw new Error('Organization ID is required for meter readings');
+    }
+    
+    console.log('🔍 fetchMeterHistory called with:', { hours, page, limit, startTime, organizationId });
+    
+    const headers = await getOrgHeaders(organizationId);
+    console.log('🔍 Headers prepared:', Object.keys(headers));
     
     // Build query parameters
     let queryParams = `hours=${hours}&page=${page}&limit=${limit}`;
@@ -94,13 +105,15 @@ export const fetchMeterHistory = async (
       queryParams += `&startTime=${encodeURIComponent(startTime)}`;
     }
     
-    const { data } = await axios.get(
-      `${apiConfig.apiUrl}/api/meter/history?${queryParams}`, 
-      { headers }
-    );
+    const url = `${apiConfig.apiUrl}/api/meter/history?${queryParams}`;
+    console.log('🔍 Making request to:', url);
+    
+    const { data } = await axios.get(url, { headers });
+    
+    console.log('🔍 fetchMeterHistory successful, data received');
     return data.data;
   } catch (error) {
-    console.error('Error fetching meter history:', error);
+    console.error('❌ Error fetching meter history:', error);
     throw error;
   }
 };
@@ -110,7 +123,11 @@ export const fetchMeterHistory = async (
  */
 export const fetchMeterLimits = async (organizationId?: string): Promise<MeterLimit[]> => {
   try {
-    const headers = await getAuthHeader();
+    if (!organizationId) {
+      throw new Error('Organization ID is required for meter readings');
+    }
+    
+    const headers = await getOrgHeaders(organizationId);
     const { data } = await axios.get(`${apiConfig.apiUrl}/api/meter/limits`, { headers });
     return data.data;
   } catch (error) {
@@ -128,7 +145,11 @@ export const updateMeterLimit = async (
   organizationId?: string
 ): Promise<MeterLimit> => {
   try {
-    const headers = await getAuthHeader();
+    if (!organizationId) {
+      throw new Error('Organization ID is required for meter readings');
+    }
+    
+    const headers = await getOrgHeaders(organizationId);
     const { data } = await axios.put(
       `${apiConfig.apiUrl}/api/meter/limits/${id}`,
       values,
@@ -147,7 +168,11 @@ export const updateMeterLimit = async (
  */
 export const generateMeterReport = async (params: MeterReportParams, organizationId?: string): Promise<MeterReport> => {
   try {
-    const headers = await getAuthHeader();
+    if (!organizationId) {
+      throw new Error('Organization ID is required for meter readings');
+    }
+    
+    const headers = await getOrgHeaders(organizationId);
     const { data } = await axios.post(
       `${apiConfig.apiUrl}/api/meter/reports`, 
       params, 
@@ -165,7 +190,11 @@ export const generateMeterReport = async (params: MeterReportParams, organizatio
  */
 export const getMeterReports = async (organizationId?: string): Promise<MeterReport[]> => {
   try {
-    const headers = await getAuthHeader();
+    if (!organizationId) {
+      throw new Error('Organization ID is required for meter readings');
+    }
+    
+    const headers = await getOrgHeaders(organizationId);
     const { data } = await axios.get(
       `${apiConfig.apiUrl}/api/meter/reports`, 
       { headers }
@@ -184,7 +213,11 @@ export const getMeterReports = async (organizationId?: string): Promise<MeterRep
  */
 export const downloadMeterReport = async (id: string, organizationId?: string): Promise<Blob> => {
   try {
-    const headers = await getAuthHeader();
+    if (!organizationId) {
+      throw new Error('Organization ID is required for meter readings');
+    }
+    
+    const headers = await getOrgHeaders(organizationId);
     const response = await axios.get(
       `${apiConfig.apiUrl}/api/meter/reports/${id}`, 
       { 

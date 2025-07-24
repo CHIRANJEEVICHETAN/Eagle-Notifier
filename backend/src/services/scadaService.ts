@@ -100,102 +100,104 @@ interface OrganizationSchemaConfig {
 
 // Get organization schema configuration
 const getOrganizationSchemaConfig = async (orgId: string): Promise<OrganizationSchemaConfig> => {
-    try {
-        const org = await prisma.organization.findUnique({
-            where: { id: orgId },
-            select: { schemaConfig: true, scadaDbConfig: true }
-        });
+  try {
+      const org = await prisma.organization.findUnique({
+          where: { id: orgId },
+          select: { schemaConfig: true, scadaDbConfig: true }
+      });
 
-        if (!org) {
-            throw new Error(`Organization not found: ${orgId}`);
-        }
+      if (!org) {
+          throw new Error(`Organization not found: ${orgId}`);
+      }
 
-        // Parse schema config
-        const schemaConfig = typeof org.schemaConfig === 'string' 
-            ? JSON.parse(org.schemaConfig) 
-            : org.schemaConfig;
+      // Parse schema config
+      const schemaConfig = typeof org.schemaConfig === 'string' 
+          ? JSON.parse(org.schemaConfig) 
+          : org.schemaConfig;
 
-        // Parse SCADA DB config to get table name
-        const scadaDbConfig = typeof org.scadaDbConfig === 'string'
-            ? JSON.parse(org.scadaDbConfig)
-            : org.scadaDbConfig;
+      // Parse SCADA DB config to get table name
+      const scadaDbConfig = typeof org.scadaDbConfig === 'string'
+          ? JSON.parse(org.scadaDbConfig)
+          : org.scadaDbConfig;
 
-        return {
-            columns: schemaConfig.columns || [],
-            table: scadaDbConfig.table || 'jk2' // Default fallback
-        };
-    } catch (error) {
-        console.error('Error fetching organization schema config:', error);
-        // Return default schema for backward compatibility
-        return {
-            columns: [
-                'hz1sv', 'hz1pv', 'hz2sv', 'hz2pv', 'cpsv', 'cppv', 
-                'tz1sv', 'tz1pv', 'tz2sv', 'tz2pv', 'oilpv',
-                'oiltemphigh', 'oillevelhigh', 'oillevellow',
-                'hz1hfail', 'hz2hfail', 'hardconfail', 'hardcontraip',
-                'oilconfail', 'oilcontraip', 'hz1fanfail', 'hz2fanfail',
-                'hz1fantrip', 'hz2fantrip', 'tempconfail', 'tempcontraip',
-                'tz1fanfail', 'tz2fanfail', 'tz1fantrip', 'tz2fantrip',
-                'id', 'created_timestamp'
-            ],
-            table: 'jk2'
-        };
-    }
+      return {
+          columns: schemaConfig.columns || [],
+          table: scadaDbConfig.table || 'jk2', // Default fallback
+          columnConfigs: schemaConfig.columnConfigs || undefined
+      };
+  } catch (error) {
+      console.error('Error fetching organization schema config:', error);
+      // Return default schema for backward compatibility
+      return {
+          columns: [
+              'hz1sv', 'hz1pv', 'hz2sv', 'hz2pv', 'cpsv', 'cppv', 
+              'tz1sv', 'tz1pv', 'tz2sv', 'tz2pv', 'oilpv',
+              'oiltemphigh', 'oillevelhigh', 'oillevellow',
+              'hz1hfail', 'hz2hfail', 'hardconfail', 'hardcontraip',
+              'oilconfail', 'oilcontraip', 'hz1fanfail', 'hz2fanfail',
+              'hz1fantrip', 'hz2fantrip', 'tempconfail', 'tempcontraip',
+              'tz1fanfail', 'tz2fanfail', 'tz1fantrip', 'tz2fantrip',
+              'id', 'created_timestamp'
+          ],
+          table: 'jk2'
+      };
+  }
 };
 
 // Build dynamic SELECT query based on organization schema
 const buildDynamicSelectQuery = (columns: string[], table: string): string => {
-    if (!columns || columns.length === 0) {
-        throw new Error('No columns defined in organization schema config');
-    }
+  if (!columns || columns.length === 0) {
+      throw new Error('No columns defined in organization schema config');
+  }
 
-    // Ensure required columns are always included
-    const requiredColumns = ['id', 'created_timestamp'];
-    const allColumns = [...new Set([...columns, ...requiredColumns])];
-    
-    const columnList = allColumns.join(', ');
-    
-    return `
-        SELECT ${columnList}
-        FROM ${table}
-        ORDER BY created_timestamp DESC 
-        LIMIT 1
-    `;
+  // Ensure required columns are always included
+  const requiredColumns = ['id', 'created_timestamp'];
+  const allColumns = [...new Set([...columns, ...requiredColumns])];
+  
+  const columnList = allColumns.join(', ');
+  
+  return `
+      SELECT ${columnList}
+      FROM ${table}
+      ORDER BY created_timestamp DESC 
+      LIMIT 1
+  `;
 };
 
 // Build dynamic SELECT query for historical data
 const buildDynamicHistoryQuery = (
-    columns: string[], 
-    table: string, 
-    whereClause: string, 
-    sortBy: string, 
-    sortOrder: string,
-    limit: number,
-    offset: number
+  columns: string[], 
+  table: string, 
+  whereClause: string, 
+  sortBy: string, 
+  sortOrder: string,
+  limit: number,
+  offset: number
 ): string => {
-    if (!columns || columns.length === 0) {
-        throw new Error('No columns defined in organization schema config');
-    }
+  if (!columns || columns.length === 0) {
+      throw new Error('No columns defined in organization schema config');
+  }
 
-    // Ensure required columns are always included
-    const requiredColumns = ['id', 'created_timestamp'];
-    const allColumns = [...new Set([...columns, ...requiredColumns])];
-    
-    const columnList = allColumns.join(', ');
-    
-    return `
-        SELECT ${columnList}
-        FROM ${table}
-        ${whereClause}
-        ORDER BY ${sortBy === 'timestamp' ? 'created_timestamp' : sortBy} ${sortOrder === 'desc' ? 'DESC' : 'ASC'}
-        LIMIT $${limit} OFFSET $${offset}
-    `;
+  // Ensure required columns are always included
+  const requiredColumns = ['id', 'created_timestamp'];
+  const allColumns = [...new Set([...columns, ...requiredColumns])];
+  
+  const columnList = allColumns.join(', ');
+  
+  return `
+      SELECT ${columnList}
+      FROM ${table}
+      ${whereClause}
+      ORDER BY ${sortBy === 'timestamp' ? 'created_timestamp' : sortBy} ${sortOrder === 'desc' ? 'DESC' : 'ASC'}
+      LIMIT $${limit} OFFSET $${offset}
+  `;
 };
 
 // Build dynamic COUNT query for pagination
 const buildDynamicCountQuery = (table: string, whereClause: string): string => {
-    return `SELECT COUNT(*) FROM ${table} ${whereClause}`;
+  return `SELECT COUNT(*) FROM ${table} ${whereClause}`;
 };
+
 
 interface SetpointConfig {
     id: string;
@@ -269,141 +271,141 @@ const formatTimestamp = (date: Date): string => {
 
 // Calculate severity for analog values
 const calculateAnalogSeverity = (value: number, setpoint: number, lowDeviation: number, highDeviation: number): 'critical' | 'warning' | 'info' => {
-    const lowLimit = setpoint + lowDeviation; // lowDeviation is already negative
-    const highLimit = setpoint + highDeviation;
-    const warningOffset = 10;
+  const lowLimit = setpoint + lowDeviation; // lowDeviation is already negative
+  const highLimit = setpoint + highDeviation;
+  const warningOffset = 10;
 
-    // Critical: Beyond deviation band by >10 units
-    if (value < lowLimit - warningOffset || value > highLimit + warningOffset) {
-        return 'critical';
-    }
-    
-    // Warning: Outside deviation band but within 10 units
-    // (setpoint + lowDeviation - 10) <= value < setpoint + lowDeviation
-    // OR
-    // setpoint + highDeviation < value <= (setpoint + highDeviation + 10)
-    if (value < lowLimit || value > highLimit) {
-        return 'warning';
-    }
-    
-    // Info: Within deviation band
-    return 'info';
+  // Critical: Beyond deviation band by >10 units
+  if (value < lowLimit - warningOffset || value > highLimit + warningOffset) {
+      return 'critical';
+  }
+  
+  // Warning: Outside deviation band but within 10 units
+  // (setpoint + lowDeviation - 10) <= value < setpoint + lowDeviation
+  // OR
+  // setpoint + highDeviation < value <= (setpoint + highDeviation + 10)
+  if (value < lowLimit || value > highLimit) {
+      return 'warning';
+  }
+  
+  // Info: Within deviation band
+  return 'info';
 };
 
 // Calculate severity for binary values
 const calculateBinarySeverity = (isFailure: boolean): 'critical' | 'warning' | 'info' => {
-    return isFailure ? 'critical' : 'info';
+  return isFailure ? 'critical' : 'info';
 };
 
 // Get latest SCADA data with respect to polling interval
 export const getLatestScadaData = async (orgId: string, forceRefresh = false): Promise<ScadaData | null> => {
-    const now = Date.now();
-    
-    // Check if maintenance mode is active
-    const isMaintenanceActive = await isMaintenanceModeActive(orgId);
-    if (isMaintenanceActive && !forceRefresh) {
-        if (DEBUG) console.log('🔧 Maintenance mode active - returning cached SCADA data without fetching new data');
-        
-        // Return cached data if available, otherwise return null
-        if (cachedScadaData) {
-            return cachedScadaData;
-        } else {
-            console.log('⚠️ No cached SCADA data available during maintenance mode');
-            return null;
-        }
-    }
-    
-    // If not forced and within polling interval, return cached data
-    if (!forceRefresh && lastFetchTime > 0 && now - lastFetchTime < SCADA_POLLING_INTERVAL && cachedScadaData) {
-        if (DEBUG) console.log(`📊 Using cached SCADA data (${Math.round((now - lastFetchTime) / 1000)}s old, refresh in ${Math.round((SCADA_POLLING_INTERVAL - (now - lastFetchTime)) / 1000)}s)`);
-        return cachedScadaData;
-    }
-    
-    try {
-        const client = await getClientWithRetry(orgId);
+  const now = Date.now();
+  
+  // Check if maintenance mode is active
+  const isMaintenanceActive = await isMaintenanceModeActive(orgId);
+  if (isMaintenanceActive && !forceRefresh) {
+      if (DEBUG) console.log('🔧 Maintenance mode active - returning cached SCADA data without fetching new data');
+      
+      // Return cached data if available, otherwise return null
+      if (cachedScadaData) {
+          return cachedScadaData;
+      } else {
+          console.log('⚠️ No cached SCADA data available during maintenance mode');
+          return null;
+      }
+  }
+  
+  // If not forced and within polling interval, return cached data
+  if (!forceRefresh && lastFetchTime > 0 && now - lastFetchTime < SCADA_POLLING_INTERVAL && cachedScadaData) {
+      if (DEBUG) console.log(`📊 Using cached SCADA data (${Math.round((now - lastFetchTime) / 1000)}s old, refresh in ${Math.round((SCADA_POLLING_INTERVAL - (now - lastFetchTime)) / 1000)}s)`);
+      return cachedScadaData;
+  }
+  
+  try {
+      const client = await getClientWithRetry(orgId);
 
-        try {
-            // Get organization schema configuration
-            const schemaConfig = await getOrganizationSchemaConfig(orgId);
-            
-            if (DEBUG) {
-                console.log(`📊 Using dynamic schema for org ${orgId}:`);
-                console.log(`  Table: ${schemaConfig.table}`);
-                console.log(`  Columns: ${schemaConfig.columns.join(', ')}`);
-            }
+      try {
+          // Get organization schema configuration
+          const schemaConfig = await getOrganizationSchemaConfig(orgId);
+          
+          if (DEBUG) {
+              console.log(`📊 Using dynamic schema for org ${orgId}:`);
+              console.log(`  Table: ${schemaConfig.table}`);
+              console.log(`  Columns: ${schemaConfig.columns.join(', ')}`);
+          }
 
-            // Build dynamic query
-            const query = buildDynamicSelectQuery(schemaConfig.columns, schemaConfig.table || 'jk2');
-    
-            if (DEBUG) {
-                console.log(`📊 Dynamic query: ${query}`);
-            }
+          // Build dynamic query
+          const query = buildDynamicSelectQuery(schemaConfig.columns, schemaConfig.table || 'jk2');
+  
+          if (DEBUG) {
+              console.log(`📊 Dynamic query: ${query}`);
+          }
 
-            const result = await client.query(query);
-            
-            // Reset consecutive errors counter on success
-            consecutiveErrors = 0;
-            
-            lastFetchTime = now;
-            cachedScadaData = result.rows[0] || null;
-            
-            if (!cachedScadaData) {
-                console.warn('⚠️ No SCADA data rows returned from query');
-            } else if (DEBUG) {
-                console.log(`📊 Fresh SCADA data fetched at ${new Date().toISOString()}`);
-                console.log(`📊 Available fields: ${Object.keys(cachedScadaData).join(', ')}`);
-            }
-            
-            return cachedScadaData;
-        } finally {
-            client.release(true); // Force release to prevent connection leaks
-        }
-    } catch (error) {
-        // Increment consecutive errors for exponential backoff
-        consecutiveErrors++;
-        
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-            // If we've had many consecutive errors, add increasing delay
-            const backoffDelay = Math.min(1000 * Math.pow(2, consecutiveErrors - MAX_CONSECUTIVE_ERRORS), 30000);
-            console.error(`🔴 Multiple consecutive SCADA fetch errors (${consecutiveErrors}). Backing off for ${backoffDelay}ms before next attempt.`);
-            // We don't actually need to wait here, just logging the backoff strategy
-        }
-        
-        console.error('Error fetching latest SCADA data:', error);
-        
-        // If we have cached data, return it as fallback even if expired
-        if (cachedScadaData) {
-            console.log('⚠️ Using stale cached SCADA data due to fetch error');
-            return cachedScadaData;
-        }
-        
-        return null;
-    }
+          const result = await client.query(query);
+          
+          // Reset consecutive errors counter on success
+          consecutiveErrors = 0;
+          
+          lastFetchTime = now;
+          cachedScadaData = result.rows[0] || null;
+          
+          if (!cachedScadaData) {
+              console.warn('⚠️ No SCADA data rows returned from query');
+          } else if (DEBUG) {
+              console.log(`📊 Fresh SCADA data fetched at ${new Date().toISOString()}`);
+              console.log(`📊 Available fields: ${Object.keys(cachedScadaData).join(', ')}`);
+          }
+          
+          return cachedScadaData;
+      } finally {
+          client.release(true); // Force release to prevent connection leaks
+      }
+  } catch (error) {
+      // Increment consecutive errors for exponential backoff
+      consecutiveErrors++;
+      
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          // If we've had many consecutive errors, add increasing delay
+          const backoffDelay = Math.min(1000 * Math.pow(2, consecutiveErrors - MAX_CONSECUTIVE_ERRORS), 30000);
+          console.error(`🔴 Multiple consecutive SCADA fetch errors (${consecutiveErrors}). Backing off for ${backoffDelay}ms before next attempt.`);
+          // We don't actually need to wait here, just logging the backoff strategy
+      }
+      
+      console.error('Error fetching latest SCADA data:', error);
+      
+      // If we have cached data, return it as fallback even if expired
+      if (cachedScadaData) {
+          console.log('⚠️ Using stale cached SCADA data due to fetch error');
+          return cachedScadaData;
+      }
+      
+      return null;
+  }
 };
 
 // Get setpoint configurations for a specific organization
 const getSetpointConfigs = async (orgId: string): Promise<SetpointConfig[]> => {
-    try {
-        const setpoints = await prisma.$queryRaw<PrismaSetpoint[]>`
-      SELECT id, name, type, zone, "scadaField",
-      "lowDeviation", "highDeviation",
-      "createdAt", "updatedAt"
-      FROM "Setpoint"
-      WHERE "organizationId" = ${orgId}
-    `;
-        return setpoints.map(setpoint => ({
-            id: setpoint.id,
-            name: setpoint.name,
-            type: setpoint.type,
-            zone: setpoint.zone,
-            scadaField: setpoint.scadaField,
-            lowDeviation: setpoint.lowDeviation,
-            highDeviation: setpoint.highDeviation
-        }));
-    } catch (error) {
-        console.error('Error fetching setpoint configs for organization:', orgId, error);
-        return [];
-    }
+  try {
+      const setpoints = await prisma.$queryRaw<PrismaSetpoint[]>`
+    SELECT id, name, type, zone, "scadaField",
+    "lowDeviation", "highDeviation",
+    "createdAt", "updatedAt"
+    FROM "Setpoint"
+    WHERE "organizationId" = ${orgId}
+  `;
+      return setpoints.map(setpoint => ({
+          id: setpoint.id,
+          name: setpoint.name,
+          type: setpoint.type,
+          zone: setpoint.zone,
+          scadaField: setpoint.scadaField,
+          lowDeviation: setpoint.lowDeviation,
+          highDeviation: setpoint.highDeviation
+      }));
+  } catch (error) {
+      console.error('Error fetching setpoint configs for organization:', orgId, error);
+      return [];
+  }
 };
 
 // Create notification with enhanced details
@@ -509,186 +511,246 @@ const createEnhancedNotification = async (
 
 // Dynamic alarm configuration based on available columns
 const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: OrganizationSchemaConfig) => {
-    const availableColumns = schemaConfig.columns;
-    const analogConfigs = [];
-    const binaryConfigs = [];
+  const availableColumns = schemaConfig.columns;
+  const analogConfigs = [];
+  const binaryConfigs = [];
 
-    // If columnConfigs are provided, use them for dynamic configuration
-    if (schemaConfig.columnConfigs) {
-        for (const [columnName, config] of Object.entries(schemaConfig.columnConfigs)) {
-            if (!availableColumns.includes(columnName)) continue;
+  // If columnConfigs are provided, use them for dynamic configuration
+  if (schemaConfig.columnConfigs) {
+      if (DEBUG) {
+          console.log(`🔍 Processing columnConfigs with ${Object.keys(schemaConfig.columnConfigs).length} total columns`);
+          console.log(`🔍 Available columns: ${availableColumns.join(', ')}`);
+      }
+      
+      for (const [columnName, config] of Object.entries(schemaConfig.columnConfigs)) {
+          if (DEBUG) {
+              console.log(`🔍 Processing column: ${columnName}, isAnalog: ${config.isAnalog}, isBinary: ${config.isBinary}`);
+          }
+          
+          if (!availableColumns.includes(columnName)) {
+              if (DEBUG) {
+                  console.log(`⚠️ Column ${columnName} not found in available columns, skipping`);
+              }
+              continue;
+          }
 
-            if (config.isAnalog) {
-                // For analog fields, we need to find the corresponding SV/PV pair
-                const isPV = columnName.endsWith('pv');
-                const isSV = columnName.endsWith('sv');
-                
-                if (isPV) {
-                    // Find corresponding SV field
-                    const svField = availableColumns.find(col => 
-                        col.endsWith('sv') && 
-                        col.replace('pv', 'sv') === columnName.replace('pv', 'sv')
-                    );
-                    
-                    analogConfigs.push({
-                        name: config.name,
-                        type: config.type,
-                        zone: config.zone,
-                        pvField: columnName,
-                        svField: svField || '', // Empty string if no SV field
-                        unit: config.unit
-                    });
-                } else if (isSV) {
-                    // Find corresponding PV field
-                    const pvField = availableColumns.find(col => 
-                        col.endsWith('pv') && 
-                        col.replace('sv', 'pv') === columnName.replace('sv', 'pv')
-                    );
-                    
-                    if (pvField) {
-                        analogConfigs.push({
-                            name: config.name,
-                            type: config.type,
-                            zone: config.zone,
-                            pvField,
-                            svField: columnName,
-                            unit: config.unit
-                        });
-                    }
-                } else {
-                    // Single field analog (like oilpv)
-                    analogConfigs.push({
-                        name: config.name,
-                        type: config.type,
-                        zone: config.zone,
-                        pvField: columnName,
-                        svField: '', // No SV field
-                        unit: config.unit
-                    });
-                }
-            } else if (config.isBinary) {
-                binaryConfigs.push({
-                    field: columnName,
-                    name: config.name,
-                    type: config.type,
-                    zone: config.zone
-                });
-            }
-        }
-    } else {
-        // Fallback to pattern-based configuration for backward compatibility
-        const analogPatterns = [
-            {
-                pattern: /^hz1(sv|pv)$/,
-                name: 'HARDENING ZONE 1 TEMPERATURE',
-                type: 'temperature',
-                zone: 'zone1',
-                unit: '°C'
-            },
-            {
-                pattern: /^hz2(sv|pv)$/,
-                name: 'HARDENING ZONE 2 TEMPERATURE',
-                type: 'temperature',
-                zone: 'zone2',
-                unit: '°C'
-            },
-            {
-                pattern: /^cp(sv|pv)$/,
-                name: 'CARBON POTENTIAL',
-                type: 'carbon',
-                unit: '%'
-            },
-            {
-                pattern: /^tz1(sv|pv)$/,
-                name: 'TEMPERING ZONE1 TEMPERATURE',
-                type: 'temperature',
-                zone: 'zone1',
-                unit: '°C'
-            },
-            {
-                pattern: /^tz2(sv|pv)$/,
-                name: 'TEMPERING ZONE2 TEMPERATURE',
-                type: 'temperature',
-                zone: 'zone2',
-                unit: '°C'
-            },
-            {
-                pattern: /^oilpv$/,
-                name: 'OIL TEMPERATURE',
-                type: 'temperature',
-                unit: '°C'
-            }
-        ];
+          if (config.isAnalog) {
+              // For analog fields, we need to find the corresponding SV/PV pair
+              const isPV = columnName.endsWith('pv');
+              const isSV = columnName.endsWith('sv');
+              
+              if (isPV) {
+                  // Find corresponding SV field
+                  const svField = availableColumns.find(col => 
+                      col.endsWith('sv') && 
+                      col.replace('pv', 'sv') === columnName.replace('pv', 'sv')
+                  );
+                  
+                  analogConfigs.push({
+                      name: config.name,
+                      type: config.type,
+                      zone: config.zone,
+                      pvField: columnName,
+                      svField: svField || '', // Empty string if no SV field
+                      unit: config.unit
+                  });
+                  
+                  if (DEBUG) {
+                      console.log(`✅ Added analog config (PV): ${config.name} -> ${columnName}/${svField || 'none'}`);
+                  }
+              } else if (isSV) {
+                  // Find corresponding PV field
+                  const pvField = availableColumns.find(col => 
+                      col.endsWith('pv') && 
+                      col.replace('sv', 'pv') === columnName.replace('sv', 'pv')
+                  );
+                  
+                  if (pvField) {
+                      analogConfigs.push({
+                          name: config.name,
+                          type: config.type,
+                          zone: config.zone,
+                          pvField,
+                          svField: columnName,
+                          unit: config.unit
+                      });
+                      
+                      if (DEBUG) {
+                          console.log(`✅ Added analog config (SV): ${config.name} -> ${pvField}/${columnName}`);
+                      }
+                  } else {
+                      if (DEBUG) {
+                          console.log(`⚠️ No PV field found for SV column ${columnName}, skipping`);
+                      }
+                  }
+              } else {
+                  // Single field analog (like oilpv)
+                  analogConfigs.push({
+                      name: config.name,
+                      type: config.type,
+                      zone: config.zone,
+                      pvField: columnName,
+                      svField: '', // No SV field
+                      unit: config.unit
+                  });
+                  
+                  if (DEBUG) {
+                      console.log(`✅ Added analog config (single): ${config.name} -> ${columnName}`);
+                  }
+              }
+          } else if (config.isBinary) {
+              binaryConfigs.push({
+                  field: columnName,
+                  name: config.name,
+                  type: config.type,
+                  zone: config.zone
+              });
+              
+              if (DEBUG) {
+                  console.log(`✅ Added binary config: ${config.name} -> ${columnName}`);
+              }
+          } else {
+              if (DEBUG) {
+                  console.log(`⚠️ Column ${columnName} is neither analog nor binary, skipping`);
+              }
+          }
+      }
+  } else {
+      // Fallback to pattern-based configuration for backward compatibility
+      const analogPatterns = [
+          {
+              pattern: /^hz1(sv|pv)$/,
+              name: 'HARDENING ZONE 1 TEMPERATURE',
+              type: 'temperature',
+              zone: 'zone1',
+              unit: '°C'
+          },
+          {
+              pattern: /^hz2(sv|pv)$/,
+              name: 'HARDENING ZONE 2 TEMPERATURE',
+              type: 'temperature',
+              zone: 'zone2',
+              unit: '°C'
+          },
+          {
+              pattern: /^cp(sv|pv)$/,
+              name: 'CARBON POTENTIAL',
+              type: 'carbon',
+              unit: '%'
+          },
+          {
+              pattern: /^tz1(sv|pv)$/,
+              name: 'TEMPERING ZONE1 TEMPERATURE',
+              type: 'temperature',
+              zone: 'zone1',
+              unit: '°C'
+          },
+          {
+              pattern: /^tz2(sv|pv)$/,
+              name: 'TEMPERING ZONE2 TEMPERATURE',
+              type: 'temperature',
+              zone: 'zone2',
+              unit: '°C'
+          },
+          {
+              pattern: /^oilpv$/,
+              name: 'OIL TEMPERATURE',
+              type: 'temperature',
+              unit: '°C'
+          }
+      ];
 
-        // Find matching analog fields
-        for (const pattern of analogPatterns) {
-            const svField = availableColumns.find(col => pattern.pattern.test(col) && col.endsWith('sv'));
-            const pvField = availableColumns.find(col => pattern.pattern.test(col) && col.endsWith('pv'));
-            
-            // For oilpv, we only have PV field, no SV field
-            if (pattern.name === 'OIL TEMPERATURE') {
-                if (pvField) {
-                    analogConfigs.push({
-                        name: pattern.name,
-                        type: pattern.type,
-                        zone: pattern.zone,
-                        pvField,
-                        svField: '', // Empty string to indicate no SV field
-                        unit: pattern.unit
-                    });
-                }
-            } else if (svField && pvField) {
-                // For other fields, require both SV and PV
-                analogConfigs.push({
-                    name: pattern.name,
-                    type: pattern.type,
-                    zone: pattern.zone,
-                    pvField,
-                    svField,
-                    unit: pattern.unit
-                });
-            }
-        }
+      // Find matching analog fields
+      for (const pattern of analogPatterns) {
+          const svField = availableColumns.find(col => pattern.pattern.test(col) && col.endsWith('sv'));
+          const pvField = availableColumns.find(col => pattern.pattern.test(col) && col.endsWith('pv'));
+          
+          // For oilpv, we only have PV field, no SV field
+          if (pattern.name === 'OIL TEMPERATURE') {
+              if (pvField) {
+                  analogConfigs.push({
+                      name: pattern.name,
+                      type: pattern.type,
+                      zone: pattern.zone,
+                      pvField,
+                      svField: '', // Empty string to indicate no SV field
+                      unit: pattern.unit
+                  });
+              }
+          } else if (svField && pvField) {
+              // For other fields, require both SV and PV
+              analogConfigs.push({
+                  name: pattern.name,
+                  type: pattern.type,
+                  zone: pattern.zone,
+                  pvField,
+                  svField,
+                  unit: pattern.unit
+              });
+          }
+      }
 
-        // Define potential binary field patterns
-        const binaryPatterns = [
-            { pattern: 'oiltemphigh', name: 'OIL TEMPERATURE HIGH', type: 'temperature' },
-            { pattern: 'oillevelhigh', name: 'OIL LEVEL HIGH', type: 'level' },
-            { pattern: 'oillevellow', name: 'OIL LEVEL LOW', type: 'level' },
-            { pattern: 'hz1hfail', name: 'HARDENING ZONE 1 HEATER FAILURE', type: 'heater', zone: 'zone1' },
-            { pattern: 'hz2hfail', name: 'HARDENING ZONE 2 HEATER FAILURE', type: 'heater', zone: 'zone2' },
-            { pattern: 'hz1fanfail', name: 'HARDENING ZONE 1 FAN FAILURE', type: 'fan', zone: 'zone1' },
-            { pattern: 'hz2fanfail', name: 'HARDENING ZONE 2 FAN FAILURE', type: 'fan', zone: 'zone2' },
-            { pattern: 'tz1fanfail', name: 'TEMPERING ZONE 1 FAN FAILURE', type: 'fan', zone: 'zone1' },
-            { pattern: 'tz2fanfail', name: 'TEMPERING ZONE 2 FAN FAILURE', type: 'fan', zone: 'zone2' }
-        ];
+      // Define potential binary field patterns
+      const binaryPatterns = [
+          { pattern: 'oiltemphigh', name: 'OIL TEMPERATURE HIGH', type: 'temperature' },
+          { pattern: 'oillevelhigh', name: 'OIL LEVEL HIGH', type: 'level' },
+          { pattern: 'oillevellow', name: 'OIL LEVEL LOW', type: 'level' },
+          { pattern: 'hz1hfail', name: 'HARDENING ZONE 1 HEATER FAILURE', type: 'heater', zone: 'zone1' },
+          { pattern: 'hz2hfail', name: 'HARDENING ZONE 2 HEATER FAILURE', type: 'heater', zone: 'zone2' },
+          { pattern: 'hz1fanfail', name: 'HARDENING ZONE 1 FAN FAILURE', type: 'fan', zone: 'zone1' },
+          { pattern: 'hz2fanfail', name: 'HARDENING ZONE 2 FAN FAILURE', type: 'fan', zone: 'zone2' },
+          { pattern: 'tz1fanfail', name: 'TEMPERING ZONE 1 FAN FAILURE', type: 'fan', zone: 'zone1' },
+          { pattern: 'tz2fanfail', name: 'TEMPERING ZONE 2 FAN FAILURE', type: 'fan', zone: 'zone2' }
+      ];
 
-        // Find matching binary fields
-        for (const pattern of binaryPatterns) {
-            if (availableColumns.includes(pattern.pattern)) {
-                binaryConfigs.push({
-                    field: pattern.pattern,
-                    name: pattern.name,
-                    type: pattern.type,
-                    zone: pattern.zone
-                });
-            }
-        }
-    }
+      // Find matching binary fields
+      for (const pattern of binaryPatterns) {
+          if (availableColumns.includes(pattern.pattern)) {
+              binaryConfigs.push({
+                  field: pattern.pattern,
+                  name: pattern.name,
+                  type: pattern.type,
+                  zone: pattern.zone
+              });
+          }
+      }
+  }
 
-    if (DEBUG) {
-        console.log(`🔍 Dynamic alarm configs for org:`);
-        console.log(`  Analog configs: ${analogConfigs.length}`);
-        console.log(`  Binary configs: ${binaryConfigs.length}`);
-        analogConfigs.forEach(config => {
-            console.log(`    - ${config.name}: ${config.pvField}/${config.svField}`);
-        });
-        binaryConfigs.forEach(config => {
-            console.log(`    - ${config.name}: ${config.field}`);
-        });
-    }
+  if (DEBUG) {
+      console.log(`🔍 Dynamic alarm configs for org:`);
+      console.log(`  Analog configs: ${analogConfigs.length}`);
+      console.log(`  Binary configs: ${binaryConfigs.length}`);
+      
+      console.log(`\n📈 Analog Configs:`);
+      analogConfigs.forEach(config => {
+          console.log(`    - ${config.name}: ${config.pvField}/${config.svField}`);
+      });
+      
+      console.log(`\n🔘 Binary Configs:`);
+      binaryConfigs.forEach(config => {
+          console.log(`    - ${config.name}: ${config.field}`);
+      });
+      
+      // Summary of what was processed vs what was expected
+      if (schemaConfig.columnConfigs) {
+          const totalBinaryInConfig = Object.entries(schemaConfig.columnConfigs)
+              .filter(([_, config]) => config.isBinary).length;
+          const totalAnalogInConfig = Object.entries(schemaConfig.columnConfigs)
+              .filter(([_, config]) => config.isAnalog).length;
+              
+          console.log(`\n📊 Processing Summary:`);
+          console.log(`  Binary columns in config: ${totalBinaryInConfig}`);
+          console.log(`  Binary configs created: ${binaryConfigs.length}`);
+          console.log(`  Analog columns in config: ${totalAnalogInConfig}`);
+          console.log(`  Analog configs created: ${analogConfigs.length}`);
+          
+          if (totalBinaryInConfig !== binaryConfigs.length) {
+              console.log(`⚠️ MISMATCH: Expected ${totalBinaryInConfig} binary configs but got ${binaryConfigs.length}`);
+          }
+      }
+  }
 
-    return { analogConfigs, binaryConfigs };
+  return { analogConfigs, binaryConfigs };
 };
 
 /**
@@ -697,247 +759,247 @@ const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organization
  * @param forceRefresh - Whether to force refresh SCADA data (default: false)
  */
 export const processAndFormatAlarms = async (orgId: string, forceRefresh = false) => {
-    try {
-        // Check if maintenance mode is active
-        const isMaintenanceActive = await isMaintenanceModeActive(orgId);
-        
-        const scadaData = await getLatestScadaData(orgId, forceRefresh);
-        if (DEBUG) console.log('📊 Latest SCADA Data:', scadaData);
+  try {
+      // Check if maintenance mode is active
+      const isMaintenanceActive = await isMaintenanceModeActive(orgId);
+      
+      const scadaData = await getLatestScadaData(orgId, forceRefresh);
+      if (DEBUG) console.log('📊 Latest SCADA Data:', scadaData);
 
-        if (!scadaData) {
-            // If no SCADA data and we have cached alarms, return them
-            if (cachedProcessedAlarms) {
-                if (DEBUG) console.log('📊 No SCADA data available, returning cached processed alarms');
-                return {
-                    ...cachedProcessedAlarms,
-                    lastUpdate: new Date(),
-                    fromCache: true,
-                    maintenanceMode: isMaintenanceActive
-                };
-            }
-            throw new Error('No SCADA data available');
-        }
+      if (!scadaData) {
+          // If no SCADA data and we have cached alarms, return them
+          if (cachedProcessedAlarms) {
+              if (DEBUG) console.log('📊 No SCADA data available, returning cached processed alarms');
+              return {
+                  ...cachedProcessedAlarms,
+                  lastUpdate: new Date(),
+                  fromCache: true,
+                  maintenanceMode: isMaintenanceActive
+              };
+          }
+          throw new Error('No SCADA data available');
+      }
 
-        // Get organization schema configuration
-        const schemaConfig = await getOrganizationSchemaConfig(orgId);
+      // Get organization schema configuration
+      const schemaConfig = await getOrganizationSchemaConfig(orgId);
 
-        // Check if this is the same timestamp as previously processed
-        const scadaTimestamp = parseISTTimestamp(scadaData.created_timestamp);
-        const scadaTimestampString = scadaTimestamp.toISOString();
-        
-        if (lastProcessedTimestamp === scadaTimestampString && !forceRefresh) {
-            if (DEBUG) {
-                console.log(`📊 Timestamp ${scadaTimestampString} already processed, returning cached alarms (no notifications will be sent)`);
-            }
-            
-            // Return cached alarms without processing (no notifications)
-            if (cachedProcessedAlarms) {
-                return {
-                    ...cachedProcessedAlarms,
-                    lastUpdate: new Date(),
-                    fromCache: true,
-                    skipReason: 'Same timestamp as previously processed'
-                };
-            }
-        }
+      // Check if this is the same timestamp as previously processed
+      const scadaTimestamp = parseISTTimestamp(scadaData.created_timestamp);
+      const scadaTimestampString = scadaTimestamp.toISOString();
+      
+      if (lastProcessedTimestamp === scadaTimestampString && !forceRefresh) {
+          if (DEBUG) {
+              console.log(`📊 Timestamp ${scadaTimestampString} already processed, returning cached alarms (no notifications will be sent)`);
+          }
+          
+          // Return cached alarms without processing (no notifications)
+          if (cachedProcessedAlarms) {
+              return {
+                  ...cachedProcessedAlarms,
+                  lastUpdate: new Date(),
+                  fromCache: true,
+                  skipReason: 'Same timestamp as previously processed'
+              };
+          }
+      }
 
-        if (DEBUG) {
-            console.log(`📊 Processing new timestamp: ${scadaTimestampString} (previous: ${lastProcessedTimestamp})`);
-        }
+      if (DEBUG) {
+          console.log(`📊 Processing new timestamp: ${scadaTimestampString} (previous: ${lastProcessedTimestamp})`);
+      }
 
-        const setpointConfigs = await getSetpointConfigs(orgId);
-        if (DEBUG) {
-            console.log('\n🔍 Available Setpoint Configurations:');
-            setpointConfigs.forEach(sp => {
-                console.log(`${sp.name} (${sp.type}${sp.zone ? `, ${sp.zone}` : ''})`);
-                console.log(`  - Deviations: ${sp.lowDeviation} to +${sp.highDeviation}`);
-                console.log(`  - SCADA Field: ${sp.scadaField}`);
-            });
-            console.log('');
-        }
-        
-        // Always use the current timestamp for alarm data to ensure clients see updates
-        // even when the underlying SCADA data hasn't changed
-        const alarmTimestamp = new Date();
-        
-        // Get dynamic alarm configurations based on available columns
-        const { analogConfigs, binaryConfigs } = getDynamicAlarmConfigs(scadaData, schemaConfig);
-        
-        const analogAlarms = [];
-        const binaryAlarms = [];
+      const setpointConfigs = await getSetpointConfigs(orgId);
+      if (DEBUG) {
+          console.log('\n🔍 Available Setpoint Configurations:');
+          setpointConfigs.forEach(sp => {
+              console.log(`${sp.name} (${sp.type}${sp.zone ? `, ${sp.zone}` : ''})`);
+              console.log(`  - Deviations: ${sp.lowDeviation} to +${sp.highDeviation}`);
+              console.log(`  - SCADA Field: ${sp.scadaField}`);
+          });
+          console.log('');
+      }
+      
+      // Always use the current timestamp for alarm data to ensure clients see updates
+      // even when the underlying SCADA data hasn't changed
+      const alarmTimestamp = new Date();
+      
+      // Get dynamic alarm configurations based on available columns
+      const { analogConfigs, binaryConfigs } = getDynamicAlarmConfigs(scadaData, schemaConfig);
+      
+      const analogAlarms = [];
+      const binaryAlarms = [];
 
-        // Process Analog Alarms
-        for (const config of analogConfigs) {
-            const setpoint = setpointConfigs.find(sp => {
-                const nameMatch = sp.name.trim().toLowerCase() === config.name.trim().toLowerCase();
-                const typeMatch = sp.type.toLowerCase() === config.type.toLowerCase();
-                const zoneMatch = (!sp.zone && !config.zone) || (sp.zone === config.zone);
-                
-                if (DEBUG && nameMatch) {
-                    console.log(`Name match found for ${config.name}`);
-                    console.log(`Type match: ${typeMatch}, Zone match: ${zoneMatch}`);
-                }
-                
-                return nameMatch && typeMatch && zoneMatch;
-            });
+      // Process Analog Alarms
+      for (const config of analogConfigs) {
+          const setpoint = setpointConfigs.find(sp => {
+              const nameMatch = sp.name.trim().toLowerCase() === config.name.trim().toLowerCase();
+              const typeMatch = sp.type.toLowerCase() === config.type.toLowerCase();
+              const zoneMatch = (!sp.zone && !config.zone) || (sp.zone === config.zone);
+              
+              if (DEBUG && nameMatch) {
+                  console.log(`Name match found for ${config.name}`);
+                  console.log(`Type match: ${typeMatch}, Zone match: ${zoneMatch}`);
+              }
+              
+              return nameMatch && typeMatch && zoneMatch;
+          });
 
-            if (DEBUG) {
-                console.log(`\n📈 Processing Analog Alarm: ${config.name}`);
-                console.log(`Looking for setpoint with:`);
-                console.log(`  - Type: ${config.type}`);
-                console.log(`  - Zone: ${config.zone || 'none'}`);
-                console.log(`  - Name: ${config.name}`);
-                if (setpoint) {
-                    console.log('✅ Found matching setpoint configuration:');
-                    console.log(`  - ID: ${setpoint.id}`);
-                    console.log(`  - Deviations: ${setpoint.lowDeviation} to +${setpoint.highDeviation}`);
-                } else {
-                    console.log('⚠️ No matching setpoint found, using defaults');
-                }
-            }
+          if (DEBUG) {
+              console.log(`\n📈 Processing Analog Alarm: ${config.name}`);
+              console.log(`Looking for setpoint with:`);
+              console.log(`  - Type: ${config.type}`);
+              console.log(`  - Zone: ${config.zone || 'none'}`);
+              console.log(`  - Name: ${config.name}`);
+              if (setpoint) {
+                  console.log('✅ Found matching setpoint configuration:');
+                  console.log(`  - ID: ${setpoint.id}`);
+                  console.log(`  - Deviations: ${setpoint.lowDeviation} to +${setpoint.highDeviation}`);
+              } else {
+                  console.log('⚠️ No matching setpoint found, using defaults');
+              }
+          }
 
-            const currentValue = scadaData[config.pvField] as number;
-            
-            // Handle case where there's no SV field (like oilpv)
-            let setValue: number;
-            if (config.svField === '') {
-                // For Oil Temperature, use a default setpoint or the current value
-                setValue = currentValue; // Use current value as setpoint for now
-            } else {
-                setValue = scadaData[config.svField] as number;
-            }
+          const currentValue = scadaData[config.pvField] as number;
+          
+          // Handle case where there's no SV field (like oilpv)
+          let setValue: number;
+          if (config.svField === '') {
+              // For Oil Temperature, use a default setpoint or the current value
+              setValue = currentValue; // Use current value as setpoint for now
+          } else {
+              setValue = scadaData[config.svField] as number;
+          }
 
-            // Update default deviations based on alarm type
-            const getDefaultDeviation = (type: string, isHigh: boolean = false) => {
-                switch (type.toLowerCase()) {
-                    case 'carbon':
-                        return isHigh ? 0.05 : -0.05;
-                    case 'temperature':
-                        if (config.name.toLowerCase().includes('oil')) {
-                            return isHigh ? 20 : 0; // Oil temperature specific defaults
-                        }
-                        return isHigh ? 10 : -10;
-                    default:
-                        return isHigh ? 10 : -10;
-                }
-            };
+          // Update default deviations based on alarm type
+          const getDefaultDeviation = (type: string, isHigh: boolean = false) => {
+              switch (type.toLowerCase()) {
+                  case 'carbon':
+                      return isHigh ? 0.05 : -0.05;
+                  case 'temperature':
+                      if (config.name.toLowerCase().includes('oil')) {
+                          return isHigh ? 20 : 0; // Oil temperature specific defaults
+                      }
+                      return isHigh ? 10 : -10;
+                  default:
+                      return isHigh ? 10 : -10;
+              }
+          };
 
-            // Use setpoint config if available, otherwise use type-specific defaults
-            const lowDeviation = setpoint?.lowDeviation ?? getDefaultDeviation(config.type);
-            const highDeviation = setpoint?.highDeviation ?? getDefaultDeviation(config.type, true);
+          // Use setpoint config if available, otherwise use type-specific defaults
+          const lowDeviation = setpoint?.lowDeviation ?? getDefaultDeviation(config.type);
+          const highDeviation = setpoint?.highDeviation ?? getDefaultDeviation(config.type, true);
 
-            if (DEBUG) {
-                console.log(`Current Value: ${currentValue}${config.unit}`);
-                console.log(`Set Value: ${setValue}${config.unit}`);
-                console.log(`Deviations: Low=${lowDeviation}, High=${highDeviation}`);
-                if (!setpoint) {
-                    console.log(`Using type-specific defaults for ${config.type}`);
-                }
-            }
+          if (DEBUG) {
+              console.log(`Current Value: ${currentValue}${config.unit}`);
+              console.log(`Set Value: ${setValue}${config.unit}`);
+              console.log(`Deviations: Low=${lowDeviation}, High=${highDeviation}`);
+              if (!setpoint) {
+                  console.log(`Using type-specific defaults for ${config.type}`);
+              }
+          }
 
-            const severity = calculateAnalogSeverity(
-                currentValue,
-                setValue,
-                lowDeviation,
-                highDeviation
-            );
+          const severity = calculateAnalogSeverity(
+              currentValue,
+              setValue,
+              lowDeviation,
+              highDeviation
+          );
 
-            const lowLimit = setValue + lowDeviation;
-            const highLimit = setValue + highDeviation;
-            const formattedValue = formatValue(currentValue, config.unit);
-            const formattedSetPoint = `${formatValue(setValue, config.unit)} (${lowDeviation}/+${highDeviation})`;
+          const lowLimit = setValue + lowDeviation;
+          const highLimit = setValue + highDeviation;
+          const formattedValue = formatValue(currentValue, config.unit);
+          const formattedSetPoint = `${formatValue(setValue, config.unit)} (${lowDeviation}/+${highDeviation})`;
 
-            analogAlarms.push({
-                id: `${config.pvField}-${scadaData.id}`,
-                description: config.name,
-                severity,
-                status: 'active',
-                type: config.type,
-                value: formattedValue,
-                unit: config.unit,
-                setPoint: formattedSetPoint,
-                lowLimit: formatValue(lowLimit, config.unit),
-                highLimit: formatValue(highLimit, config.unit),
-                timestamp: alarmTimestamp.toISOString(), // Use current timestamp
-                zone: config.zone,
-                alarmType: 'analog'
-            });
+          analogAlarms.push({
+              id: `${config.pvField}-${scadaData.id}`,
+              description: config.name,
+              severity,
+              status: 'active',
+              type: config.type,
+              value: formattedValue,
+              unit: config.unit,
+              setPoint: formattedSetPoint,
+              lowLimit: formatValue(lowLimit, config.unit),
+              highLimit: formatValue(highLimit, config.unit),
+              timestamp: alarmTimestamp.toISOString(), // Use current timestamp
+              zone: config.zone,
+              alarmType: 'analog'
+          });
 
-            // Only send notifications if not in maintenance mode
-            if (severity !== 'info' && !isMaintenanceActive) {
-                await createEnhancedNotification(
-                    config.name,
-                    `${config.name} Alert`,
-                    formattedValue,
-                    formattedSetPoint,
-                    severity,
-                    config.type,
-                    orgId,
-                    config.zone,
-                    parseISTTimestamp(scadaData.created_timestamp)
-                );
-            }
-        }
+          // Only send notifications if not in maintenance mode
+          if (severity !== 'info' && !isMaintenanceActive) {
+              await createEnhancedNotification(
+                  config.name,
+                  `${config.name} Alert`,
+                  formattedValue,
+                  formattedSetPoint,
+                  severity,
+                  config.type,
+                  orgId,
+                  config.zone,
+                  parseISTTimestamp(scadaData.created_timestamp)
+              );
+          }
+      }
 
-        // Process Binary Alarms
-        for (const config of binaryConfigs) {
-            const value = scadaData[config.field] as boolean;
-            const severity = calculateBinarySeverity(value);
-            const status = value ? 'FAILURE' : 'NORMAL';
+      // Process Binary Alarms
+      for (const config of binaryConfigs) {
+          const value = scadaData[config.field] as boolean;
+          const severity = calculateBinarySeverity(value);
+          const status = value ? 'FAILURE' : 'NORMAL';
 
-            binaryAlarms.push({
-                id: `${config.field}-${scadaData.id}`,
-                description: config.name,
-                severity,
-                status: 'active',
-                type: config.type,
-                value: status,
-                setPoint: 'NORMAL',
-                timestamp: alarmTimestamp.toISOString(), // Use current timestamp
-                zone: config.zone
-            });
+          binaryAlarms.push({
+              id: `${config.field}-${scadaData.id}`,
+              description: config.name,
+              severity,
+              status: 'active',
+              type: config.type,
+              value: status,
+              setPoint: 'NORMAL',
+              timestamp: alarmTimestamp.toISOString(), // Use current timestamp
+              zone: config.zone
+          });
 
-            // Only send notifications if binary alarm is active and not in maintenance mode
-            if (value && !isMaintenanceActive) {
-                await createEnhancedNotification(
-                    config.name,
-                    `${config.name} Status Change`,
-                    status,
-                    'NORMAL',
-                    severity,
-                    config.type,
-                    orgId,
-                    config.zone,
-                    parseISTTimestamp(scadaData.created_timestamp)
-                );
-            }
-        }
+          // Only send notifications if binary alarm is active and not in maintenance mode
+          if (value && !isMaintenanceActive) {
+              await createEnhancedNotification(
+                  config.name,
+                  `${config.name} Status Change`,
+                  status,
+                  'NORMAL',
+                  severity,
+                  config.type,
+                  orgId,
+                  config.zone,
+                  parseISTTimestamp(scadaData.created_timestamp)
+              );
+          }
+      }
 
-        const result = {
-            analogAlarms,
-            binaryAlarms,
-            timestamp: alarmTimestamp, // Use current timestamp
-            lastUpdate: new Date(),
-            maintenanceMode: isMaintenanceActive
-        };
+      const result = {
+          analogAlarms,
+          binaryAlarms,
+          timestamp: alarmTimestamp, // Use current timestamp
+          lastUpdate: new Date(),
+          maintenanceMode: isMaintenanceActive
+      };
 
-        // Cache the processed alarms and update last processed timestamp
-        cachedProcessedAlarms = result;
-        lastProcessedTimestamp = scadaTimestampString;
+      // Cache the processed alarms and update last processed timestamp
+      cachedProcessedAlarms = result;
+      lastProcessedTimestamp = scadaTimestampString;
 
-        if (DEBUG) {
-            console.log('📊 Processed Alarms Summary:');
-            console.log(`Analog Alarms: ${analogAlarms.length}`);
-            console.log(`Binary Alarms: ${binaryAlarms.length}`);
-            console.log(`Cached timestamp: ${lastProcessedTimestamp}`);
-            console.log(`Maintenance Mode: ${isMaintenanceActive}`);
-        }
+      if (DEBUG) {
+          console.log('📊 Processed Alarms Summary:');
+          console.log(`Analog Alarms: ${analogAlarms.length}`);
+          console.log(`Binary Alarms: ${binaryAlarms.length}`);
+          console.log(`Cached timestamp: ${lastProcessedTimestamp}`);
+          console.log(`Maintenance Mode: ${isMaintenanceActive}`);
+      }
 
-        return result;
-    } catch (error) {
-        console.error('🔴 Error processing SCADA alarms:', error);
-        throw error;
-    }
+      return result;
+  } catch (error) {
+      console.error('🔴 Error processing SCADA alarms:', error);
+      throw error;
+  }
 };
 
 // Fetch historical SCADA alarms with pagination, filtering and sorting

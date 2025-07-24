@@ -16,12 +16,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { format as formatDate, parseISO, subDays } from 'date-fns';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { FlashList } from '@shopify/flash-list';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { fetchMeterHistory, MeterReading } from '../../api/meterApi';
-import { getAuthHeader } from '../../api/auth';
-import { apiConfig } from '../../api/config';
 import { 
   convertToIST, 
   formatTimeIST, 
@@ -63,6 +62,7 @@ const PAGE_SIZE = 20; // Number of items per page
 
 export default function MeterReadingsHistoryScreen() {
   const { isDarkMode } = useTheme();
+  const { authState } = useAuth();
   const router = useRouter();
   
   // UI State
@@ -114,21 +114,19 @@ export default function MeterReadingsHistoryScreen() {
     isFetching,
     refetch
   } = useInfiniteQuery({
-    queryKey: ['meter', 'history', hoursDiff, startTimeParam],
+    queryKey: ['meter', 'history', hoursDiff, startTimeParam, authState.user?.organizationId],
     queryFn: async ({ pageParam = 1 }) => {
-      const headers = await getAuthHeader();
-      // Build query parameters
-      let queryParams = `hours=${hoursDiff}&page=${pageParam}&limit=${PAGE_SIZE}`;
-      if (startTimeParam) {
-        queryParams += `&startTime=${encodeURIComponent(startTimeParam)}`;
+      if (!authState.user?.organizationId) {
+        throw new Error('Organization ID is required');
       }
       
-      const response = await fetch(`${apiConfig.apiUrl}/api/meter/history?${queryParams}`, { headers });
-      if (!response.ok) {
-        throw new Error('Failed to fetch meter history');
-      }
-      const result = await response.json();
-      return result.data;
+      return await fetchMeterHistory(
+        hoursDiff,
+        pageParam,
+        PAGE_SIZE,
+        startTimeParam,
+        authState.user.organizationId
+      );
     },
     getNextPageParam: (lastPage) => {
       // If we have more pages, return the next page number
@@ -138,6 +136,7 @@ export default function MeterReadingsHistoryScreen() {
       return undefined;
     },
     initialPageParam: 1,
+    enabled: authState.isAuthenticated && !!authState.user?.organizationId,
   });
 
   // Combine all readings from all pages
@@ -579,7 +578,28 @@ export default function MeterReadingsHistoryScreen() {
     );
   }, [isFetchingNextPage, isDarkMode]);
   
-  // Render loading state
+  // Render loading state or authentication error
+  if (!authState.isAuthenticated || !authState.user?.organizationId) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#0F172A' : '#F8FAFC' }]}>
+        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+        <View style={styles.loadingContainer}>
+          <Ionicons
+            name="lock-closed-outline"
+            size={48}
+            color={isDarkMode ? '#6B7280' : '#9CA3AF'}
+          />
+          <Text style={[styles.loadingText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+            Authentication required
+          </Text>
+          <Text style={[styles.emptyStateSubtext, { color: isDarkMode ? '#6B7280' : '#9CA3AF' }]}>
+            Please log in to view meter history
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (isLoading && !refreshing) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDarkMode ? '#0F172A' : '#F8FAFC' }]}>
