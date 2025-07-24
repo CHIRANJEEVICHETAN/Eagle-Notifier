@@ -9,6 +9,7 @@ declare global {
         id: string;
         email: string;
         role: string;
+        organizationId?: string | null;
       };
     }
   }
@@ -27,6 +28,7 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
       id: string;
       email: string;
       role: string;
+      organizationId?: string | null;
     };
     next();
   } catch (error) {

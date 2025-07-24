@@ -9,7 +9,6 @@ import adminRoutes from './src/routes/adminRoutes';
 import scadaRoutes from './src/routes/scadaRoutes';
 import maintenanceRoutes from './src/routes/maintenanceRoutes';
 import reportRoutes from './src/routes/reportRoutes';
-import { processAndFormatAlarms } from './src/services/scadaService';
 import { testAllOrgScadaConnections } from './src/config/scadaDb';
 import prisma from './src/config/db';
 import authRoutes from './src/routes/authRoutes';
@@ -34,7 +33,7 @@ interface RouteHandler {
 
 // Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || process.env.HTTP_PLATFORM_PORT || 8080;
 
 // CORS configuration
 app.use(
@@ -76,6 +75,15 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => {
   res.send('Eagle Notifier API');
 });
+
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 
 // Mount route modules
 app.use('/api/auth', authRoutes);
@@ -137,6 +145,7 @@ async function startServer() {
     // Start server
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
       
       // Log all available routes
       console.log('📋 Available routes:');

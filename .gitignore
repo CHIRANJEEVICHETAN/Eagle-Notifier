@@ -21,6 +21,8 @@ constants/
 
 .env
 
+backend/web.config
+
 cursorUpdates/
 .cursor/
 .cursorignore
