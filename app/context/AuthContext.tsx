@@ -746,6 +746,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Continue with logout despite errors
         }
       }
+
+      // Stop any ongoing or scheduled queries before logout
+      // await queryClient.cancelQueries();
       
       // Remove from secure storage
       await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);

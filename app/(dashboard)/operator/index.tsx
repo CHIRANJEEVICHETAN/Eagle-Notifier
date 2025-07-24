@@ -27,7 +27,7 @@ import * as Notifications from 'expo-notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { apiConfig, SCADA_INTERVAL } from '../../api/config';
-import { getAuthHeader } from '../../api/auth';
+import { getAuthHeader, getOrgHeaders } from '../../api/auth';
 import { ResolutionModal } from '../../components/ResolutionModal';
 import { useSetpoints, useUpdateSetpoint, Setpoint } from '../../hooks/useSetpoints';
 import { SetpointConfigModal } from '../../components/SetpointConfigModal';
@@ -315,6 +315,10 @@ export default function OperatorDashboard() {
   }, []);
 
   const handleRefresh = useCallback(async () => {
+    if (!authState.isAuthenticated || !authState.user?.organizationId) {
+      console.warn('Skipping manual refresh: Unauthorized');
+      return;
+    }
     setRefreshing(true);
 
     // Use the queryClient to fetch with force refresh parameter
@@ -322,7 +326,7 @@ export default function OperatorDashboard() {
       await queryClient.fetchQuery({
         queryKey: ALARM_KEYS.scada(true),
         queryFn: async () => {
-          const headers = await getAuthHeader();
+          const headers = await getOrgHeaders(authState?.organizationId ?? undefined);
           const { data } = await axios.get<ScadaAlarmResponse>(
             `${apiConfig.apiUrl}/api/scada/alarms?force=true`,
             { headers }
@@ -339,7 +343,7 @@ export default function OperatorDashboard() {
     } finally {
       setRefreshing(false);
     }
-  }, [queryClient]);
+  }, [queryClient, authState]);
 
   const handleSeverityFilter = useCallback((severity: AlarmSeverityFilter) => {
     setSeverityFilter((prev) => (prev === severity ? 'all' : severity));
