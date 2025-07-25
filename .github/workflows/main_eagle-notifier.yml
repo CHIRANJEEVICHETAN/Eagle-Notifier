@@ -138,38 +138,17 @@ jobs:
           }
         shell: powershell
         
-      - name: Deploy application files and configure web.config
+      - name: Deploy application files
         run: |
           $sourcePath = "C:\temp\eagle-notifier-deployment"
           $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
           
-          # Remove old deployment if it exists
+          # Remove old deployment and copy new files
           if (Test-Path $deployPath) {
               Remove-Item -Path $deployPath -Recurse -Force
-              Write-Host "Removed old deployment"
           }
-          
-          # Create deployment directory
           New-Item -ItemType Directory -Path $deployPath -Force
-          
-          # Copy new deployment files
           Copy-Item -Path "$sourcePath\*" -Destination $deployPath -Recurse -Force
-          Write-Host "Application files copied successfully"
-          
-          # Process web.config template with environment variables
-          $webConfigTemplate = Get-Content "$deployPath\web.config.template" -Raw
-          $webConfig = $webConfigTemplate `
-              -replace "__DATABASE_URL__", "${{ secrets.DATABASE_URL }}" `
-              -replace "__JWT_SECRET__", "${{ secrets.JWT_SECRET }}" `
-              -replace "__JWT_EXPIRES_IN__", "${{ secrets.JWT_EXPIRES_IN }}" `
-              -replace "__FRONTEND_URL__", "${{ secrets.FRONTEND_URL }}" `
-              -replace "__SCADA_POLL_INTERVAL__", "${{ secrets.SCADA_POLL_INTERVAL }}" `
-              -replace "__RATE_LIMIT_WINDOW_MS__", "${{ secrets.RATE_LIMIT_WINDOW_MS }}" `
-              -replace "__RATE_LIMIT_MAX__", "${{ secrets.RATE_LIMIT_MAX }}"
-          
-          $webConfig | Out-File "$deployPath\web.config" -Encoding UTF8
-          Remove-Item "$deployPath\web.config.template" -Force
-          Write-Host "Web.config configured successfully"
           
           # Create logs directory
           $logsPath = "$deployPath\logs"
@@ -177,13 +156,32 @@ jobs:
               New-Item -ItemType Directory -Path $logsPath -Force
           }
           
-          # Set proper permissions
+          # Set permissions
           $acl = Get-Acl $deployPath
           $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("IIS_IUSRS", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
           $acl.SetAccessRule($accessRule)
           Set-Acl -Path $deployPath -AclObject $acl
           
-          Write-Host "Permissions set successfully"
+          Write-Host "Application files deployed successfully"
+        shell: powershell
+
+      - name: Configure web.config
+        run: |
+          $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
+          $webConfigTemplate = Get-Content "$deployPath\web.config.template" -Raw
+          
+          $webConfig = $webConfigTemplate `
+              -replace "__DATABASE_URL__", $env:DATABASE_URL `
+              -replace "__JWT_SECRET__", $env:JWT_SECRET `
+              -replace "__JWT_EXPIRES_IN__", $env:JWT_EXPIRES_IN `
+              -replace "__FRONTEND_URL__", $env:FRONTEND_URL `
+              -replace "__SCADA_POLL_INTERVAL__", $env:SCADA_POLL_INTERVAL `
+              -replace "__RATE_LIMIT_WINDOW_MS__", $env:RATE_LIMIT_WINDOW_MS `
+              -replace "__RATE_LIMIT_MAX__", $env:RATE_LIMIT_MAX
+          
+          $webConfig | Out-File "$deployPath\web.config" -Encoding UTF8
+          Remove-Item "$deployPath\web.config.template" -Force
+          Write-Host "Web.config configured successfully"
         shell: powershell
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

@@ -6,6 +6,8 @@
   <p>Real-time monitoring, instant notifications, and comprehensive alarm management for industrial SCADA systems</p>
 </div>
 
+[![CI/CD for Eagle-Notifier IIS Deployment](https://github.com/CHIRANJEEVICHETAN/Eagle-Notifier/actions/workflows/main_eagle-notifier.yml/badge.svg?branch=main&event=workflow_run)](https://github.com/CHIRANJEEVICHETAN/Eagle-Notifier/actions/workflows/main_eagle-notifier.yml)
+
 ## Table of Contents
 - [Overview](#overview)
 - [Business Value](#business-value)
