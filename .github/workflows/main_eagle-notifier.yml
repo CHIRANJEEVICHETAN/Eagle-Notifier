@@ -1,4 +1,4 @@
-name: CI/CD for Eagle-Notifier
+name: CI/CD for Eagle-Notifier IIS Deployment
 
 on:
   push:
@@ -8,35 +8,193 @@ on:
       - 'backend/**'
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout the repo
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # 2. Log in to Docker Hub
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          node-version: '20.5.0'
+          cache: 'npm'
+          cache-dependency-path: 'backend/package-lock.json'
 
-      # 3. Build and push Docker image
-      - name: Build and Push Docker Image
+      - name: Install dependencies
         run: |
           cd backend
-          IMAGE_NAME=chiranjeevichetan/eagle-notifier-app
-          IMAGE_TAG=v${{ github.run_number }}
-          docker build -t $IMAGE_NAME:$IMAGE_TAG .
-          docker push $IMAGE_NAME:$IMAGE_TAG
+          npm ci
 
-      # 4. Deploy to Azure App Service
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v2
+      - name: Generate Prisma Client
+        run: |
+          cd backend
+          npx prisma generate
+
+      - name: Build TypeScript
+        run: |
+          cd backend
+          npm run build
+
+      - name: Install production dependencies
+        run: |
+          cd backend
+          npm ci --omit=dev --ignore-scripts
+
+      - name: Copy Prisma client to dist
+        run: |
+          cd backend
+          cp -r src/generated/prisma-client dist/src/generated/
+
+      - name: Generate web.config from secrets
+        run: |
+          cd backend
+          cat <<EOF > web.config
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <handlers>
+      <add name="httpPlatformHandler" path="*" verb="*" modules="httpPlatformHandler" resourceType="Unspecified" />
+    </handlers>
+
+    <httpPlatform 
+      processPath="C:\\Program Files\\nodejs\\node.exe"
+      arguments="dist\\server.js"
+      startupTimeLimit="60"
+      requestTimeout="00:04:00"
+      stdoutLogEnabled="true"
+      stdoutLogFile=".\\logs\\node.log"
+      processesPerApplication="1">
+      
+      <environmentVariables>
+        <environmentVariable name="PORT" value="%HTTP_PLATFORM_PORT%" />
+        <environmentVariable name="NODE_ENV" value="production" />
+        <environmentVariable name="DATABASE_URL" value="${{ secrets.DATABASE_URL }}" />
+        <environmentVariable name="JWT_SECRET" value="${{ secrets.JWT_SECRET }}" />
+        <environmentVariable name="JWT_EXPIRES_IN" value="${{ secrets.JWT_EXPIRES_IN }}" />
+        <environmentVariable name="FRONTEND_URL" value="${{ secrets.FRONTEND_URL }}" />
+        <environmentVariable name="SCADA_POLL_INTERVAL" value="${{ secrets.SCADA_POLL_INTERVAL }}" />
+        <environmentVariable name="RATE_LIMIT_WINDOW_MS" value="${{ secrets.RATE_LIMIT_WINDOW_MS }}" />
+        <environmentVariable name="RATE_LIMIT_MAX" value="${{ secrets.RATE_LIMIT_MAX }}" />
+      </environmentVariables>
+    </httpPlatform>
+
+    <httpProtocol>
+      <customHeaders>
+        <add name="X-Content-Type-Options" value="nosniff" />
+        <add name="X-Frame-Options" value="DENY" />
+        <add name="X-XSS-Protection" value="1; mode=block" />
+      </customHeaders>
+    </httpProtocol>
+
+    <urlCompression doStaticCompression="true" doDynamicCompression="true" />
+
+    <staticContent>
+      <remove fileExtension=".json" />
+      <mimeMap fileExtension=".json" mimeType="application/json" />
+    </staticContent>
+  </system.webServer>
+</configuration>
+EOF
+
+      - name: Create deployment package
+        run: |
+          cd backend
+          mkdir -p deployment-package
+          cp -r dist prisma node_modules package.json web.config deployment-package/
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
         with:
-          app-name: "Eagle-Notifier-Server"
-          slot-name: "production"
-          images: "chiranjeevichetan/eagle-notifier-app:v${{ github.run_number }}"
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          name: eagle-notifier-deployment
+          path: backend/deployment-package/
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: eagle-notifier-deployment
+          path: C:\temp\eagle-notifier-deployment
+
+      - name: Stop IIS Application Pool
+        run: |
+          Import-Module WebAdministration
+          if (Get-WebAppPoolState -Name "EagleNotifierPool" -ErrorAction SilentlyContinue) {
+              Stop-WebAppPool -Name "EagleNotifierPool"
+              while ((Get-WebAppPoolState -Name "EagleNotifierPool").Value -ne "Stopped") {
+                  Start-Sleep -Seconds 2
+              }
+              Write-Host "Application pool stopped successfully"
+          }
+        shell: powershell
+
+      - name: Backup current deployment
+        run: |
+          $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
+          $backupPath = "C:\backups\eagle-notifier-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+          if (Test-Path $deployPath) {
+              New-Item -ItemType Directory -Path (Split-Path $backupPath) -Force
+              Copy-Item -Path $deployPath -Destination $backupPath -Recurse -Force
+              Write-Host "Backup created at: $backupPath"
+          }
+        shell: powershell
+
+      - name: Deploy application files
+        run: |
+          $sourcePath = "C:\temp\eagle-notifier-deployment"
+          $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
+          if (Test-Path $deployPath) {
+              Remove-Item -Path $deployPath -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $deployPath -Force
+          Copy-Item -Path "$sourcePath\*" -Destination $deployPath -Recurse -Force
+          New-Item -ItemType Directory -Path "$deployPath\logs" -Force
+          $acl = Get-Acl $deployPath
+          $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("IIS_IUSRS", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+          $acl.SetAccessRule($accessRule)
+          Set-Acl -Path $deployPath -AclObject $acl
+          Write-Host "Application deployed successfully"
+        shell: powershell
+
+      - name: Start IIS Application Pool
+        run: |
+          Import-Module WebAdministration
+          Start-WebAppPool -Name "EagleNotifierPool"
+          while ((Get-WebAppPoolState -Name "EagleNotifierPool").Value -ne "Started") {
+              Start-Sleep -Seconds 2
+          }
+          Write-Host "Application pool started successfully"
+        shell: powershell
+
+      - name: Health Check
+        run: |
+          $maxAttempts = 10
+          $attempt = 0
+          $healthUrl = "http://localhost/eagle-notifier/health"
+          do {
+              $attempt++
+              try {
+                  $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 10
+                  if ($response.StatusCode -eq 200) {
+                      Write-Host "Health check passed on attempt $attempt"
+                      $healthData = $response.Content | ConvertFrom-Json
+                      Write-Host "Application Status: $($healthData.status)"
+                      Write-Host "Environment: $($healthData.environment)"
+                      exit 0
+                  }
+              } catch {
+                  Write-Host "Health check failed on attempt $attempt`: $($_.Exception.Message)"
+              }
+              if ($attempt -lt $maxAttempts) {
+                  Start-Sleep -Seconds 10
+              }
+          } while ($attempt -lt $maxAttempts)
+          Write-Host "Health check failed after $maxAttempts attempts"
+          exit 1
+        shell: powershell
