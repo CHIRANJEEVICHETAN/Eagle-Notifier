@@ -72,43 +72,42 @@ jobs:
           path: C:\temp\eagle-notifier-deployment
           
       - name: Setup IIS Application Pool
-  run: |
-    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-    Import-Module WebAdministration -Force
-    
-    # Use alternative method to check for application pool existence
-    $poolExists = $false
-    try {
-        $poolState = Get-WebAppPoolState -Name "EagleNotifierPool" -ErrorAction SilentlyContinue
-        $poolExists = $true
-        Write-Host "Application pool 'EagleNotifierPool' exists"
-    } catch {
-        Write-Host "Application pool 'EagleNotifierPool' does not exist"
-    }
-    
-    # Create application pool if it doesn't exist
-    if (-not $poolExists) {
-        New-WebAppPool -Name "EagleNotifierPool"
-        Set-ItemProperty -Path "IIS:\AppPools\EagleNotifierPool" -Name "processModel.identityType" -Value "ApplicationPoolIdentity"
-        Set-ItemProperty -Path "IIS:\AppPools\EagleNotifierPool" -Name "recycling.periodicRestart.time" -Value "00:00:00"
-        Write-Host "Created new application pool: EagleNotifierPool"
-    }
-    
-    # Stop the application pool if it's running
-    $poolState = Get-WebAppPoolState -Name "EagleNotifierPool"
-    if ($poolState.Value -eq "Started") {
-        Stop-WebAppPool -Name "EagleNotifierPool"
-        do {
-            Start-Sleep -Seconds 2
-            $poolState = Get-WebAppPoolState -Name "EagleNotifierPool"
-            Write-Host "Waiting for application pool to stop... Current state: $($poolState.Value)"
-        } while ($poolState.Value -ne "Stopped")
-        Write-Host "Application pool stopped successfully"
-    } else {
-        Write-Host "Application pool is already stopped"
-    }
-  shell: powershell
-
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          Import-Module WebAdministration -Force
+          
+          # Use alternative method to check for application pool existence
+          $poolExists = $false
+          try {
+              $poolState = Get-WebAppPoolState -Name "EagleNotifierPool" -ErrorAction SilentlyContinue
+              $poolExists = $true
+              Write-Host "Application pool 'EagleNotifierPool' exists"
+          } catch {
+              Write-Host "Application pool 'EagleNotifierPool' does not exist"
+          }
+          
+          # Create application pool if it doesn't exist
+          if (-not $poolExists) {
+              New-WebAppPool -Name "EagleNotifierPool"
+              Set-ItemProperty -Path "IIS:\AppPools\EagleNotifierPool" -Name "processModel.identityType" -Value "ApplicationPoolIdentity"
+              Set-ItemProperty -Path "IIS:\AppPools\EagleNotifierPool" -Name "recycling.periodicRestart.time" -Value "00:00:00"
+              Write-Host "Created new application pool: EagleNotifierPool"
+          }
+          
+          # Stop the application pool if it's running
+          $poolState = Get-WebAppPoolState -Name "EagleNotifierPool"
+          if ($poolState.Value -eq "Started") {
+              Stop-WebAppPool -Name "EagleNotifierPool"
+              do {
+                  Start-Sleep -Seconds 2
+                  $poolState = Get-WebAppPoolState -Name "EagleNotifierPool"
+                  Write-Host "Waiting for application pool to stop... Current state: $($poolState.Value)"
+              } while ($poolState.Value -ne "Stopped")
+              Write-Host "Application pool stopped successfully"
+          } else {
+              Write-Host "Application pool is already stopped"
+          }
+        shell: powershell
         
       - name: Setup IIS Website
         run: |
