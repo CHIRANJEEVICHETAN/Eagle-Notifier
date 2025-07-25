@@ -117,18 +117,43 @@ jobs:
           $siteName = "EagleNotifier"
           $sitePath = "C:\inetpub\wwwroot\eagle-notifier"
           
-          # Create website if it doesn't exist
-          if (-not (Get-Website -Name $siteName -ErrorAction SilentlyContinue)) {
+          Write-Host "Configuring website: $siteName"
+          
+          # Check if website exists and update it, or create new one
+          $existingWebsite = Get-Website -Name $siteName -ErrorAction SilentlyContinue
+          
+          if ($existingWebsite) {
+              Write-Host "✅ Website '$siteName' exists (ID: $($existingWebsite.ID))"
+              Write-Host "Updating existing website configuration..."
+              
+              # Update existing website
+              Set-ItemProperty -Path "IIS:\Sites\$siteName" -Name "applicationPool" -Value "EagleNotifierPool"
+              Set-ItemProperty -Path "IIS:\Sites\$siteName" -Name "physicalPath" -Value $sitePath
+              
+              Write-Host "Website updated successfully"
+              
+          } else {
+              Write-Host "Creating new website: $siteName"
+              
               # Ensure directory exists
               if (-not (Test-Path $sitePath)) {
                   New-Item -ItemType Directory -Path $sitePath -Force
+                  Write-Host "Created directory: $sitePath"
               }
               
+              # Create new website
               New-Website -Name $siteName -ApplicationPool "EagleNotifierPool" -PhysicalPath $sitePath -Port 80
-              Write-Host "Created new website: $siteName"
-          } else {
-              Write-Host "Website $siteName already exists"
+              Write-Host "Website created successfully"
           }
+          
+          # Verify final website configuration
+          $website = Get-Website -Name $siteName
+          Write-Host "Final website configuration:"
+          Write-Host "  Name: $($website.Name)"
+          Write-Host "  ID: $($website.ID)"
+          Write-Host "  Physical Path: $($website.PhysicalPath)"
+          Write-Host "  Application Pool: $($website.ApplicationPool)"
+          Write-Host "  State: $($website.State)"
         shell: powershell
         
       - name: Backup current deployment
