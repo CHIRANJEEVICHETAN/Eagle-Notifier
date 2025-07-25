@@ -47,56 +47,17 @@ jobs:
           cd backend
           cp -r src/generated/prisma-client dist/src/generated/
 
-      - name: Generate web.config from secrets
+      - name: Generate web.config from template
         run: |
           cd backend
-          cat <<EOF > web.config
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <system.webServer>
-    <handlers>
-      <add name="httpPlatformHandler" path="*" verb="*" modules="httpPlatformHandler" resourceType="Unspecified" />
-    </handlers>
-
-    <httpPlatform 
-      processPath="C:\\Program Files\\nodejs\\node.exe"
-      arguments="dist\\server.js"
-      startupTimeLimit="60"
-      requestTimeout="00:04:00"
-      stdoutLogEnabled="true"
-      stdoutLogFile=".\\logs\\node.log"
-      processesPerApplication="1">
-      
-      <environmentVariables>
-        <environmentVariable name="PORT" value="%HTTP_PLATFORM_PORT%" />
-        <environmentVariable name="NODE_ENV" value="production" />
-        <environmentVariable name="DATABASE_URL" value="${{ secrets.DATABASE_URL }}" />
-        <environmentVariable name="JWT_SECRET" value="${{ secrets.JWT_SECRET }}" />
-        <environmentVariable name="JWT_EXPIRES_IN" value="${{ secrets.JWT_EXPIRES_IN }}" />
-        <environmentVariable name="FRONTEND_URL" value="${{ secrets.FRONTEND_URL }}" />
-        <environmentVariable name="SCADA_POLL_INTERVAL" value="${{ secrets.SCADA_POLL_INTERVAL }}" />
-        <environmentVariable name="RATE_LIMIT_WINDOW_MS" value="${{ secrets.RATE_LIMIT_WINDOW_MS }}" />
-        <environmentVariable name="RATE_LIMIT_MAX" value="${{ secrets.RATE_LIMIT_MAX }}" />
-      </environmentVariables>
-    </httpPlatform>
-
-    <httpProtocol>
-      <customHeaders>
-        <add name="X-Content-Type-Options" value="nosniff" />
-        <add name="X-Frame-Options" value="DENY" />
-        <add name="X-XSS-Protection" value="1; mode=block" />
-      </customHeaders>
-    </httpProtocol>
-
-    <urlCompression doStaticCompression="true" doDynamicCompression="true" />
-
-    <staticContent>
-      <remove fileExtension=".json" />
-      <mimeMap fileExtension=".json" mimeType="application/json" />
-    </staticContent>
-  </system.webServer>
-</configuration>
-EOF
+          cp web.config.template web.config
+          sed -i "s|__DATABASE_URL__|${{ secrets.DATABASE_URL }}|g" web.config
+          sed -i "s|__JWT_SECRET__|${{ secrets.JWT_SECRET }}|g" web.config
+          sed -i "s|__JWT_EXPIRES_IN__|${{ secrets.JWT_EXPIRES_IN }}|g" web.config
+          sed -i "s|__FRONTEND_URL__|${{ secrets.FRONTEND_URL }}|g" web.config
+          sed -i "s|__SCADA_POLL_INTERVAL__|${{ secrets.SCADA_POLL_INTERVAL }}|g" web.config
+          sed -i "s|__RATE_LIMIT_WINDOW_MS__|${{ secrets.RATE_LIMIT_WINDOW_MS }}|g" web.config
+          sed -i "s|__RATE_LIMIT_MAX__|${{ secrets.RATE_LIMIT_MAX }}|g" web.config
 
       - name: Create deployment package
         run: |

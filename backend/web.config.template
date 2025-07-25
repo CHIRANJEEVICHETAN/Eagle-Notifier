@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <handlers>
+      <add name="httpPlatformHandler" path="*" verb="*" modules="httpPlatformHandler" resourceType="Unspecified" />
+    </handlers>
+
+    <httpPlatform 
+      processPath="C:\\Program Files\\nodejs\\node.exe"
+      arguments="dist\\server.js"
+      startupTimeLimit="60"
+      requestTimeout="00:04:00"
+      stdoutLogEnabled="true"
+      stdoutLogFile=".\\logs\\node.log"
+      processesPerApplication="1">
+
+      <environmentVariables>
+        <environmentVariable name="PORT" value="%HTTP_PLATFORM_PORT%" />
+        <environmentVariable name="NODE_ENV" value="production" />
+        <environmentVariable name="DATABASE_URL" value="__DATABASE_URL__" />
+        <environmentVariable name="JWT_SECRET" value="__JWT_SECRET__" />
+        <environmentVariable name="JWT_EXPIRES_IN" value="__JWT_EXPIRES_IN__" />
+        <environmentVariable name="FRONTEND_URL" value="__FRONTEND_URL__" />
+        <environmentVariable name="SCADA_POLL_INTERVAL" value="__SCADA_POLL_INTERVAL__" />
+        <environmentVariable name="RATE_LIMIT_WINDOW_MS" value="__RATE_LIMIT_WINDOW_MS__" />
+        <environmentVariable name="RATE_LIMIT_MAX" value="__RATE_LIMIT_MAX__" />
+      </environmentVariables>
+    </httpPlatform>
+
+    <!-- Security headers -->
+    <httpProtocol>
+      <customHeaders>
+        <add name="X-Content-Type-Options" value="nosniff" />
+        <add name="X-Frame-Options" value="DENY" />
+        <add name="X-XSS-Protection" value="1; mode=block" />
+      </customHeaders>
+    </httpProtocol>
+
+    <!-- Enable compression -->
+    <urlCompression doStaticCompression="true" doDynamicCompression="true" />
+
+    <!-- Static file handling -->
+    <staticContent>
+      <remove fileExtension=".json" />
+      <mimeMap fileExtension=".json" mimeType="application/json" />
+    </staticContent>
+  </system.webServer>
+</configuration>

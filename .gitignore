@@ -22,6 +22,7 @@ constants/
 .env
 
 backend/web.config
+!backend/web.config.template
 
 cursorUpdates/
 .cursor/
