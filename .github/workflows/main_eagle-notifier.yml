@@ -73,98 +73,78 @@ jobs:
 
       - name: Stop IIS Application Pool
         run: |
-          powershell -ExecutionPolicy Bypass -Command "
-            Import-Module WebAdministration;
-            if (Get-WebAppPoolState -Name 'EagleNotifierPool' -ErrorAction SilentlyContinue) {
-              Stop-WebAppPool -Name 'EagleNotifierPool';
-              while ((Get-WebAppPoolState -Name 'EagleNotifierPool').Value -ne 'Stopped') {
-                Start-Sleep -Seconds 2;
+          Import-Module WebAdministration
+          if (Get-WebAppPoolState -Name "EagleNotifierPool" -ErrorAction SilentlyContinue) {
+              Stop-WebAppPool -Name "EagleNotifierPool"
+              while ((Get-WebAppPoolState -Name "EagleNotifierPool").Value -ne "Stopped") {
+                  Start-Sleep -Seconds 2
               }
-              Write-Host 'Application pool stopped successfully';
-            }
-          "
+              Write-Host "Application pool stopped successfully"
+          }
         shell: powershell
 
       - name: Backup current deployment
         run: |
-          powershell -ExecutionPolicy Bypass -Command "
-            $deployPath = 'C:\inetpub\wwwroot\eagle-notifier';
-            $backupPath = 'C:\backups\eagle-notifier-' + (Get-Date -Format 'yyyyMMdd-HHmmss');
-            if (Test-Path $deployPath) {
-              New-Item -ItemType Directory -Path (Split-Path $backupPath) -Force;
-              Copy-Item -Path $deployPath -Destination $backupPath -Recurse -Force;
-              Write-Host 'Backup created at: ' $backupPath;
-            }
-          "
+          $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
+          $backupPath = "C:\backups\eagle-notifier-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+          if (Test-Path $deployPath) {
+              New-Item -ItemType Directory -Path (Split-Path $backupPath) -Force
+              Copy-Item -Path $deployPath -Destination $backupPath -Recurse -Force
+              Write-Host "Backup created at: $backupPath"
+          }
         shell: powershell
 
       - name: Deploy application files
         run: |
-          powershell -ExecutionPolicy Bypass -Command "
-            $sourcePath = 'C:\temp\eagle-notifier-deployment';
-            $deployPath = 'C:\inetpub\wwwroot\eagle-notifier';
-
-            if (Test-Path $deployPath) {
-              Remove-Item -Path $deployPath -Recurse -Force;
-            }
-
-            New-Item -ItemType Directory -Path $deployPath -Force;
-            Copy-Item -Path \"$sourcePath\*\" -Destination $deployPath -Recurse -Force;
-
-            # Rename web.config.template to web.config
-            Rename-Item -Path \"$deployPath\web.config.template\" -NewName \"web.config\";
-
-            New-Item -ItemType Directory -Path \"$deployPath\logs\" -Force;
-
-            $acl = Get-Acl $deployPath;
-            $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule('IIS_IUSRS', 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow');
-            $acl.SetAccessRule($accessRule);
-            Set-Acl -Path $deployPath -AclObject $acl;
-
-            Write-Host 'Application deployed successfully';
-          "
+          $sourcePath = "C:\temp\eagle-notifier-deployment"
+          $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
+          if (Test-Path $deployPath) {
+              Remove-Item -Path $deployPath -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $deployPath -Force
+          Copy-Item -Path "$sourcePath\*" -Destination $deployPath -Recurse -Force
+          Rename-Item -Path "$deployPath\web.config.template" -NewName "web.config"
+          New-Item -ItemType Directory -Path "$deployPath\logs" -Force
+          $acl = Get-Acl $deployPath
+          $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("IIS_IUSRS", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+          $acl.SetAccessRule($accessRule)
+          Set-Acl -Path $deployPath -AclObject $acl
+          Write-Host "Application deployed successfully"
         shell: powershell
 
       - name: Start IIS Application Pool
         run: |
-          powershell -ExecutionPolicy Bypass -Command "
-            Import-Module WebAdministration;
-            Start-WebAppPool -Name 'EagleNotifierPool';
-            while ((Get-WebAppPoolState -Name 'EagleNotifierPool').Value -ne 'Started') {
-              Start-Sleep -Seconds 2;
-            }
-            Write-Host 'Application pool started successfully';
-          "
+          Import-Module WebAdministration
+          Start-WebAppPool -Name "EagleNotifierPool"
+          while ((Get-WebAppPoolState -Name "EagleNotifierPool").Value -ne "Started") {
+              Start-Sleep -Seconds 2
+          }
+          Write-Host "Application pool started successfully"
         shell: powershell
 
       - name: Health Check
         run: |
-          powershell -ExecutionPolicy Bypass -Command "
-            $maxAttempts = 10;
-            $attempt = 0;
-            $healthUrl = 'http://localhost/eagle-notifier/health';
-
-            do {
-              $attempt++;
+          $maxAttempts = 10
+          $attempt = 0
+          $healthUrl = "http://localhost/eagle-notifier/health"
+          do {
+              $attempt++
               try {
-                $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 10;
-                if ($response.StatusCode -eq 200) {
-                  Write-Host 'Health check passed on attempt' $attempt;
-                  $healthData = $response.Content | ConvertFrom-Json;
-                  Write-Host 'Application Status:' $healthData.status;
-                  Write-Host 'Environment:' $healthData.environment;
-                  exit 0;
-                }
+                  $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 10
+                  if ($response.StatusCode -eq 200) {
+                      Write-Host "Health check passed on attempt $attempt"
+                      $healthData = $response.Content | ConvertFrom-Json
+                      Write-Host "Application Status: $($healthData.status)"
+                      Write-Host "Environment: $($healthData.environment)"
+                      exit 0
+                  }
               } catch {
-                Write-Host 'Health check failed on attempt' $attempt ': ' $_.Exception.Message;
+                  Write-Host "Health check failed on attempt $attempt`: $($_.Exception.Message)"
               }
-
               if ($attempt -lt $maxAttempts) {
-                Start-Sleep -Seconds 10;
+                  Start-Sleep -Seconds 10
               }
-            } while ($attempt -lt $maxAttempts)
-
-            Write-Host 'Health check failed after' $maxAttempts 'attempts';
-            exit 1;
-          "
+          } while ($attempt -lt $maxAttempts)
+          Write-Host "Health check failed after $maxAttempts attempts"
+          exit 1
         shell: powershell
