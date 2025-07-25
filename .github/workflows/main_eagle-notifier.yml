@@ -73,6 +73,7 @@ jobs:
           
       - name: Setup IIS Application Pool
         run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
           Import-Module WebAdministration -Force
           
           # Create application pool if it doesn't exist
@@ -100,6 +101,7 @@ jobs:
         
       - name: Setup IIS Website
         run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
           Import-Module WebAdministration -Force
           
           $siteName = "EagleNotifier"
@@ -121,6 +123,7 @@ jobs:
         
       - name: Backup current deployment
         run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
           $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
           $backupDir = "C:\backups"
           $backupPath = "$backupDir\eagle-notifier-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
@@ -140,6 +143,7 @@ jobs:
         
       - name: Deploy application files
         run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
           $sourcePath = "C:\temp\eagle-notifier-deployment"
           $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
           
@@ -167,6 +171,7 @@ jobs:
 
       - name: Configure web.config
         run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
           $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
           $webConfigTemplate = Get-Content "$deployPath\web.config.template" -Raw
           
@@ -194,6 +199,7 @@ jobs:
         
       - name: Start IIS Application Pool
         run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
           Import-Module WebAdministration -Force
           
           Start-WebAppPool -Name "EagleNotifierPool"
@@ -209,6 +215,7 @@ jobs:
         
       - name: Health Check
         run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
           $maxAttempts = 10
           $attempt = 0
           $healthUrl = "http://localhost/eagle-notifier/health"
