@@ -15,6 +15,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+      FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+      SCADA_POLL_INTERVAL: ${{ secrets.SCADA_POLL_INTERVAL }}
+      RATE_LIMIT_WINDOW_MS: ${{ secrets.RATE_LIMIT_WINDOW_MS }}
+      RATE_LIMIT_MAX: ${{ secrets.RATE_LIMIT_MAX }}
     
     steps:
       - name: Checkout repository
@@ -36,11 +44,15 @@ jobs:
         run: |
           cd backend
           npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
       
       - name: Run Prisma migrations
         run: |
           cd backend
           npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           
       - name: Build TypeScript
         run: |
