@@ -1,4 +1,4 @@
-name: CI/CD for Eagle-Notifier
+name: CI/CD for Eagle-Notifier IIS Deployment
 
 on:
   push:
@@ -6,37 +6,306 @@ on:
       - main
     paths:
       - 'backend/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
-
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+      FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+      SCADA_POLL_INTERVAL: ${{ secrets.SCADA_POLL_INTERVAL }}
+      RATE_LIMIT_WINDOW_MS: ${{ secrets.RATE_LIMIT_WINDOW_MS }}
+      RATE_LIMIT_MAX: ${{ secrets.RATE_LIMIT_MAX }}
+    
     steps:
-      # 1. Checkout the repo
       - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # 2. Log in to Docker Hub
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # 3. Build and push Docker image
-      - name: Build and Push Docker Image
+          node-version: '20.5.0'
+          cache: 'npm'
+          cache-dependency-path: 'backend/package-lock.json'
+          
+      - name: Install dependencies
         run: |
           cd backend
-          IMAGE_NAME=chiranjeevichetan/eagle-notifier-app
-          IMAGE_TAG=v${{ github.run_number }}
-          docker build -t $IMAGE_NAME:$IMAGE_TAG .
-          docker push $IMAGE_NAME:$IMAGE_TAG
-
-      # 4. Deploy to Azure App Service
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v2
+          npm ci
+          
+      - name: Generate Prisma Client
+        run: |
+          cd backend
+          npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      
+      - name: Run Prisma migrations
+        run: |
+          cd backend
+          npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          
+      - name: Build TypeScript
+        run: |
+          cd backend
+          npm run build
+      
+      - name: Copy Prisma client to dist
+        run: |
+          cd backend
+          cp -r src/generated/prisma-client dist/src/generated/
+          
+      - name: Install production dependencies
+        run: |
+          cd backend
+          npm ci --omit=dev --ignore-scripts
+          
+      - name: Copy Prisma schema to dist
+        run: |
+          cd backend
+          cp -r prisma dist/
+          
+      - name: Create deployment package
+        run: |
+          cd backend
+          mkdir -p deployment-package
+          cp -r dist node_modules package.json web.config.template deployment-package/
+          
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
         with:
-          app-name: "Eagle-Notifier-Server"
-          slot-name: "production"
-          images: "chiranjeevichetan/eagle-notifier-app:v${{ github.run_number }}"
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          name: eagle-notifier-deployment
+          path: backend/deployment-package/
+          retention-days: 1
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: self-hosted
+    
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: eagle-notifier-deployment
+          path: C:\temp\eagle-notifier-deployment
+          
+      - name: Setup IIS Application Pool
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          Import-Module WebAdministration -Force
+          
+          # Use alternative method to check for application pool existence
+          $poolExists = $false
+          try {
+              $poolState = Get-WebAppPoolState -Name "EagleNotifierPool" -ErrorAction SilentlyContinue
+              $poolExists = $true
+              Write-Host "Application pool 'EagleNotifierPool' exists"
+          } catch {
+              Write-Host "Application pool 'EagleNotifierPool' does not exist"
+          }
+          
+          # Create application pool if it doesn't exist
+          if (-not $poolExists) {
+              New-WebAppPool -Name "EagleNotifierPool"
+              Set-ItemProperty -Path "IIS:\AppPools\EagleNotifierPool" -Name "processModel.identityType" -Value "ApplicationPoolIdentity"
+              Set-ItemProperty -Path "IIS:\AppPools\EagleNotifierPool" -Name "recycling.periodicRestart.time" -Value "00:00:00"
+              Write-Host "Created new application pool: EagleNotifierPool"
+          }
+          
+          # Stop the application pool if it's running
+          $poolState = Get-WebAppPoolState -Name "EagleNotifierPool"
+          if ($poolState.Value -eq "Started") {
+              Stop-WebAppPool -Name "EagleNotifierPool"
+              do {
+                  Start-Sleep -Seconds 2
+                  $poolState = Get-WebAppPoolState -Name "EagleNotifierPool"
+                  Write-Host "Waiting for application pool to stop... Current state: $($poolState.Value)"
+              } while ($poolState.Value -ne "Stopped")
+              Write-Host "Application pool stopped successfully"
+          } else {
+              Write-Host "Application pool is already stopped"
+          }
+        shell: powershell
+        
+      - name: Setup IIS Website
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          Import-Module WebAdministration -Force
+          
+          $siteName = "EagleNotifier"
+          $sitePath = "C:\inetpub\wwwroot\eagle-notifier"
+          
+          Write-Host "Configuring website: $siteName"
+          
+          # Check if website exists and update it, or create new one
+          $existingWebsite = Get-Website -Name $siteName -ErrorAction SilentlyContinue
+          
+          if ($existingWebsite) {
+              Write-Host "✅ Website '$siteName' exists (ID: $($existingWebsite.ID))"
+              Write-Host "Updating existing website configuration..."
+              
+              # Update existing website
+              Set-ItemProperty -Path "IIS:\Sites\$siteName" -Name "applicationPool" -Value "EagleNotifierPool"
+              Set-ItemProperty -Path "IIS:\Sites\$siteName" -Name "physicalPath" -Value $sitePath
+              
+              Write-Host "Website updated successfully"
+              
+          } else {
+              Write-Host "Creating new website: $siteName"
+              
+              # Ensure directory exists
+              if (-not (Test-Path $sitePath)) {
+                  New-Item -ItemType Directory -Path $sitePath -Force
+                  Write-Host "Created directory: $sitePath"
+              }
+              
+              # Create new website
+              New-Website -Name $siteName -ApplicationPool "EagleNotifierPool" -PhysicalPath $sitePath -Port 80
+              Write-Host "Website created successfully"
+          }
+          
+          # Verify final website configuration
+          $website = Get-Website -Name $siteName
+          Write-Host "Final website configuration:"
+          Write-Host "  Name: $($website.Name)"
+          Write-Host "  ID: $($website.ID)"
+          Write-Host "  Physical Path: $($website.PhysicalPath)"
+          Write-Host "  Application Pool: $($website.ApplicationPool)"
+          Write-Host "  State: $($website.State)"
+        shell: powershell
+        
+      - name: Backup current deployment
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
+          $backupDir = "C:\backups"
+          $backupPath = "$backupDir\eagle-notifier-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+          
+          # Create backup directory if it doesn't exist
+          if (-not (Test-Path $backupDir)) {
+              New-Item -ItemType Directory -Path $backupDir -Force
+          }
+          
+          if (Test-Path $deployPath) {
+              Copy-Item -Path $deployPath -Destination $backupPath -Recurse -Force
+              Write-Host "Backup created at: $backupPath"
+          } else {
+              Write-Host "No existing deployment to backup"
+          }
+        shell: powershell
+        
+      - name: Deploy application files
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          $sourcePath = "C:\temp\eagle-notifier-deployment"
+          $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
+          
+          # Remove old deployment and copy new files
+          if (Test-Path $deployPath) {
+              Remove-Item -Path $deployPath -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $deployPath -Force
+          Copy-Item -Path "$sourcePath\*" -Destination $deployPath -Recurse -Force
+          
+          # Create logs directory
+          $logsPath = "$deployPath\logs"
+          if (-not (Test-Path $logsPath)) {
+              New-Item -ItemType Directory -Path $logsPath -Force
+          }
+          
+          # Set permissions
+          $acl = Get-Acl $deployPath
+          $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("IIS_IUSRS", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+          $acl.SetAccessRule($accessRule)
+          Set-Acl -Path $deployPath -AclObject $acl
+          
+          Write-Host "Application files deployed successfully"
+        shell: powershell
+
+      - name: Configure web.config
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
+          $webConfigTemplate = Get-Content "$deployPath\web.config.template" -Raw
+          
+          $webConfig = $webConfigTemplate \
+              -replace "__DATABASE_URL__", $env:DATABASE_URL \
+              -replace "__JWT_SECRET__", $env:JWT_SECRET \
+              -replace "__JWT_EXPIRES_IN__", $env:JWT_EXPIRES_IN \
+              -replace "__FRONTEND_URL__", $env:FRONTEND_URL \
+              -replace "__SCADA_POLL_INTERVAL__", $env:SCADA_POLL_INTERVAL \
+              -replace "__RATE_LIMIT_WINDOW_MS__", $env:RATE_LIMIT_WINDOW_MS \
+              -replace "__RATE_LIMIT_MAX__", $env:RATE_LIMIT_MAX
+          
+          $webConfig | Out-File "$deployPath\web.config" -Encoding UTF8
+          Remove-Item "$deployPath\web.config.template" -Force
+          Write-Host "Web.config configured successfully"
+        shell: powershell
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          SCADA_POLL_INTERVAL: ${{ secrets.SCADA_POLL_INTERVAL }}
+          RATE_LIMIT_WINDOW_MS: ${{ secrets.RATE_LIMIT_WINDOW_MS }}
+          RATE_LIMIT_MAX: ${{ secrets.RATE_LIMIT_MAX }}
+        
+      - name: Start IIS Application Pool
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          Import-Module WebAdministration -Force
+          
+          Start-WebAppPool -Name "EagleNotifierPool"
+          
+          do {
+              Start-Sleep -Seconds 2
+              $poolState = Get-WebAppPoolState -Name "EagleNotifierPool"
+              Write-Host "Waiting for application pool to start... Current state: $($poolState.Value)"
+          } while ($poolState.Value -ne "Started")
+          
+          Write-Host "Application pool started successfully"
+        shell: powershell
+        
+      - name: Health Check
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          $maxAttempts = 10
+          $attempt = 0
+          $healthUrl = "http://localhost/eagle-notifier/health"
+          
+          Write-Host "Starting health check..."
+          
+          do {
+              $attempt++
+              try {
+                  $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 10
+                  if ($response.StatusCode -eq 200) {
+                      Write-Host "Health check passed on attempt $attempt"
+                      $healthData = $response.Content | ConvertFrom-Json
+                      Write-Host "Application Status: $($healthData.status)"
+                      Write-Host "Environment: $($healthData.environment)"
+                      exit 0
+                  }
+              } catch {
+                  Write-Host "Health check failed on attempt $attempt : $($_.Exception.Message)"
+              }
+              
+              if ($attempt -lt $maxAttempts) {
+                  Write-Host "Retrying in 10 seconds..."
+                  Start-Sleep -Seconds 10
+              }
+          } while ($attempt -lt $maxAttempts)
+          
+          Write-Host "Health check failed after $maxAttempts attempts"
+          exit 1
+        shell: powershell
