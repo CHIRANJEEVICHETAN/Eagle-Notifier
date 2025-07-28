@@ -6,6 +6,11 @@ on:
       - main
     paths:
       - 'backend/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
 
 jobs:
   build:
@@ -31,27 +36,37 @@ jobs:
         run: |
           cd backend
           npx prisma generate
+      
+      - name: Run Prisma migrations
+        run: |
+          cd backend
+          npx prisma migrate deploy
           
       - name: Build TypeScript
         run: |
           cd backend
           npm run build
+      
+      - name: Copy Prisma client to dist
+        run: |
+          cd backend
+          cp -r src/generated/prisma-client dist/src/generated/
           
       - name: Install production dependencies
         run: |
           cd backend
           npm ci --omit=dev --ignore-scripts
           
-      - name: Copy Prisma client to dist
+      - name: Copy Prisma schema to dist
         run: |
           cd backend
-          cp -r src/generated/prisma-client dist/src/generated/
+          cp -r prisma dist/
           
       - name: Create deployment package
         run: |
           cd backend
           mkdir -p deployment-package
-          cp -r dist prisma node_modules package.json web.config.template deployment-package/
+          cp -r dist node_modules package.json web.config.template deployment-package/
           
       - name: Upload deployment artifact
         uses: actions/upload-artifact@v4
@@ -62,6 +77,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.event_name == 'push'
     runs-on: self-hosted
     
     steps:
@@ -210,13 +226,13 @@ jobs:
           $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
           $webConfigTemplate = Get-Content "$deployPath\web.config.template" -Raw
           
-          $webConfig = $webConfigTemplate `
-              -replace "__DATABASE_URL__", $env:DATABASE_URL `
-              -replace "__JWT_SECRET__", $env:JWT_SECRET `
-              -replace "__JWT_EXPIRES_IN__", $env:JWT_EXPIRES_IN `
-              -replace "__FRONTEND_URL__", $env:FRONTEND_URL `
-              -replace "__SCADA_POLL_INTERVAL__", $env:SCADA_POLL_INTERVAL `
-              -replace "__RATE_LIMIT_WINDOW_MS__", $env:RATE_LIMIT_WINDOW_MS `
+          $webConfig = $webConfigTemplate \
+              -replace "__DATABASE_URL__", $env:DATABASE_URL \
+              -replace "__JWT_SECRET__", $env:JWT_SECRET \
+              -replace "__JWT_EXPIRES_IN__", $env:JWT_EXPIRES_IN \
+              -replace "__FRONTEND_URL__", $env:FRONTEND_URL \
+              -replace "__SCADA_POLL_INTERVAL__", $env:SCADA_POLL_INTERVAL \
+              -replace "__RATE_LIMIT_WINDOW_MS__", $env:RATE_LIMIT_WINDOW_MS \
               -replace "__RATE_LIMIT_MAX__", $env:RATE_LIMIT_MAX
           
           $webConfig | Out-File "$deployPath\web.config" -Encoding UTF8

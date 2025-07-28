@@ -780,14 +780,11 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
           throw new Error('No SCADA data available');
       }
 
-      // Get organization schema configuration
-      const schemaConfig = await getOrganizationSchemaConfig(orgId);
-
-      // Check if this is the same timestamp as previously processed
+      // Check if this is the same timestamp as previously processed, even on force refresh
       const scadaTimestamp = parseISTTimestamp(scadaData.created_timestamp);
       const scadaTimestampString = scadaTimestamp.toISOString();
       
-      if (lastProcessedTimestamp === scadaTimestampString && !forceRefresh) {
+      if (lastProcessedTimestamp === scadaTimestampString) {
           if (DEBUG) {
               console.log(`📊 Timestamp ${scadaTimestampString} already processed, returning cached alarms (no notifications will be sent)`);
           }
@@ -802,6 +799,9 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
               };
           }
       }
+
+      // Get organization schema configuration
+      const schemaConfig = await getOrganizationSchemaConfig(orgId);
 
       if (DEBUG) {
           console.log(`📊 Processing new timestamp: ${scadaTimestampString} (previous: ${lastProcessedTimestamp})`);
