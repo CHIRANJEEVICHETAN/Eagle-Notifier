@@ -93,7 +93,7 @@ export const registerApi = async (data: RegisterData): Promise<AuthResponse> => 
   if (!response.ok) {
     const errorData = await response.json();
     throw new Error(errorData.message || 'Registration failed');
-  }
+  }   
 
   return await response.json();
 }; 
