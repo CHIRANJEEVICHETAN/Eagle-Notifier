@@ -69,16 +69,11 @@ jobs:
           cd backend
           npm ci --omit=dev --ignore-scripts
           
-      - name: Copy Prisma schema to dist
-        run: |
-          cd backend
-          cp -r prisma dist/
-          
       - name: Create deployment package
         run: |
           cd backend
           mkdir -p deployment-package
-          cp -r dist node_modules package.json web.config.template deployment-package/
+          cp -r dist prisma node_modules package.json web.config.template deployment-package/
           
       - name: Upload deployment artifact
         uses: actions/upload-artifact@v4
@@ -238,13 +233,13 @@ jobs:
           $deployPath = "C:\inetpub\wwwroot\eagle-notifier"
           $webConfigTemplate = Get-Content "$deployPath\web.config.template" -Raw
           
-          $webConfig = $webConfigTemplate \
-              -replace "__DATABASE_URL__", $env:DATABASE_URL \
-              -replace "__JWT_SECRET__", $env:JWT_SECRET \
-              -replace "__JWT_EXPIRES_IN__", $env:JWT_EXPIRES_IN \
-              -replace "__FRONTEND_URL__", $env:FRONTEND_URL \
-              -replace "__SCADA_POLL_INTERVAL__", $env:SCADA_POLL_INTERVAL \
-              -replace "__RATE_LIMIT_WINDOW_MS__", $env:RATE_LIMIT_WINDOW_MS \
+          $webConfig = $webConfigTemplate `
+              -replace "__DATABASE_URL__", $env:DATABASE_URL `
+              -replace "__JWT_SECRET__", $env:JWT_SECRET `
+              -replace "__JWT_EXPIRES_IN__", $env:JWT_EXPIRES_IN `
+              -replace "__FRONTEND_URL__", $env:FRONTEND_URL `
+              -replace "__SCADA_POLL_INTERVAL__", $env:SCADA_POLL_INTERVAL `
+              -replace "__RATE_LIMIT_WINDOW_MS__", $env:RATE_LIMIT_WINDOW_MS `
               -replace "__RATE_LIMIT_MAX__", $env:RATE_LIMIT_MAX
           
           $webConfig | Out-File "$deployPath\web.config" -Encoding UTF8
@@ -281,31 +276,47 @@ jobs:
           Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
           $maxAttempts = 10
           $attempt = 0
-          $healthUrl = "http://localhost/eagle-notifier/health"
+          
+          # Try multiple health check URLs in case of different configurations
+          $healthUrls = @(
+              "http://localhost/health",
+              "http://localhost/eagle-notifier/health",
+              "http://localhost:80/health"
+          )
           
           Write-Host "Starting health check..."
+          $healthPassed = $false
           
-          do {
-              $attempt++
-              try {
-                  $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 10
-                  if ($response.StatusCode -eq 200) {
-                      Write-Host "Health check passed on attempt $attempt"
-                      $healthData = $response.Content | ConvertFrom-Json
-                      Write-Host "Application Status: $($healthData.status)"
-                      Write-Host "Environment: $($healthData.environment)"
-                      exit 0
-                  }
-              } catch {
-                  Write-Host "Health check failed on attempt $attempt : $($_.Exception.Message)"
-              }
+          foreach ($healthUrl in $healthUrls) {
+              Write-Host "Trying health check URL: $healthUrl"
+              $attempt = 0
               
-              if ($attempt -lt $maxAttempts) {
-                  Write-Host "Retrying in 10 seconds..."
-                  Start-Sleep -Seconds 10
-              }
-          } while ($attempt -lt $maxAttempts)
+              do {
+                  $attempt++
+                  try {
+                      $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 10
+                      if ($response.StatusCode -eq 200) {
+                          Write-Host "✅ Health check passed on attempt $attempt with URL: $healthUrl"
+                          $healthData = $response.Content | ConvertFrom-Json
+                          Write-Host "Application Status: $($healthData.status)"
+                          Write-Host "Environment: $($healthData.environment)"
+                          $healthPassed = $true
+                          break
+                      }
+                  } catch {
+                      Write-Host "Health check failed on attempt $attempt with URL $healthUrl : $($_.Exception.Message)"
+                  }
+                  
+                  if ($attempt -lt 3) {
+                      Start-Sleep -Seconds 5
+                  }
+              } while ($attempt -lt 3)
+              
+              if ($healthPassed) { break }
+          }
           
-          Write-Host "Health check failed after $maxAttempts attempts"
-          exit 1
+          if (-not $healthPassed) {
+              Write-Host "❌ Health check failed on all URLs after multiple attempts"
+              exit 1
+          }
         shell: powershell
