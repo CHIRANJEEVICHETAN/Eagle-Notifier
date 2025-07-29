@@ -19,26 +19,81 @@ import { AlarmDetails } from '../../components/AlarmDetails';
 import { useAlarmHistory, useAlarmConfigurations } from '../../hooks/useAlarms';
 import { Alarm } from '../../types/alarm';
 
-// Centralised timezone utilities
-import { formatFullDateTimeIST, convertToIST } from '../../utils/timezoneUtils';
-
-// Helper function wrapper to keep existing function calls intact
+// Helper function to correctly format timestamps to show IST time consistently in 12-hour format
 const formatTimestamp = (timestamp: string): string => {
-  // Temporary debug for timezone testing
-  if (timestamp.includes('2025-07-18')) {
-    console.log('🔍 Debug timestamp:', timestamp);
-    console.log('🔍 Formatted result:', formatFullDateTimeIST(timestamp));
+  try {
+    // Always use a consistent approach for both development and production
+    // by manually calculating IST time from UTC
     
-    // Additional debug for timezone conversion
-    if (timestamp.includes('Z')) {
-      const utcDate = new Date(timestamp);
-      console.log('🔍 UTC Hours:', utcDate.getUTCHours());
-      console.log('🔍 UTC Minutes:', utcDate.getUTCMinutes());
-      console.log('🔍 IST Hours (calculated):', utcDate.getUTCHours() + 5);
-      console.log('🔍 IST Minutes (calculated):', utcDate.getUTCMinutes() + 30);
+    // Parse the ISO string to Date object
+    const date = new Date(timestamp);
+    
+    // Get UTC components
+    const utcYear = date.getUTCFullYear();
+    const utcMonth = date.getUTCMonth();
+    const utcDay = date.getUTCDate();
+    const utcHours = date.getUTCHours();
+    const utcMinutes = date.getUTCMinutes();
+    const utcSeconds = date.getUTCSeconds();
+    
+    // Add IST offset (+5:30)
+    let istHours = utcHours + 5;
+    let istMinutes = utcMinutes + 30;
+    let istDay = utcDay;
+    let istMonth = utcMonth;
+    let istYear = utcYear;
+    
+    // Handle minute overflow
+    if (istMinutes >= 60) {
+      istHours += 1;
+      istMinutes -= 60;
     }
+    
+    // Handle hour overflow
+    if (istHours >= 24) {
+      istHours -= 24;
+      istDay += 1;
+      
+      // Handle day overflow (simplified)
+      if (istDay > 31) {
+        istDay = 1;
+        istMonth += 1;
+        if (istMonth > 11) {
+          istMonth = 0;
+          istYear += 1;
+        }
+      }
+    }
+    
+    // Format date using month name, day, and year
+    const monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    const month = monthNames[istMonth];
+    const day = istDay;
+    const year = istYear;
+    
+    // Convert to 12-hour format
+    let displayHours = istHours;
+    const ampm = istHours >= 12 ? 'PM' : 'AM';
+    
+    if (istHours === 0) {
+      displayHours = 12; // 12 AM
+    } else if (istHours > 12) {
+      displayHours = istHours - 12; // Convert to 12-hour format
+    }
+    
+    // Format the time components
+    const hours = displayHours.toString().padStart(2, '0');
+    const minutes = istMinutes.toString().padStart(2, '0');
+    const seconds = utcSeconds.toString().padStart(2, '0');
+    
+    return `${month} ${day}, ${year} ${hours}:${minutes}:${seconds} ${ampm}`;
+  } catch (error) {
+    console.error('Error formatting timestamp:', error);
+    return '';
   }
-  return formatFullDateTimeIST(timestamp);
 };
 
 interface AlarmHistoryRecord {
