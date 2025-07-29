@@ -563,29 +563,82 @@ const OrganizationManagement: React.FC = () => {
           <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
-      {/* Search bar with icon */}
-      <View style={{ position: 'relative', marginBottom: 12 }}>
-        <Ionicons
-          name="search"
-          size={20}
-          color={isDarkMode ? '#94a3b8' : '#64748b'}
-          style={{ position: 'absolute', left: 12, top: '50%', transform: [{ translateY: -10 }], zIndex: 1 }}
-        />
-        <TextInput
-          placeholder="Search organizations..."
-          value={search}
-          onChangeText={setSearch}
-          style={{
-            borderWidth: 1,
-            borderColor: '#e5e7eb',
-            borderRadius: 8,
-            padding: 8,
-            paddingLeft: 38, // space for icon
-            backgroundColor: isDarkMode ? '#334155' : '#f9fafb',
-            color: isDarkMode ? '#fff' : '#111827',
-          }}
-          placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
-        />
+      {/* Enhanced Search Bar */}
+      <View style={{ 
+        backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
+        borderRadius: 12,
+        marginBottom: 16,
+        shadowColor: isDarkMode ? '#000' : '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDarkMode ? 0.3 : 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        borderWidth: 1,
+        borderColor: isDarkMode ? '#334155' : '#e2e8f0'
+      }}>
+        <View style={{ 
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          paddingHorizontal: 16,
+          paddingVertical: 12
+        }}>
+          <Ionicons
+            name="search"
+            size={20}
+            color={isDarkMode ? '#60A5FA' : '#3b82f6'}
+            style={{ marginRight: 12 }}
+          />
+          <TextInput
+            placeholder="Search organizations by name..."
+            value={search}
+            onChangeText={setSearch}
+            style={{
+              flex: 1,
+              fontSize: 16,
+              color: isDarkMode ? '#f8fafc' : '#1e293b',
+              backgroundColor: 'transparent',
+            }}
+            placeholderTextColor={isDarkMode ? '#94a3b8' : '#64748b'}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity 
+              onPress={() => setSearch('')}
+              style={{ 
+                padding: 4,
+                borderRadius: 12,
+                backgroundColor: isDarkMode ? '#334155' : '#f1f5f9'
+              }}
+            >
+              <Ionicons
+                name="close-circle"
+                size={18}
+                color={isDarkMode ? '#94a3b8' : '#64748b'}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        {/* Search Results Summary */}
+        {search.length > 0 && (
+          <View style={{ 
+            borderTopWidth: 1,
+            borderTopColor: isDarkMode ? '#334155' : '#e2e8f0',
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc'
+          }}>
+            <Text style={{ 
+              fontSize: 12, 
+              color: isDarkMode ? '#94a3b8' : '#64748b',
+              fontStyle: 'italic'
+            }}>
+              {filteredOrgs.length === organizations.length 
+                ? `Showing all ${organizations.length} organizations`
+                : `Found ${filteredOrgs.length} of ${organizations.length} organizations`
+              }
+            </Text>
+          </View>
+        )}
       </View>
       <ScrollView
         style={{ flex: 1 }}
@@ -668,37 +721,119 @@ const OrganizationManagement: React.FC = () => {
               
               {/* Column Configurations */}
               <View style={{ marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <Text style={{ color: isDarkMode ? '#cbd5e1' : '#64748b', fontSize: 13 }}>Column Configurations (JSON)</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b', marginRight: 4 }}>Auto-gen</Text>
-                    <TouchableOpacity 
-                      onPress={handleAutoGenerate}
-                      style={{ padding: 4, marginRight: 8 }}
-                    >
-                      <Ionicons name="flash" size={16} color={isDarkMode ? '#22c55e' : '#16a34a'} />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      onPress={handleFileUpload}
-                      style={{ padding: 4, marginRight: 8 }}
-                    >
-                      <Ionicons name="cloud-upload" size={16} color={isDarkMode ? '#f59e42' : '#ea580c'} />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      onPress={handleSyntaxCheck}
-                      disabled={isCheckingSyntax}
-                      style={{ padding: 4, marginRight: 8 }}
-                    >
-                      {isCheckingSyntax ? (
-                        <ActivityIndicator size={16} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
-                      ) : (
-                        <Ionicons name="checkmark-circle" size={16} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setShowConfigModal(true)} style={{ padding: 4 }}>
-                      <Ionicons name="help-circle-outline" size={16} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
-                    </TouchableOpacity>
-                  </View>
+                <Text style={{ color: isDarkMode ? '#cbd5e1' : '#64748b', fontSize: 13, marginBottom: 8 }}>Column Configurations (JSON)</Text>
+                
+                {/* Action Buttons Row */}
+                <View style={{ 
+                  flexDirection: 'row', 
+                  justifyContent: 'space-between',
+                  alignItems: 'center', 
+                  marginBottom: 8
+                }}>
+                  {/* Auto Generate Button */}
+                  <TouchableOpacity 
+                    onPress={handleAutoGenerate}
+                    style={{ 
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9',
+                      borderRadius: 6,
+                      paddingVertical: 6,
+                      paddingHorizontal: 8,
+                      borderWidth: 1,
+                      borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                      flex: 1,
+                      marginRight: 4
+                    }}
+                  >
+                    <Ionicons name="flash" size={12} color={isDarkMode ? '#22c55e' : '#16a34a'} />
+                    <Text style={{ 
+                      fontSize: 10, 
+                      color: isDarkMode ? '#22c55e' : '#16a34a', 
+                      marginLeft: 3,
+                      fontWeight: '500'
+                    }}>Auto</Text>
+                  </TouchableOpacity>
+                  
+                  {/* Upload Button */}
+                  <TouchableOpacity 
+                    onPress={handleFileUpload}
+                    style={{ 
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9',
+                      borderRadius: 6,
+                      paddingVertical: 6,
+                      paddingHorizontal: 8,
+                      borderWidth: 1,
+                      borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                      flex: 1,
+                      marginRight: 4
+                    }}
+                  >
+                    <Ionicons name="cloud-upload" size={12} color={isDarkMode ? '#f59e42' : '#ea580c'} />
+                    <Text style={{ 
+                      fontSize: 10, 
+                      color: isDarkMode ? '#f59e42' : '#ea580c', 
+                      marginLeft: 3,
+                      fontWeight: '500'
+                    }}>Upload</Text>
+                  </TouchableOpacity>
+                  
+                  {/* Syntax Check Button */}
+                  <TouchableOpacity 
+                    onPress={handleSyntaxCheck}
+                    disabled={isCheckingSyntax}
+                    style={{ 
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9',
+                      borderRadius: 6,
+                      paddingVertical: 6,
+                      paddingHorizontal: 8,
+                      borderWidth: 1,
+                      borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                      opacity: isCheckingSyntax ? 0.6 : 1,
+                      flex: 1,
+                      marginRight: 4
+                    }}
+                  >
+                    {isCheckingSyntax ? (
+                      <ActivityIndicator size={12} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
+                    ) : (
+                      <Ionicons name="checkmark-circle" size={12} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
+                    )}
+                    <Text style={{ 
+                      fontSize: 10, 
+                      color: isDarkMode ? '#60A5FA' : '#2563EB', 
+                      marginLeft: 3,
+                      fontWeight: '500'
+                    }}>Check</Text>
+                  </TouchableOpacity>
+                  
+                  {/* Help Button */}
+                  <TouchableOpacity 
+                    onPress={() => setShowConfigModal(true)}
+                    style={{ 
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9',
+                      borderRadius: 6,
+                      paddingVertical: 6,
+                      paddingHorizontal: 8,
+                      borderWidth: 1,
+                      borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                      flex: 1
+                    }}
+                  >
+                    <Ionicons name="help-circle-outline" size={12} color={isDarkMode ? '#60A5FA' : '#2563EB'} />
+                    <Text style={{ 
+                      fontSize: 10, 
+                      color: isDarkMode ? '#60A5FA' : '#2563EB', 
+                      marginLeft: 3,
+                      fontWeight: '500'
+                    }}>Help</Text>
+                  </TouchableOpacity>
                 </View>
                 <TextInput
                   value={form.schemaConfig.columnConfigs}
