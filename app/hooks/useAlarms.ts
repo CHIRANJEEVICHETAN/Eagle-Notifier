@@ -302,4 +302,29 @@ export const useAnalyticsData = (timeFilter: string) => {
     refetchOnMount: 'always', // Always refetch when component mounts
     refetchOnWindowFocus: false, // Don't refetch on window focus to avoid unnecessary calls
   });
+};
+
+// Hook to fetch dynamic alarm configurations
+export const useAlarmConfigurations = () => {
+  const { organizationId } = useAuth();
+  
+  return useQuery({
+    queryKey: ['scada', 'config', organizationId],
+    queryFn: async () => {
+      try {
+        const headers = await getOrgHeaders(organizationId ?? undefined);
+        const { data } = await axios.get(
+          `${apiConfig.apiUrl}/api/scada/config`,
+          { headers }
+        );
+        return data;
+      } catch (error) {
+        console.error('Error fetching alarm configurations:', error);
+        throw error;
+      }
+    },
+    enabled: !!organizationId,
+    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+  });
 }; 

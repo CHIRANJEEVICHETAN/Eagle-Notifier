@@ -99,15 +99,23 @@ interface OrganizationSchemaConfig {
 }
 
 // Get organization schema configuration
-const getOrganizationSchemaConfig = async (orgId: string): Promise<OrganizationSchemaConfig> => {
+export const getOrganizationSchemaConfig = async (orgId: string): Promise<OrganizationSchemaConfig> => {
   try {
+      console.log(`🔍 Fetching schema config for org: ${orgId}`);
+      
       const org = await prisma.organization.findUnique({
           where: { id: orgId },
           select: { schemaConfig: true, scadaDbConfig: true }
       });
 
       if (!org) {
+          console.error(`❌ Organization not found: ${orgId}`);
           throw new Error(`Organization not found: ${orgId}`);
+      }
+
+      if (DEBUG) {
+        console.log(`📊 Raw schema config:`, org.schemaConfig);
+        console.log(`📊 Raw SCADA DB config:`, org.scadaDbConfig);
       }
 
       // Parse schema config
@@ -120,15 +128,45 @@ const getOrganizationSchemaConfig = async (orgId: string): Promise<OrganizationS
           ? JSON.parse(org.scadaDbConfig)
           : org.scadaDbConfig;
 
+      if (DEBUG) {
+      console.log(`📊 Parsed schema config:`, {
+          columns: schemaConfig.columns?.length || 0,
+          columnConfigs: Object.keys(schemaConfig.columnConfigs || {}).length,
+            table: scadaDbConfig.table
+        });
+      }
+
+      // Validate schema config structure
+      if (!schemaConfig.columns || !Array.isArray(schemaConfig.columns)) {
+          console.error('❌ Invalid schema config: columns is missing or not an array');
+          throw new Error('Invalid schema config: columns is missing or not an array');
+      }
+
+      if (!schemaConfig.columnConfigs || typeof schemaConfig.columnConfigs !== 'object') {
+          console.error('❌ Invalid schema config: columnConfigs is missing or not an object');
+          throw new Error('Invalid schema config: columnConfigs is missing or not an object');
+      }
+
+      // Log binary and analog alarm counts
+      const binaryCount = Object.values(schemaConfig.columnConfigs)
+          .filter((config: any) => config.isBinary).length;
+      const analogCount = Object.values(schemaConfig.columnConfigs)
+          .filter((config: any) => config.isAnalog).length;
+      
+      if (DEBUG) {
+        console.log(`📊 Found ${binaryCount} binary alarms and ${analogCount} analog alarms in config`);
+      }
+
       return {
           columns: schemaConfig.columns || [],
           table: scadaDbConfig.table || 'jk2', // Default fallback
           columnConfigs: schemaConfig.columnConfigs || undefined
       };
   } catch (error) {
-      console.error('Error fetching organization schema config:', error);
+      console.error('❌ Error fetching organization schema config:', error);
+      console.error('Stack trace:', (error as Error).stack);
       // Return default schema for backward compatibility
-      return {
+      const defaultConfig = {
           columns: [
               'hz1sv', 'hz1pv', 'hz2sv', 'hz2pv', 'cpsv', 'cppv', 
               'tz1sv', 'tz1pv', 'tz2sv', 'tz2pv', 'oilpv',
@@ -141,6 +179,8 @@ const getOrganizationSchemaConfig = async (orgId: string): Promise<OrganizationS
           ],
           table: 'jk2'
       };
+      console.log('⚠️ Using default config:', defaultConfig);
+      return defaultConfig;
   }
 };
 
@@ -510,27 +550,35 @@ const createEnhancedNotification = async (
 };
 
 // Dynamic alarm configuration based on available columns
-const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: OrganizationSchemaConfig) => {
+export const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: OrganizationSchemaConfig) => {
   const availableColumns = schemaConfig.columns;
   const analogConfigs = [];
   const binaryConfigs = [];
 
+  console.log(`\n🔍 Processing alarm configs:`);
+  console.log(`📊 Available columns: ${availableColumns.length}`);
+  console.log(`📊 Has columnConfigs: ${!!schemaConfig.columnConfigs}`);
+
   // If columnConfigs are provided, use them for dynamic configuration
   if (schemaConfig.columnConfigs) {
-      if (DEBUG) {
-          console.log(`🔍 Processing columnConfigs with ${Object.keys(schemaConfig.columnConfigs).length} total columns`);
-          console.log(`🔍 Available columns: ${availableColumns.join(', ')}`);
-      }
+      const totalColumns = Object.keys(schemaConfig.columnConfigs).length;
+      const binaryColumns = Object.entries(schemaConfig.columnConfigs)
+          .filter(([_, config]) => config.isBinary).length;
+      const analogColumns = Object.entries(schemaConfig.columnConfigs)
+          .filter(([_, config]) => config.isAnalog).length;
+
+      console.log(`\n📊 Column config summary:`);
+      console.log(`  Total columns: ${totalColumns}`);
+      console.log(`  Binary columns: ${binaryColumns}`);
+      console.log(`  Analog columns: ${analogColumns}`);
       
       for (const [columnName, config] of Object.entries(schemaConfig.columnConfigs)) {
-          if (DEBUG) {
-              console.log(`🔍 Processing column: ${columnName}, isAnalog: ${config.isAnalog}, isBinary: ${config.isBinary}`);
-          }
+          console.log(`\n🔍 Processing column: ${columnName}`);
+          console.log(`  Type: ${config.isAnalog ? 'Analog' : config.isBinary ? 'Binary' : 'Unknown'}`);
+          console.log(`  Name: ${config.name}`);
           
           if (!availableColumns.includes(columnName)) {
-              if (DEBUG) {
-                  console.log(`⚠️ Column ${columnName} not found in available columns, skipping`);
-              }
+              console.log(`  ⚠️ Column not found in available columns, skipping`);
               continue;
           }
 
@@ -555,9 +603,8 @@ const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organization
                       unit: config.unit
                   });
                   
-                  if (DEBUG) {
-                      console.log(`✅ Added analog config (PV): ${config.name} -> ${columnName}/${svField || 'none'}`);
-                  }
+                  console.log(`  ✅ Added analog config (PV): ${config.name}`);
+                  console.log(`    PV: ${columnName}, SV: ${svField || 'none'}`);
               } else if (isSV) {
                   // Find corresponding PV field
                   const pvField = availableColumns.find(col => 
@@ -575,13 +622,10 @@ const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organization
                           unit: config.unit
                       });
                       
-                      if (DEBUG) {
-                          console.log(`✅ Added analog config (SV): ${config.name} -> ${pvField}/${columnName}`);
-                      }
+                      console.log(`  ✅ Added analog config (SV): ${config.name}`);
+                      console.log(`    PV: ${pvField}, SV: ${columnName}`);
                   } else {
-                      if (DEBUG) {
-                          console.log(`⚠️ No PV field found for SV column ${columnName}, skipping`);
-                      }
+                      console.log(`  ⚠️ No PV field found for SV column ${columnName}`);
                   }
               } else {
                   // Single field analog (like oilpv)
@@ -594,28 +638,30 @@ const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organization
                       unit: config.unit
                   });
                   
-                  if (DEBUG) {
-                      console.log(`✅ Added analog config (single): ${config.name} -> ${columnName}`);
-                  }
+                  console.log(`  ✅ Added analog config (single): ${config.name}`);
+                  console.log(`    Field: ${columnName}`);
               }
           } else if (config.isBinary) {
-              binaryConfigs.push({
-                  field: columnName,
-                  name: config.name,
-                  type: config.type,
-                  zone: config.zone
-              });
-              
-              if (DEBUG) {
-                  console.log(`✅ Added binary config: ${config.name} -> ${columnName}`);
+              // Check if field exists in SCADA data
+              if (columnName in scadaData) {
+                  binaryConfigs.push({
+                      field: columnName,
+                      name: config.name,
+                      type: config.type,
+                      zone: config.zone
+                  });
+                  
+                  console.log(`  ✅ Added binary config: ${config.name}`);
+                  console.log(`    Field: ${columnName}, Type: ${config.type}`);
+              } else {
+                  console.log(`  ⚠️ Binary field ${columnName} not found in SCADA data`);
               }
           } else {
-              if (DEBUG) {
-                  console.log(`⚠️ Column ${columnName} is neither analog nor binary, skipping`);
-              }
+              console.log(`  ⚠️ Column is neither analog nor binary`);
           }
       }
   } else {
+      console.log('\n⚠️ No columnConfigs found, using fallback patterns');
       // Fallback to pattern-based configuration for backward compatibility
       const analogPatterns = [
           {
@@ -676,6 +722,7 @@ const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organization
                       svField: '', // Empty string to indicate no SV field
                       unit: pattern.unit
                   });
+                  console.log(`  ✅ Added fallback analog (single): ${pattern.name}`);
               }
           } else if (svField && pvField) {
               // For other fields, require both SV and PV
@@ -687,6 +734,7 @@ const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organization
                   svField,
                   unit: pattern.unit
               });
+              console.log(`  ✅ Added fallback analog: ${pattern.name}`);
           }
       }
 
@@ -712,43 +760,14 @@ const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organization
                   type: pattern.type,
                   zone: pattern.zone
               });
+              console.log(`  ✅ Added fallback binary: ${pattern.name}`);
           }
       }
   }
 
-  if (DEBUG) {
-      console.log(`🔍 Dynamic alarm configs for org:`);
-      console.log(`  Analog configs: ${analogConfigs.length}`);
-      console.log(`  Binary configs: ${binaryConfigs.length}`);
-      
-      console.log(`\n📈 Analog Configs:`);
-      analogConfigs.forEach(config => {
-          console.log(`    - ${config.name}: ${config.pvField}/${config.svField}`);
-      });
-      
-      console.log(`\n🔘 Binary Configs:`);
-      binaryConfigs.forEach(config => {
-          console.log(`    - ${config.name}: ${config.field}`);
-      });
-      
-      // Summary of what was processed vs what was expected
-      if (schemaConfig.columnConfigs) {
-          const totalBinaryInConfig = Object.entries(schemaConfig.columnConfigs)
-              .filter(([_, config]) => config.isBinary).length;
-          const totalAnalogInConfig = Object.entries(schemaConfig.columnConfigs)
-              .filter(([_, config]) => config.isAnalog).length;
-              
-          console.log(`\n📊 Processing Summary:`);
-          console.log(`  Binary columns in config: ${totalBinaryInConfig}`);
-          console.log(`  Binary configs created: ${binaryConfigs.length}`);
-          console.log(`  Analog columns in config: ${totalAnalogInConfig}`);
-          console.log(`  Analog configs created: ${analogConfigs.length}`);
-          
-          if (totalBinaryInConfig !== binaryConfigs.length) {
-              console.log(`⚠️ MISMATCH: Expected ${totalBinaryInConfig} binary configs but got ${binaryConfigs.length}`);
-          }
-      }
-  }
+  console.log(`\n📊 Final config summary:`);
+  console.log(`  Analog alarms: ${analogConfigs.length}`);
+  console.log(`  Binary alarms: ${binaryConfigs.length}`);
 
   return { analogConfigs, binaryConfigs };
 };
@@ -1107,11 +1126,31 @@ export const getScadaAlarmHistory = async (
       // Execute query
       const result = await client.query(query, params);
       
+      if (DEBUG) {
+        console.log(`📊 Raw SCADA data rows returned: ${result.rows.length}`);
+        if (result.rows.length > 0) {
+          console.log(`📊 Sample SCADA data:`, {
+            id: result.rows[0].id,
+            timestamp: result.rows[0].created_timestamp,
+            sampleFields: Object.keys(result.rows[0]).slice(0, 5)
+          });
+        }
+      }
+      
       // Process each row into alarm formats
       const alarms = await Promise.all(result.rows.map(async (scadaData) => {
         const processed = await processScadaDataRow(orgId, scadaData);
         return processed;
       }));
+      
+      if (DEBUG) {
+        console.log(`📊 Processed alarm sets: ${alarms.length}`);
+        if (alarms.length > 0) {
+          const totalAnalog = alarms.reduce((sum, set) => sum + set.analogAlarms.length, 0);
+          const totalBinary = alarms.reduce((sum, set) => sum + set.binaryAlarms.length, 0);
+          console.log(`📊 Total alarms generated: ${totalAnalog} analog, ${totalBinary} binary`);
+        }
+      }
       
       // Get all alarm IDs before filtering
       const alarmIds = alarms.flatMap(alarm => [...alarm.analogAlarms, ...alarm.binaryAlarms]).map(a => a.id);
@@ -1145,11 +1184,24 @@ export const getScadaAlarmHistory = async (
       
       // Filter by specific alarm ID if specified
       if (alarmId) {
+        if (DEBUG) {
+          console.log(`🔍 Debug: Filtering by alarmId: ${alarmId}`);
+          console.log(`🔍 Debug: Before filtering - Total alarm sets: ${alarms.length}`);
+          const totalBefore = alarms.reduce((sum, set) => sum + set.analogAlarms.length + set.binaryAlarms.length, 0);
+          console.log(`🔍 Debug: Before filtering - Total alarms: ${totalBefore}`);
+        }
+        
         filteredAlarms = alarms.map(alarmSet => ({
           ...alarmSet,
           analogAlarms: alarmSet.analogAlarms.filter(alarm => alarm.id.includes(alarmId)),
           binaryAlarms: alarmSet.binaryAlarms.filter(alarm => alarm.id.includes(alarmId)),
         }));
+        
+        if (DEBUG) {
+          console.log(`🔍 Debug: After filtering - Total alarm sets: ${filteredAlarms.length}`);
+          const totalAfter = filteredAlarms.reduce((sum, set) => sum + set.analogAlarms.length + set.binaryAlarms.length, 0);
+          console.log(`🔍 Debug: After filtering - Total alarms: ${totalAfter}`);
+        }
       }
       
       // Filter by status if specified - MOVED AFTER data processing
@@ -1388,17 +1440,11 @@ export const getScadaAnalyticsData = async (orgId: string, timeFilter: string) =
       if (result.rows.length === 0) {
         if (DEBUG) console.log('📊 No data in time range, trying to get latest available data...');
         
+        // Build dynamic query for latest data
+        const columnList = schemaConfig.columns.join(', ');
         const latestQuery = `
-          SELECT 
-            hz1sv, hz1pv, hz2sv, hz2pv, cpsv, cppv, 
-            tz1sv, tz1pv, tz2sv, tz2pv, oilpv,
-            oiltemphigh, oillevelhigh, oillevellow,
-            hz1hfail, hz2hfail, hardconfail, hardcontraip,
-            oilconfail, oilcontraip, hz1fanfail, hz2fanfail,
-            hz1fantrip, hz2fantrip, tempconfail, tempcontraip,
-            tz1fanfail, tz2fanfail, tz1fantrip, tz2fantrip,
-            id, created_timestamp
-          FROM jk2
+          SELECT ${columnList}
+          FROM ${schemaConfig.table || 'jk2'}
           ORDER BY created_timestamp DESC
           LIMIT 10
         `;

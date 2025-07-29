@@ -48,6 +48,8 @@ export default function AlarmDetailScreen() {
   const params = useLocalSearchParams();
   const alarmId = params.id as string;
   
+  console.log('🔍 Debug: AlarmDetailScreen - alarmId from params:', alarmId);
+  
   // UI State
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [selectedAlarm, setSelectedAlarm] = useState<Alarm | null>(null);
@@ -55,20 +57,20 @@ export default function AlarmDetailScreen() {
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   
   // Filter and search state
-  const [statusFilter, setStatusFilter] = useState<AlarmFilter>('active');
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('7d');
+  const [statusFilter, setStatusFilter] = useState<AlarmFilter>('all'); // Changed from 'active' to 'all'
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('30d'); // Changed from '7d' to '30d' for more data
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   
   // Temporary filter states for modal (only applied on "Apply")
-  const [tempStatusFilter, setTempStatusFilter] = useState<AlarmFilter>('active');
-  const [tempTimeFilter, setTempTimeFilter] = useState<TimeFilter>('7d');
+  const [tempStatusFilter, setTempStatusFilter] = useState<AlarmFilter>('all'); // Changed from 'active' to 'all'
+  const [tempTimeFilter, setTempTimeFilter] = useState<TimeFilter>('30d'); // Changed from '7d' to '30d'
   const [tempSortOrder, setTempSortOrder] = useState<SortOrder>('desc');
   
   // Custom date range state
-  const [startDate, setStartDate] = useState<Date>(subDays(new Date(), 7));
+  const [startDate, setStartDate] = useState<Date>(subDays(new Date(), 30)); // Changed from 7 to 30 days
   const [endDate, setEndDate] = useState<Date>(new Date());
-  const [tempStartDate, setTempStartDate] = useState<Date>(subDays(new Date(), 7));
+  const [tempStartDate, setTempStartDate] = useState<Date>(subDays(new Date(), 30)); // Changed from 7 to 30 days
   const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
@@ -154,23 +156,39 @@ export default function AlarmDetailScreen() {
     isFetchingNextPage,
   } = useSpecificAlarmHistory(alarmId, {
     limit: 50,
+    status: 'all', // Force to 'all' to get all data
+    // Remove time filter temporarily to get all data
+    // hours: hoursDiff,
+    // startTime: startTimeParam,
+    // endTime: endTimeParam
+  });
+  
+  console.log('🔍 Debug: useSpecificAlarmHistory params:', {
+    alarmId,
+    limit: 50,
     status: statusFilter,
     hours: hoursDiff,
     startTime: startTimeParam,
     endTime: endTimeParam
   });
+  console.log('🔍 Debug: specificAlarmData:', specificAlarmData);
 
   // Process alarm history items - flatten all pages, filter by search, and apply sort
   const alarmHistoryItems = useMemo(() => {
     if (!specificAlarmData?.pages) {
+      console.log('🔍 Debug: No specificAlarmData pages found');
       return [];
     }
     
+    console.log('🔍 Debug: Processing alarm history for alarmId:', alarmId);
+    console.log('🔍 Debug: Number of pages:', specificAlarmData.pages.length);
+    
     // Extract all instances of the selected alarm from all pages
     const items: Alarm[] = [];
-    specificAlarmData.pages.forEach((page) => {
+    specificAlarmData.pages.forEach((page, pageIndex) => {
       if (page?.alarms) {
-        page.alarms.forEach((record: AlarmHistoryRecord) => {
+        console.log(`🔍 Debug: Page ${pageIndex} has ${page.alarms.length} alarm records`);
+        page.alarms.forEach((record: AlarmHistoryRecord, recordIndex: number) => {
           const findInAnalog = record.analogAlarms?.find(
             (alarm: Alarm) => alarm.id.includes(alarmId)
           );
@@ -178,11 +196,19 @@ export default function AlarmDetailScreen() {
             (alarm: Alarm) => alarm.id.includes(alarmId)
           );
           
-          if (findInAnalog) items.push(findInAnalog);
-          if (findInBinary) items.push(findInBinary);
+          if (findInAnalog) {
+            console.log(`🔍 Debug: Found analog alarm match in page ${pageIndex}, record ${recordIndex}:`, findInAnalog.id);
+            items.push(findInAnalog);
+          }
+          if (findInBinary) {
+            console.log(`🔍 Debug: Found binary alarm match in page ${pageIndex}, record ${recordIndex}:`, findInBinary.id);
+            items.push(findInBinary);
+          }
         });
       }
     });
+    
+    console.log('🔍 Debug: Total matching items found:', items.length);
     
     // Apply frontend search filter if search query exists
     let filteredItems = items;

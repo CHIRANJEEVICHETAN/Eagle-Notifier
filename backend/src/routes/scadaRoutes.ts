@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { processAndFormatAlarms, getScadaAlarmHistory, getScadaAnalyticsData, SCADA_POLLING_INTERVAL } from '../services/scadaService';
+import { processAndFormatAlarms, getScadaAlarmHistory, getScadaAnalyticsData, SCADA_POLLING_INTERVAL, getLatestScadaData, getOrganizationSchemaConfig, getDynamicAlarmConfigs } from '../services/scadaService';
 import { authenticate, getRequestOrgId } from '../middleware/authMiddleware';
 import { checkScadaHealth } from '../config/scadaDb';
 
@@ -45,8 +45,6 @@ router.get('/alarms', authenticate, async (req, res) => {
 // Get historical SCADA alarms with pagination, filtering, and sorting
 router.get('/history', authenticate, async (req, res) => {
   try {
-    if (DEBUG) console.log('📜 Fetching SCADA alarm history...');
-    
     // Parse query parameters
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -59,6 +57,13 @@ router.get('/history', authenticate, async (req, res) => {
     const alarmId = (req.query.alarmId as string) || undefined;
     const startTime = req.query.startTime as string;
     const endTime = req.query.endTime as string;
+    
+    if (DEBUG) {
+      console.log('📜 Fetching SCADA alarm history...');
+      console.log('📜 Query parameters:', {
+        page, limit, statusFilter, timeFilter, searchQuery, sortBy, sortOrder, alarmType, alarmId, startTime, endTime
+      });
+    }
     
     if (DEBUG) {
       console.log('🔍 History Query Parameters:');
@@ -82,6 +87,7 @@ router.get('/history', authenticate, async (req, res) => {
       console.log(`Filtered Total: ${alarmHistory.pagination.filteredTotal || 'N/A'}`);
       console.log(`Pages: ${alarmHistory.pagination.pages}`);
       console.log(`Alarms Returned: ${alarmHistory.alarms.length}`);
+      console.log(`Sample Alarm Data:`, alarmHistory.alarms.slice(0, 1));
     }
     
     res.json(alarmHistory);
@@ -140,6 +146,71 @@ router.get('/health', authenticate, async (req, res) => {
     ...health,
     pollingInterval: SCADA_POLLING_INTERVAL
   });
+});
+
+// Get dynamic alarm configurations for the frontend
+router.get('/config', authenticate, async (req, res) => {
+  try {
+    if (DEBUG) console.log('⚙️ Fetching SCADA alarm configurations...');
+    
+    const orgId = getRequestOrgId(req);
+    
+    // Get organization schema configuration
+    const schemaConfig = await getOrganizationSchemaConfig(orgId);
+    
+    // Get latest SCADA data to build configurations
+    const scadaData = await getLatestScadaData(orgId, false);
+    
+    if (!scadaData) {
+      res.status(404).json({
+        error: 'No SCADA data available to build configurations',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    // Get dynamic alarm configurations
+    const { analogConfigs, binaryConfigs } = getDynamicAlarmConfigs(scadaData, schemaConfig);
+    
+    // Extract alarm descriptions for frontend use
+    const alarmConfigs = {
+      analog: analogConfigs.map((config: any) => ({
+        name: config.name,
+        type: config.type,
+        zone: config.zone,
+        unit: config.unit,
+        pvField: config.pvField,
+        svField: config.svField
+      })),
+      binary: binaryConfigs.map((config: any) => ({
+        name: config.name,
+        type: config.type,
+        zone: config.zone,
+        field: config.field
+      }))
+    };
+    
+    if (DEBUG) {
+      console.log('📊 Alarm Configurations:');
+      console.log(`Analog Configs: ${alarmConfigs.analog.length}`);
+      console.log(`Binary Configs: ${alarmConfigs.binary.length}`);
+    }
+    
+    res.json({
+      configurations: alarmConfigs,
+      timestamp: new Date().toISOString(),
+      organizationId: orgId
+    });
+  } catch (error) {
+    console.error('🔴 Error fetching SCADA alarm configurations:', error);
+    res.status(500).json({
+      error: 'Failed to fetch SCADA alarm configurations',
+      details: process.env.NODE_ENV === 'development' ? 
+        (error instanceof Error ? error.message : 'Unknown error') : undefined,
+      timestamp: new Date().toISOString(),
+      code: error instanceof Error ? error.name : 'UnknownError'
+    });
+  }
 });
 
 export default router;

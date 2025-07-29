@@ -16,7 +16,7 @@ import { format as formatDate, parseISO } from 'date-fns';
 import { FlashList } from '@shopify/flash-list';
 import { useTheme } from '../../context/ThemeContext';
 import { AlarmDetails } from '../../components/AlarmDetails';
-import { useAlarmHistory } from '../../hooks/useAlarms';
+import { useAlarmHistory, useAlarmConfigurations } from '../../hooks/useAlarms';
 import { Alarm } from '../../types/alarm';
 
 // Centralised timezone utilities
@@ -26,28 +26,6 @@ import { formatTimestampIST } from '../../utils/timezoneUtils';
 const formatTimestamp = (timestamp: string): string => {
   return formatTimestampIST(timestamp);
 };
-
-// List of specific alarm descriptions we want to display
-const ANALOG_ALARM_DESCRIPTIONS = [
-  'HARDENING ZONE 1 TEMPERATURE',
-  'HARDENING ZONE 2 TEMPERATURE',
-  'CARBON POTENTIAL',
-  'TEMPERING ZONE1 TEMPERATURE',
-  'TEMPERING ZONE2 TEMPERATURE',
-  'OIL TEMPERATURE',
-];
-
-const BINARY_ALARM_DESCRIPTIONS = [
-  'OIL TEMPERATURE HIGH',
-  'OIL LEVEL HIGH',
-  'OIL LEVEL LOW',
-  'HARDENING ZONE 1 HEATER FAILURE',
-  'HARDENING ZONE 2 HEATER FAILURE',
-  'HARDENING ZONE 1 FAN FAILURE',
-  'HARDENING ZONE 2 FAN FAILURE',
-  'TEMPERING ZONE 1 FAN FAILURE',
-  'TEMPERING ZONE 2 FAN FAILURE',
-];
 
 interface AlarmHistoryRecord {
   analogAlarms: Alarm[];
@@ -71,6 +49,12 @@ export default function AlarmHistoryScreen() {
   const [currentPage, setCurrentPage] = useState(1);
   const [limit] = useState(50); // Increased limit to fetch more alarms at once
 
+  // Fetch alarm configurations
+  const {
+    data: alarmConfigData,
+    isLoading: configLoading,
+  } = useAlarmConfigurations();
+
   // Fetch alarm history
   const {
     data: alarmHistoryData,
@@ -81,7 +65,7 @@ export default function AlarmHistoryScreen() {
     page: currentPage,
     limit,
     status: 'all',
-    hours: 168, // Default to 7 days
+    // hours: 168, // Default to 7 days
     sortBy: 'timestamp',
     sortOrder: 'desc',
   });
@@ -89,6 +73,7 @@ export default function AlarmHistoryScreen() {
   // Extract and filter analog and binary alarms
   const { filteredAnalogAlarms, filteredBinaryAlarms } = useMemo(() => {
     if (!alarmHistoryData?.alarms) {
+      console.log('🔍 Debug: Missing alarm history data');
       return { filteredAnalogAlarms: [], filteredBinaryAlarms: [] };
     }
 
@@ -104,26 +89,96 @@ export default function AlarmHistoryScreen() {
       }
     });
 
+    console.log('🔍 Debug: Raw alarm data', {
+      totalAnalog: analog.length,
+      totalBinary: binary.length,
+      sampleAnalog: analog.slice(0, 2).map(a => ({ description: a.description, id: a.id })),
+      sampleBinary: binary.slice(0, 2).map(a => ({ description: a.description, id: a.id })),
+      alarmHistoryData: alarmHistoryData
+    });
+
+    // If no configuration data, show all alarms
+    if (!alarmConfigData?.configurations) {
+      console.log('🔍 Debug: No config data, showing all alarms');
+      return { 
+        filteredAnalogAlarms: analog.slice(0, 10), // Limit to first 10
+        filteredBinaryAlarms: binary.slice(0, 10)  // Limit to first 10
+      };
+    }
+
+    // Get dynamic alarm descriptions from backend
+    const analogDescriptions = alarmConfigData.configurations.analog.map((config: any) => config.name);
+    const binaryDescriptions = alarmConfigData.configurations.binary.map((config: any) => config.name);
+
+    console.log('🔍 Debug: Config descriptions', {
+      analogDescriptions,
+      binaryDescriptions
+    });
+
     // Filter to show only the specified alarms
     // For each description, find the most recent alarm (avoid duplicates)
-    const filteredAnalogAlarms = ANALOG_ALARM_DESCRIPTIONS.map((description) => {
-      const matches = analog.filter((alarm) => alarm.description === description);
+    const filteredAnalogAlarms = analogDescriptions.map((description: string) => {
+      // Try exact match first
+      let matches = analog.filter((alarm: Alarm) => alarm.description === description);
+      
+      // If no exact match, try partial match
+      if (matches.length === 0) {
+        matches = analog.filter((alarm: Alarm) => 
+          alarm.description.toLowerCase().includes(description.toLowerCase()) ||
+          description.toLowerCase().includes(alarm.description.toLowerCase())
+        );
+      }
+      
+      console.log(`🔍 Debug: Analog matches for "${description}":`, matches.length);
+      if (matches.length > 0) {
+        console.log(`🔍 Debug: Found matches:`, matches.map(m => m.description));
+      }
+      
       // Return the most recent one
       return matches.sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        (a: Alarm, b: Alarm) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       )[0];
     }).filter(Boolean); // Remove undefined entries
 
-    const filteredBinaryAlarms = BINARY_ALARM_DESCRIPTIONS.map((description) => {
-      const matches = binary.filter((alarm) => alarm.description === description);
+    const filteredBinaryAlarms = binaryDescriptions.map((description: string) => {
+      // Try exact match first
+      let matches = binary.filter((alarm: Alarm) => alarm.description === description);
+      
+      // If no exact match, try partial match
+      if (matches.length === 0) {
+        matches = binary.filter((alarm: Alarm) => 
+          alarm.description.toLowerCase().includes(description.toLowerCase()) ||
+          description.toLowerCase().includes(alarm.description.toLowerCase())
+        );
+      }
+      
+      console.log(`🔍 Debug: Binary matches for "${description}":`, matches.length);
+      if (matches.length > 0) {
+        console.log(`🔍 Debug: Found matches:`, matches.map(m => m.description));
+      }
+      
       // Return the most recent one
       return matches.sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        (a: Alarm, b: Alarm) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       )[0];
     }).filter(Boolean); // Remove undefined entries
+
+    console.log('🔍 Debug: Final filtered results', {
+      filteredAnalogCount: filteredAnalogAlarms.length,
+      filteredBinaryCount: filteredBinaryAlarms.length
+    });
+
+    // If no matches found with configurations, show all alarms as fallback
+    if (filteredAnalogAlarms.length === 0 && filteredBinaryAlarms.length === 0) {
+      console.log('🔍 Debug: No matches found, showing all alarms as fallback');
+      return { 
+        filteredAnalogAlarms: analog.slice(0, 10), // Limit to first 10
+        filteredBinaryAlarms: binary.slice(0, 10)  // Limit to first 10
+      };
+    }
 
     return { filteredAnalogAlarms, filteredBinaryAlarms };
-  }, [alarmHistoryData]);
+  }, [alarmHistoryData, alarmConfigData]);
 
   // Combine both alarm types for a single list view with sections
   const combinedAlarms = useMemo(() => {
@@ -141,7 +196,7 @@ export default function AlarmHistoryScreen() {
 
       // Add analog alarms
       combined.push(
-        ...filteredAnalogAlarms.map((alarm) => ({
+        ...filteredAnalogAlarms.map((alarm: Alarm) => ({
           ...alarm,
           isHeader: false,
         }))
@@ -159,7 +214,7 @@ export default function AlarmHistoryScreen() {
 
       // Add binary alarms
       combined.push(
-        ...filteredBinaryAlarms.map((alarm) => ({
+        ...filteredBinaryAlarms.map((alarm: Alarm) => ({
           ...alarm,
           isHeader: false,
         }))
@@ -350,9 +405,26 @@ export default function AlarmHistoryScreen() {
             <View
               style={[styles.emptyState, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
               <Text
-                style={[styles.emptyStateSubtext, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-                No alarms found
+                style={[styles.emptyStateText, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+                {isLoading || isFetching ? 'Loading...' : 'No alarms found'}
               </Text>
+              <Text
+                style={[styles.emptyStateSubtext, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                {isLoading || isFetching ? 
+                  'Fetching alarm data...' : 
+                  'No alarm history data available. This could be due to:\n• No recent SCADA data\n• No alarms in the specified time range\n• Database connection issues'}
+              </Text>
+              {!isLoading && !isFetching && (
+                <View style={{ marginTop: 16, padding: 12, backgroundColor: isDarkMode ? '#374151' : '#F3F4F6', borderRadius: 8 }}>
+                  <Text style={[styles.emptyStateSubtext, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: 12 }]}>
+                    Debug Info:{'\n'}
+                    Config Loading: {configLoading ? 'Yes' : 'No'}{'\n'}
+                    Has Config Data: {alarmConfigData?.configurations ? 'Yes' : 'No'}{'\n'}
+                    Has History Data: {alarmHistoryData?.alarms ? 'Yes' : 'No'}{'\n'}
+                    History Records: {alarmHistoryData?.alarms?.length || 0}
+                  </Text>
+                </View>
+              )}
             </View>
           }
         />
