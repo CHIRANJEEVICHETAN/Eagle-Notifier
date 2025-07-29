@@ -21,8 +21,8 @@ export const convertToIST = (dateString: string): Date => {
     const hasTimezone = dateString.includes('Z') || dateString.includes('+') || dateString.includes('-');
     
     if (hasTimezone) {
-      // If it has timezone info, it's likely UTC (from toISOString())
-      // Parse as UTC and convert to IST
+      // If it has timezone info, it's UTC (from backend toISOString())
+      // Parse the UTC date and extract components
       const utcDate = new Date(dateString);
       
       if (isNaN(utcDate.getTime())) {
@@ -30,8 +30,46 @@ export const convertToIST = (dateString: string): Date => {
         return new Date();
       }
       
-      // Convert UTC to IST by adding 5:30 hours
-      const istDate = new Date(utcDate.getTime() + (5 * 60 + 30) * 60 * 1000);
+      // Extract UTC components
+      const utcYear = utcDate.getUTCFullYear();
+      const utcMonth = utcDate.getUTCMonth();
+      const utcDay = utcDate.getUTCDate();
+      const utcHours = utcDate.getUTCHours();
+      const utcMinutes = utcDate.getUTCMinutes();
+      const utcSeconds = utcDate.getUTCSeconds();
+      const utcMilliseconds = utcDate.getUTCMilliseconds();
+      
+      // Convert to IST by adding 5:30 hours
+      let istHours = utcHours + 5;
+      let istMinutes = utcMinutes + 30;
+      let istDay = utcDay;
+      let istMonth = utcMonth;
+      let istYear = utcYear;
+      
+      // Handle minute overflow
+      if (istMinutes >= 60) {
+        istHours += 1;
+        istMinutes -= 60;
+      }
+      
+      // Handle hour overflow
+      if (istHours >= 24) {
+        istHours -= 24;
+        istDay += 1;
+        
+        // Handle day overflow (simplified - doesn't handle month/year boundaries)
+        if (istDay > 31) {
+          istDay = 1;
+          istMonth += 1;
+          if (istMonth > 11) {
+            istMonth = 0;
+            istYear += 1;
+          }
+        }
+      }
+      
+      // Create IST date using UTC constructor to avoid browser timezone issues
+      const istDate = new Date(Date.UTC(istYear, istMonth, istDay, istHours, istMinutes, utcSeconds, utcMilliseconds));
       return istDate;
     } else {
       // If no timezone info, it's likely already in IST format from database
@@ -94,19 +132,78 @@ export const formatTimestampIST = (dateString: string): string => {
  * @returns Formatted timestamp string in IST with seconds and AM/PM
  */
 export const formatTimestampWithSecondsIST = (dateString: string): string => {
-  const istDate = convertToIST(dateString);
-  // Format directly without timezone specification since we already converted to IST
-  let hours = istDate.getHours();
-  const minutes = istDate.getMinutes().toString().padStart(2, '0');
-  const seconds = istDate.getSeconds().toString().padStart(2, '0');
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  
-  // Convert to 12-hour format
-  hours = hours % 12;
-  hours = hours ? hours : 12; // 0 should be 12
-  const formattedHours = hours.toString().padStart(2, '0');
-  
-  return `${formattedHours}:${minutes}:${seconds} ${ampm}`;
+  try {
+    // Check if the string has timezone information (Z, +, -)
+    const hasTimezone = dateString.includes('Z') || dateString.includes('+') || dateString.includes('-');
+    
+    if (hasTimezone) {
+      // If it has timezone info, it's UTC (from backend toISOString())
+      // Parse the UTC date and extract components
+      const utcDate = new Date(dateString);
+      
+      if (isNaN(utcDate.getTime())) {
+        console.error('Invalid UTC date string:', dateString);
+        return 'Invalid Time';
+      }
+      
+      // Extract UTC components
+      const utcHours = utcDate.getUTCHours();
+      const utcMinutes = utcDate.getUTCMinutes();
+      const utcSeconds = utcDate.getUTCSeconds();
+      
+      // Convert to IST by adding 5:30 hours
+      let istHours = utcHours + 5;
+      let istMinutes = utcMinutes + 30;
+      
+      // Handle minute overflow
+      if (istMinutes >= 60) {
+        istHours += 1;
+        istMinutes -= 60;
+      }
+      
+      // Handle hour overflow
+      if (istHours >= 24) {
+        istHours -= 24;
+      }
+      
+      // Format time with seconds
+      const minutes = istMinutes.toString().padStart(2, '0');
+      const seconds = utcSeconds.toString().padStart(2, '0');
+      const ampm = istHours >= 12 ? 'PM' : 'AM';
+      
+      let displayHours = istHours % 12;
+      displayHours = displayHours ? displayHours : 12; // 0 should be 12
+      const formattedHours = displayHours.toString().padStart(2, '0');
+      
+      return `${formattedHours}:${minutes}:${seconds} ${ampm}`;
+    } else {
+      // If no timezone info, it's likely already in IST format from database
+      // Parse it directly as local time (IST)
+      const cleanTimestamp = dateString.replace(' ', 'T');
+      const istDate = new Date(cleanTimestamp);
+      
+      if (isNaN(istDate.getTime())) {
+        console.error('Invalid IST date string:', dateString);
+        return 'Invalid Time';
+      }
+      
+      // Format directly without timezone specification since we already converted to IST
+      let hours = istDate.getHours();
+      const minutes = istDate.getMinutes().toString().padStart(2, '0');
+      const seconds = istDate.getSeconds().toString().padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      
+      // Convert to 12-hour format
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 should be 12
+      const formattedHours = hours.toString().padStart(2, '0');
+      
+      return `${formattedHours}:${minutes}:${seconds} ${ampm}`;
+    }
+  } catch (error) {
+    console.error('Error formatting timestamp with seconds IST:', error, 'Input:', dateString);
+    return 'Invalid Time';
+  }
 };
 
 /**
@@ -116,28 +213,112 @@ export const formatTimestampWithSecondsIST = (dateString: string): string => {
  * @returns Formatted date and time string in IST
  */
 export const formatFullDateTimeIST = (dateString: string): string => {
-  const istDate = convertToIST(dateString);
-  
-  // Format date using month name, day, and year
-  const monthNames = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-  ];
-  const month = monthNames[istDate.getMonth()];
-  const day = istDate.getDate();
-  const year = istDate.getFullYear();
-  
-  // Format time with seconds
-  let hours = istDate.getHours();
-  const minutes = istDate.getMinutes().toString().padStart(2, '0');
-  const seconds = istDate.getSeconds().toString().padStart(2, '0');
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  
-  hours = hours % 12;
-  hours = hours ? hours : 12; // 0 should be 12
-  const formattedHours = hours.toString().padStart(2, '0');
-  
-  return `${month} ${day}, ${year} ${formattedHours}:${minutes}:${seconds} ${ampm}`;
+  try {
+    // Check if the string has timezone information (Z, +, -)
+    const hasTimezone = dateString.includes('Z') || dateString.includes('+') || dateString.includes('-');
+    
+    if (hasTimezone) {
+      // If it has timezone info, it's UTC (from backend toISOString())
+      // Parse the UTC date and extract components
+      const utcDate = new Date(dateString);
+      
+      if (isNaN(utcDate.getTime())) {
+        console.error('Invalid UTC date string:', dateString);
+        return 'Invalid Date';
+      }
+      
+      // Extract UTC components
+      const utcYear = utcDate.getUTCFullYear();
+      const utcMonth = utcDate.getUTCMonth();
+      const utcDay = utcDate.getUTCDate();
+      const utcHours = utcDate.getUTCHours();
+      const utcMinutes = utcDate.getUTCMinutes();
+      const utcSeconds = utcDate.getUTCSeconds();
+      
+      // Convert to IST by adding 5:30 hours
+      let istHours = utcHours + 5;
+      let istMinutes = utcMinutes + 30;
+      let istDay = utcDay;
+      let istMonth = utcMonth;
+      let istYear = utcYear;
+      
+      // Handle minute overflow
+      if (istMinutes >= 60) {
+        istHours += 1;
+        istMinutes -= 60;
+      }
+      
+      // Handle hour overflow
+      if (istHours >= 24) {
+        istHours -= 24;
+        istDay += 1;
+        
+        // Handle day overflow (simplified - doesn't handle month/year boundaries)
+        if (istDay > 31) {
+          istDay = 1;
+          istMonth += 1;
+          if (istMonth > 11) {
+            istMonth = 0;
+            istYear += 1;
+          }
+        }
+      }
+      
+      // Format date using month name, day, and year
+      const monthNames = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      const month = monthNames[istMonth];
+      const day = istDay;
+      const year = istYear;
+      
+      // Format time with seconds
+      const minutes = istMinutes.toString().padStart(2, '0');
+      const seconds = utcSeconds.toString().padStart(2, '0');
+      const ampm = istHours >= 12 ? 'PM' : 'AM';
+      
+      let displayHours = istHours % 12;
+      displayHours = displayHours ? displayHours : 12; // 0 should be 12
+      const formattedHours = displayHours.toString().padStart(2, '0');
+      
+      return `${month} ${day}, ${year} ${formattedHours}:${minutes}:${seconds} ${ampm}`;
+    } else {
+      // If no timezone info, it's likely already in IST format from database
+      // Parse it directly as local time (IST)
+      const cleanTimestamp = dateString.replace(' ', 'T');
+      const istDate = new Date(cleanTimestamp);
+      
+      if (isNaN(istDate.getTime())) {
+        console.error('Invalid IST date string:', dateString);
+        return 'Invalid Date';
+      }
+      
+      // Format date using month name, day, and year
+      const monthNames = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      const month = monthNames[istDate.getMonth()];
+      const day = istDate.getDate();
+      const year = istDate.getFullYear();
+      
+      // Format time with seconds
+      let hours = istDate.getHours();
+      const minutes = istDate.getMinutes().toString().padStart(2, '0');
+      const seconds = istDate.getSeconds().toString().padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 should be 12
+      const formattedHours = hours.toString().padStart(2, '0');
+      
+      return `${month} ${day}, ${year} ${formattedHours}:${minutes}:${seconds} ${ampm}`;
+    }
+  } catch (error) {
+    console.error('Error formatting full date time IST:', error, 'Input:', dateString);
+    return 'Invalid Date';
+  }
 };
 
 /**

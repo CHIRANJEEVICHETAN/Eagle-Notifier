@@ -20,7 +20,7 @@ import { useAlarmHistory, useAlarmConfigurations } from '../../hooks/useAlarms';
 import { Alarm } from '../../types/alarm';
 
 // Centralised timezone utilities
-import { formatFullDateTimeIST } from '../../utils/timezoneUtils';
+import { formatFullDateTimeIST, convertToIST } from '../../utils/timezoneUtils';
 
 // Helper function wrapper to keep existing function calls intact
 const formatTimestamp = (timestamp: string): string => {
@@ -28,6 +28,15 @@ const formatTimestamp = (timestamp: string): string => {
   if (timestamp.includes('2025-07-18')) {
     console.log('🔍 Debug timestamp:', timestamp);
     console.log('🔍 Formatted result:', formatFullDateTimeIST(timestamp));
+    
+    // Additional debug for timezone conversion
+    if (timestamp.includes('Z')) {
+      const utcDate = new Date(timestamp);
+      console.log('🔍 UTC Hours:', utcDate.getUTCHours());
+      console.log('🔍 UTC Minutes:', utcDate.getUTCMinutes());
+      console.log('🔍 IST Hours (calculated):', utcDate.getUTCHours() + 5);
+      console.log('🔍 IST Minutes (calculated):', utcDate.getUTCMinutes() + 30);
+    }
   }
   return formatFullDateTimeIST(timestamp);
 };
