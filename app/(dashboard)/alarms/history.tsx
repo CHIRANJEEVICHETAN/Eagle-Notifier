@@ -20,11 +20,16 @@ import { useAlarmHistory, useAlarmConfigurations } from '../../hooks/useAlarms';
 import { Alarm } from '../../types/alarm';
 
 // Centralised timezone utilities
-import { formatTimestampIST } from '../../utils/timezoneUtils';
+import { formatFullDateTimeIST } from '../../utils/timezoneUtils';
 
 // Helper function wrapper to keep existing function calls intact
 const formatTimestamp = (timestamp: string): string => {
-  return formatTimestampIST(timestamp);
+  // Temporary debug for timezone testing
+  if (timestamp.includes('2025-07-18')) {
+    console.log('🔍 Debug timestamp:', timestamp);
+    console.log('🔍 Formatted result:', formatFullDateTimeIST(timestamp));
+  }
+  return formatFullDateTimeIST(timestamp);
 };
 
 interface AlarmHistoryRecord {
@@ -336,7 +341,7 @@ export default function AlarmHistoryScreen() {
                                   <View style={styles.timeWrapper}>
                         <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
                         <Text style={[styles.timeText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-                          {formatDate(parseISO(item.timestamp), 'MMM d, yyyy')} {formatTimestamp(item.timestamp)}
+                          {formatTimestamp(item.timestamp)}
                         </Text>
                       </View>
           </View>

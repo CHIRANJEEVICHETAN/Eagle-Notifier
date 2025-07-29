@@ -15,14 +15,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { format as formatDate, parseISO, subDays } from 'date-fns';
+import { format as formatDate, subDays } from 'date-fns';
 import { FlashList } from '@shopify/flash-list';
 import { useTheme } from '../../context/ThemeContext';
 import { AlarmDetails } from '../../components/AlarmDetails';
 import { useSpecificAlarmHistory } from '../../hooks/useAlarms';
 import { Alarm } from '../../types/alarm';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { formatTimestampIST } from '../../utils/timezoneUtils';
+import { formatFullDateTimeIST, formatTimestampWithSecondsIST } from '../../utils/timezoneUtils';
 
 // Filter types for alarm history
 type AlarmFilter = 'active' | 'acknowledged' | 'resolved' | 'all';
@@ -40,7 +40,7 @@ interface AlarmHistoryRecord {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Wrapper to keep existing calls intact
-const formatTimestamp = (timestamp: string): string => formatTimestampIST(timestamp);
+const formatTimestamp = (timestamp: string): string => formatFullDateTimeIST(timestamp);
 
 export default function AlarmDetailScreen() {
   const { isDarkMode } = useTheme();
@@ -218,7 +218,7 @@ export default function AlarmDetailScreen() {
         // Search in value, description, and formatted timestamp
         const valueStr = typeof item.value === 'string' ? item.value.toLowerCase() : String(item.value).toLowerCase();
         const descriptionStr = item.description.toLowerCase();
-        const timestampStr = (formatDate(parseISO(item.timestamp), 'MMM d, yyyy') + ' ' + formatTimestamp(item.timestamp)).toLowerCase();
+        const timestampStr = formatTimestamp(item.timestamp).toLowerCase();
         
         return valueStr.includes(query) || 
                descriptionStr.includes(query) ||
@@ -470,7 +470,7 @@ export default function AlarmDetailScreen() {
               Ack by:
             </Text>
             <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-              {item.acknowledgedBy.name} • {item.acknowledgedAt ? formatDate(parseISO(item.acknowledgedAt), 'MMM d') + ', ' + formatTimestamp(item.acknowledgedAt).split(' ').slice(0, 2).join(' ') : ''}
+              {item.acknowledgedBy.name} • {item.acknowledgedAt ? formatTimestamp(item.acknowledgedAt) : ''}
             </Text>
           </View>
         )}
@@ -482,7 +482,7 @@ export default function AlarmDetailScreen() {
                 Resolved:
               </Text>
               <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                {item.resolvedBy.name} • {item.resolvedAt ? formatDate(parseISO(item.resolvedAt), 'MMM d') + ', ' + formatTimestamp(item.resolvedAt).split(' ').slice(0, 2).join(' ') : ''}
+                {item.resolvedBy.name} • {item.resolvedAt ? formatTimestamp(item.resolvedAt) : ''}
               </Text>
             </View>
             
@@ -502,7 +502,7 @@ export default function AlarmDetailScreen() {
         <View style={styles.timeWrapper}>
           <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
           <Text style={[styles.timeText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            {formatDate(parseISO(item.timestamp), 'MMM d, yyyy')} {formatTimestamp(item.timestamp)}
+            {formatTimestamp(item.timestamp)}
           </Text>
         </View>
       </View>
@@ -931,7 +931,7 @@ export default function AlarmDetailScreen() {
                 Acknowledged:
               </Text>
               <Text style={[styles.detailValue, { color: isDarkMode ? '#E5E7EB' : '#4B5563' }]}>
-                {alarmSummary.acknowledgedBy.name} • {alarmSummary.acknowledgedAt ? formatDate(parseISO(alarmSummary.acknowledgedAt), 'MMM d') + ', ' + formatTimestamp(alarmSummary.acknowledgedAt).split(' ').slice(0, 2).join(' ') : ''}
+                {alarmSummary.acknowledgedBy.name} • {alarmSummary.acknowledgedAt ? formatTimestamp(alarmSummary.acknowledgedAt) : ''}
               </Text>
             </View>
           )}
