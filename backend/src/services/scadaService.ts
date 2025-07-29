@@ -75,6 +75,60 @@ const MAX_CONSECUTIVE_ERRORS = 5;
 let lastProcessedTimestamp: string | null = null;
 let cachedProcessedAlarms: any = null;
 
+// Add schema config cache for invalidation
+let lastSchemaConfigHash: string | null = null;
+let schemaConfigCache: any = null;
+
+// Helper function to create a hash of schema config for change detection
+const createSchemaConfigHash = (schemaConfig: OrganizationSchemaConfig): string => {
+    const configString = JSON.stringify({
+        columns: schemaConfig.columns,
+        table: schemaConfig.table,
+        columnConfigs: schemaConfig.columnConfigs
+    });
+    return Buffer.from(configString).toString('base64');
+};
+
+// Function to clear schema config cache (useful for testing or manual invalidation)
+export const clearSchemaConfigCache = () => {
+    lastSchemaConfigHash = null;
+    schemaConfigCache = null;
+    cachedProcessedAlarms = null;
+    lastProcessedTimestamp = null;
+    if (DEBUG) console.log('🧹 Schema config cache cleared');
+};
+
+// Function to force refresh schema config for a specific organization
+export const forceRefreshSchemaConfig = async (orgId: string) => {
+    try {
+        // Clear the cache for this organization
+        lastSchemaConfigHash = null;
+        schemaConfigCache = null;
+        cachedProcessedAlarms = null;
+        lastProcessedTimestamp = null;
+        
+        // Fetch fresh schema config
+        const freshConfig = await getOrganizationSchemaConfig(orgId);
+        const newHash = createSchemaConfigHash(freshConfig);
+        
+        // Update cache with fresh data
+        schemaConfigCache = freshConfig;
+        lastSchemaConfigHash = newHash;
+        
+        if (DEBUG) {
+            console.log(`🔄 Forced schema config refresh for org ${orgId}`);
+            console.log(`📊 New schema hash: ${newHash}`);
+            console.log(`📊 Columns: ${freshConfig.columns.length}`);
+            console.log(`📊 ColumnConfigs: ${Object.keys(freshConfig.columnConfigs || {}).length}`);
+        }
+        
+        return freshConfig;
+    } catch (error) {
+        console.error('🔴 Error forcing schema config refresh:', error);
+        throw error;
+    }
+};
+
 // Dynamic ScadaData interface - will be built from org schema config
 export interface ScadaData {
     [key: string]: any; // Dynamic properties based on org schema
@@ -558,6 +612,7 @@ export const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organ
   console.log(`\n🔍 Processing alarm configs:`);
   console.log(`📊 Available columns: ${availableColumns.length}`);
   console.log(`📊 Has columnConfigs: ${!!schemaConfig.columnConfigs}`);
+  console.log(`📊 Available columns list: ${availableColumns.join(', ')}`);
 
   // If columnConfigs are provided, use them for dynamic configuration
   if (schemaConfig.columnConfigs) {
@@ -768,6 +823,21 @@ export const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organ
   console.log(`\n📊 Final config summary:`);
   console.log(`  Analog alarms: ${analogConfigs.length}`);
   console.log(`  Binary alarms: ${binaryConfigs.length}`);
+  
+  // Log all configured alarms for debugging
+  if (analogConfigs.length > 0) {
+      console.log(`  Analog alarms configured:`);
+      analogConfigs.forEach(config => {
+          console.log(`    - ${config.name} (${config.pvField}${config.svField ? '/' + config.svField : ''})`);
+      });
+  }
+  
+  if (binaryConfigs.length > 0) {
+      console.log(`  Binary alarms configured:`);
+      binaryConfigs.forEach(config => {
+          console.log(`    - ${config.name} (${config.field})`);
+      });
+  }
 
   return { analogConfigs, binaryConfigs };
 };
@@ -799,13 +869,29 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
           throw new Error('No SCADA data available');
       }
 
+      // Get organization schema configuration FIRST to check for changes
+      const schemaConfig = await getOrganizationSchemaConfig(orgId);
+      const currentSchemaHash = createSchemaConfigHash(schemaConfig);
+      
       // Check if this is the same timestamp as previously processed, even on force refresh
       const scadaTimestamp = parseISTTimestamp(scadaData.created_timestamp);
       const scadaTimestampString = scadaTimestamp.toISOString();
       
-      if (lastProcessedTimestamp === scadaTimestampString) {
+      // Check if schema config has changed
+      const schemaConfigChanged = lastSchemaConfigHash !== currentSchemaHash;
+      
+      if (DEBUG) {
+          console.log(`📊 Schema config check:`);
+          console.log(`  Current hash: ${currentSchemaHash}`);
+          console.log(`  Last hash: ${lastSchemaConfigHash}`);
+          console.log(`  Schema changed: ${schemaConfigChanged}`);
+          console.log(`  Force refresh: ${forceRefresh}`);
+      }
+      
+      // If same timestamp AND same schema config AND not force refresh, return cached alarms
+      if (lastProcessedTimestamp === scadaTimestampString && !schemaConfigChanged && !forceRefresh) {
           if (DEBUG) {
-              console.log(`📊 Timestamp ${scadaTimestampString} already processed, returning cached alarms (no notifications will be sent)`);
+              console.log(`📊 Timestamp ${scadaTimestampString} already processed with same schema, returning cached alarms (no notifications will be sent)`);
           }
           
           // Return cached alarms without processing (no notifications)
@@ -814,13 +900,21 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
                   ...cachedProcessedAlarms,
                   lastUpdate: new Date(),
                   fromCache: true,
-                  skipReason: 'Same timestamp as previously processed'
+                  skipReason: 'Same timestamp and schema as previously processed'
               };
           }
       }
-
-      // Get organization schema configuration
-      const schemaConfig = await getOrganizationSchemaConfig(orgId);
+      
+      // If schema config changed, log it for debugging
+      if (schemaConfigChanged) {
+          console.log(`🔄 Schema configuration changed for org ${orgId}, re-processing alarms`);
+          if (DEBUG) {
+              console.log(`📊 Previous schema columns: ${schemaConfigCache?.columns?.length || 0}`);
+              console.log(`📊 New schema columns: ${schemaConfig.columns.length}`);
+              console.log(`📊 Previous columnConfigs: ${Object.keys(schemaConfigCache?.columnConfigs || {}).length}`);
+              console.log(`📊 New columnConfigs: ${Object.keys(schemaConfig.columnConfigs || {}).length}`);
+          }
+      }
 
       if (DEBUG) {
           console.log(`📊 Processing new timestamp: ${scadaTimestampString} (previous: ${lastProcessedTimestamp})`);
@@ -1005,12 +1099,17 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
       // Cache the processed alarms and update last processed timestamp
       cachedProcessedAlarms = result;
       lastProcessedTimestamp = scadaTimestampString;
+      
+      // Cache the schema config and hash for change detection
+      schemaConfigCache = schemaConfig;
+      lastSchemaConfigHash = currentSchemaHash;
 
       if (DEBUG) {
           console.log('📊 Processed Alarms Summary:');
           console.log(`Analog Alarms: ${analogAlarms.length}`);
           console.log(`Binary Alarms: ${binaryAlarms.length}`);
           console.log(`Cached timestamp: ${lastProcessedTimestamp}`);
+          console.log(`Cached schema hash: ${lastSchemaConfigHash}`);
           console.log(`Maintenance Mode: ${isMaintenanceActive}`);
       }
 
@@ -1172,6 +1271,28 @@ export const getScadaAlarmHistory = async (
       
       const statusMap = new Map(alarmStatuses.map(status => [status.id, status]));
       
+      // Check if schema config has changed
+      const currentSchemaHash = createSchemaConfigHash(schemaConfig);
+      const schemaConfigChanged = lastSchemaConfigHash !== currentSchemaHash;
+
+      if (DEBUG) {
+          console.log(`📊 Schema config check for history:`);
+          console.log(`  Current hash: ${currentSchemaHash}`);
+          console.log(`  Last hash: ${lastSchemaConfigHash}`);
+          console.log(`  Schema changed: ${schemaConfigChanged}`);
+      }
+
+      // If schema config changed, re-process alarms to ensure correct setpoints
+      if (schemaConfigChanged) {
+          console.log(`🔄 Schema configuration changed for org ${orgId}, re-processing alarms for history`);
+          if (DEBUG) {
+              console.log(`📊 Previous schema columns: ${schemaConfigCache?.columns?.length || 0}`);
+              console.log(`📊 New schema columns: ${schemaConfig.columns.length}`);
+              console.log(`📊 Previous columnConfigs: ${Object.keys(schemaConfigCache?.columnConfigs || {}).length}`);
+              console.log(`📊 New columnConfigs: ${Object.keys(schemaConfig.columnConfigs || {}).length}`);
+          }
+      }
+
       // Filter by alarm type if specified
       let filteredAlarms = alarms;
       if (alarmType) {

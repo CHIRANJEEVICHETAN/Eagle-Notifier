@@ -5,6 +5,7 @@ import { createError } from '../middleware/errorHandler';
 import { authenticate, authorize, getRequestOrgId } from '../middleware/authMiddleware';
 import { Router } from 'express';
 import BackgroundMonitoringService from '../services/backgroundMonitoringService';
+import { forceRefreshSchemaConfig } from '../services/scadaService';
 
 const router = Router();
 
@@ -420,10 +421,30 @@ router.put('/organizations/:id', async (req: Request, res: Response, next: NextF
   try {
     const { id } = req.params;
     const { name, scadaDbConfig, schemaConfig } = req.body;
+    
+    // Get the current organization to check if schema config is being updated
+    const currentOrg = await prisma.organization.findUnique({
+      where: { id },
+      select: { schemaConfig: true }
+    });
+    
     const org = await prisma.organization.update({
       where: { id },
       data: { name, scadaDbConfig, schemaConfig },
     });
+    
+    // If schema config was updated, refresh the SCADA service cache
+    if (schemaConfig && currentOrg?.schemaConfig !== schemaConfig) {
+      try {
+        console.log(`🔄 Organization ${id} schema config updated, refreshing SCADA cache...`);
+        await forceRefreshSchemaConfig(id);
+        console.log(`✅ SCADA cache refreshed for organization ${id}`);
+      } catch (cacheError) {
+        console.error(`⚠️ Failed to refresh SCADA cache for organization ${id}:`, cacheError);
+        // Don't fail the request if cache refresh fails
+      }
+    }
+    
     res.json(org);
   } catch (error) { next(error); }
 });
