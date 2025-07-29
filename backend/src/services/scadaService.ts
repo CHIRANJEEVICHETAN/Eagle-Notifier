@@ -316,7 +316,11 @@ interface PrismaSetpoint {
 }
 
 // Helper function to format alarm values
-const formatValue = (value: number, unit?: string): string => {
+const formatValue = (value: number | undefined | null, unit?: string): string => {
+    // Handle undefined, null, or NaN values
+    if (value === undefined || value === null || isNaN(value)) {
+        return `N/A${unit ? ` ${unit}` : ''}`;
+    }
     return `${value.toFixed(2)}${unit ? ` ${unit}` : ''}`;
 };
 
@@ -880,16 +884,21 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
       // Check if schema config has changed
       const schemaConfigChanged = lastSchemaConfigHash !== currentSchemaHash;
       
+      // Check if this is a new timestamp (for notification purposes)
+      // IMPORTANT: This should NEVER be affected by forceRefresh
+      const isNewTimestamp = lastProcessedTimestamp !== scadaTimestampString;
+      
       if (DEBUG) {
           console.log(`📊 Schema config check:`);
           console.log(`  Current hash: ${currentSchemaHash}`);
           console.log(`  Last hash: ${lastSchemaConfigHash}`);
           console.log(`  Schema changed: ${schemaConfigChanged}`);
+          console.log(`  New timestamp: ${isNewTimestamp}`);
           console.log(`  Force refresh: ${forceRefresh}`);
       }
       
       // If same timestamp AND same schema config AND not force refresh, return cached alarms
-      if (lastProcessedTimestamp === scadaTimestampString && !schemaConfigChanged && !forceRefresh) {
+      if (!isNewTimestamp && !schemaConfigChanged && !forceRefresh) {
           if (DEBUG) {
               console.log(`📊 Timestamp ${scadaTimestampString} already processed with same schema, returning cached alarms (no notifications will be sent)`);
           }
@@ -905,6 +914,13 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
           }
       }
       
+      // If force refresh but same timestamp, we still process for display but won't send notifications
+      if (forceRefresh && !isNewTimestamp) {
+          if (DEBUG) {
+              console.log(`📊 Force refresh requested but same timestamp ${scadaTimestampString}, processing for display only (no notifications)`);
+          }
+      }
+      
       // If schema config changed, log it for debugging
       if (schemaConfigChanged) {
           console.log(`🔄 Schema configuration changed for org ${orgId}, re-processing alarms`);
@@ -917,7 +933,11 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
       }
 
       if (DEBUG) {
-          console.log(`📊 Processing new timestamp: ${scadaTimestampString} (previous: ${lastProcessedTimestamp})`);
+          console.log(`📊 Processing timestamp: ${scadaTimestampString} (previous: ${lastProcessedTimestamp})`);
+          console.log(`📊 Will send notifications: ${isNewTimestamp && !isMaintenanceActive}`);
+          if (forceRefresh && !isNewTimestamp) {
+              console.log(`📊 Force refresh mode: processing for display only, no notifications`);
+          }
       }
 
       const setpointConfigs = await getSetpointConfigs(orgId);
@@ -982,6 +1002,21 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
               setValue = scadaData[config.svField] as number;
           }
 
+          // Validate that we have valid numeric values
+          if (currentValue === undefined || currentValue === null || isNaN(currentValue)) {
+              if (DEBUG) {
+                  console.log(`⚠️ Invalid current value for ${config.pvField}: ${currentValue}, skipping alarm`);
+              }
+              continue; // Skip this alarm if we don't have valid data
+          }
+
+          if (setValue === undefined || setValue === null || isNaN(setValue)) {
+              if (DEBUG) {
+                  console.log(`⚠️ Invalid set value for ${config.svField || config.pvField}: ${setValue}, using current value as setpoint`);
+              }
+              setValue = currentValue; // Use current value as setpoint if SV is invalid
+          }
+
           // Update default deviations based on alarm type
           const getDefaultDeviation = (type: string, isHigh: boolean = false) => {
               switch (type.toLowerCase()) {
@@ -1038,8 +1073,9 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
               alarmType: 'analog'
           });
 
-          // Only send notifications if not in maintenance mode
-          if (severity !== 'info' && !isMaintenanceActive) {
+          // Only send notifications if not in maintenance mode AND this is a new timestamp
+          // IMPORTANT: forceRefresh does NOT affect notification logic - notifications only for new timestamps
+          if (severity !== 'info' && !isMaintenanceActive && isNewTimestamp) {
               await createEnhancedNotification(
                   config.name,
                   `${config.name} Alert`,
@@ -1057,6 +1093,16 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
       // Process Binary Alarms
       for (const config of binaryConfigs) {
           const value = scadaData[config.field] as boolean;
+          
+          // Validate binary value
+          if (value === undefined || value === null) {
+              if (DEBUG) {
+                  console.log(`⚠️ Invalid binary value for ${config.field}: ${value}, treating as false (no failure)`);
+              }
+              // Treat undefined/null as false (no failure)
+              continue; // Skip this alarm if we don't have valid data
+          }
+          
           const severity = calculateBinarySeverity(value);
           const status = value ? 'FAILURE' : 'NORMAL';
 
@@ -1072,8 +1118,9 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
               zone: config.zone
           });
 
-          // Only send notifications if binary alarm is active and not in maintenance mode
-          if (value && !isMaintenanceActive) {
+          // Only send notifications if binary alarm is active and not in maintenance mode AND this is a new timestamp
+          // IMPORTANT: forceRefresh does NOT affect notification logic - notifications only for new timestamps
+          if (value && !isMaintenanceActive && isNewTimestamp) {
               await createEnhancedNotification(
                   config.name,
                   `${config.name} Status Change`,
@@ -1111,6 +1158,7 @@ export const processAndFormatAlarms = async (orgId: string, forceRefresh = false
           console.log(`Cached timestamp: ${lastProcessedTimestamp}`);
           console.log(`Cached schema hash: ${lastSchemaConfigHash}`);
           console.log(`Maintenance Mode: ${isMaintenanceActive}`);
+          console.log(`Notifications sent: ${isNewTimestamp && !isMaintenanceActive}`);
       }
 
       return result;
@@ -1429,6 +1477,21 @@ async function processScadaDataRow(orgId: string, scadaData: ScadaData) {
       setValue = scadaData[config.svField] as number;
     }
     
+    // Validate that we have valid numeric values
+    if (currentValue === undefined || currentValue === null || isNaN(currentValue)) {
+        if (DEBUG) {
+            console.log(`⚠️ Invalid current value for ${config.pvField}: ${currentValue}, skipping alarm`);
+        }
+        continue; // Skip this alarm if we don't have valid data
+    }
+
+    if (setValue === undefined || setValue === null || isNaN(setValue)) {
+        if (DEBUG) {
+            console.log(`⚠️ Invalid set value for ${config.svField || config.pvField}: ${setValue}, using current value as setpoint`);
+        }
+        setValue = currentValue; // Use current value as setpoint if SV is invalid
+    }
+
     // Use the same deviation logic as in original function
     const getDefaultDeviation = (type: string, isHigh: boolean = false) => {
       switch (type.toLowerCase()) {
@@ -1479,6 +1542,16 @@ async function processScadaDataRow(orgId: string, scadaData: ScadaData) {
   // Process binary alarms
   for (const config of binaryConfigs) {
     const value = scadaData[config.field] as boolean;
+    
+    // Validate binary value
+    if (value === undefined || value === null) {
+        if (DEBUG) {
+            console.log(`⚠️ Invalid binary value for ${config.field}: ${value}, treating as false (no failure)`);
+        }
+        // Treat undefined/null as false (no failure)
+        continue; // Skip this alarm if we don't have valid data
+    }
+    
     const severity = calculateBinarySeverity(value);
     const status = value ? 'FAILURE' : 'NORMAL';
     

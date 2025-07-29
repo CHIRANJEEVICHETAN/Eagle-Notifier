@@ -79,10 +79,23 @@ app.get('/', (req, res) => {
 app.get('/health', (_req, res) => {
   res.status(200).json({
     status: 'healthy',
-    environment: process.env.NODE_ENV || 'development',
+    environment: process
+    .env.NODE_ENV || 'development',
     timestamp: new Date().toISOString(),
   });
 });
+
+// Add this to your server.ts file temporarily
+app.get('/test-deployment', (req, res) => {
+  res.json({
+    message: 'CI/CD Test Successful',
+    timestamp: new Date().toISOString(),
+    prismaStatus: 'Client loaded successfully',
+    environment: process.env.NODE_ENV,
+    deploymentTest: true
+  });
+});
+
 
 
 // Mount route modules
