@@ -626,7 +626,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             break;
           case 403:
-            errorMessage = 'Your account is not authorized to access this application.';
+            // Check for specific organization disabled error message
+            if (error.response.data?.error?.message?.includes('organization is currently disabled')) {
+              errorMessage = error.response.data.error.message;
+              errorType = 'warning'; // Use warning type for organization disabled
+            } else if (error.response.data?.message?.includes('organization is currently disabled')) {
+              errorMessage = error.response.data.message;
+              errorType = 'warning'; // Use warning type for organization disabled
+            } else {
+              errorMessage = 'Your account is not authorized to access this application.';
+            }
             break;
           case 404:
             errorMessage = 'Login service is currently unavailable. Please try again later.';
@@ -653,8 +662,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Try to get error message from response if available
             if (error.response.data?.error?.message) {
               errorMessage = error.response.data.error.message;
+              // Check if it's an organization disabled error
+              if (errorMessage.includes('organization is currently disabled')) {
+                errorType = 'warning';
+              }
             } else if (error.response.data?.message) {
               errorMessage = error.response.data.message;
+              // Check if it's an organization disabled error
+              if (errorMessage.includes('organization is currently disabled')) {
+                errorType = 'warning';
+              }
             }
         }
       } else if (error.request) {

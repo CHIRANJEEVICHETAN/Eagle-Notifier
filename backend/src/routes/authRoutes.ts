@@ -115,11 +115,19 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     // Check if user exists with the provided email
     const user = await prisma.user.findUnique({
       where: { email },
+      include: {
+        organization: true
+      }
     });
     
     if (!user) {
       // Email doesn't exist in our database
       throw createError('No account found with this email address', 401);
+    }
+    
+    // Check if user's organization is enabled (skip for SUPER_ADMIN)
+    if (user.role !== 'SUPER_ADMIN' && user.organization && !user.organization.isEnabled) {
+      throw createError('Your organization is currently disabled. Please contact your administrator.', 403);
     }
     
     // Check password

@@ -85,6 +85,17 @@ export class NotificationService {
         return;
       }
       
+      // Check if organization is enabled
+      const org = await prisma.organization.findUnique({
+        where: { id: data.organizationId },
+        select: { isEnabled: true }
+      });
+      
+      if (!org?.isEnabled) {
+        console.log('🛑 Organization disabled - skipping notification creation');
+        return;
+      }
+      
       // Get users from the specific organization with notification settings and push tokens
       const users = await withRetry(() => prisma.user.findMany({
         where: {

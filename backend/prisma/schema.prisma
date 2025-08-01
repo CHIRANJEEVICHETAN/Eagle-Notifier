@@ -23,6 +23,7 @@ model Organization {
   name         String
   scadaDbConfig Json    // Encrypted: { host, port, user, pass, db, table, columns }
   schemaConfig  Json    // Alarm logic, column mapping, etc.
+  isEnabled    Boolean  @default(true) // Whether the organization is enabled
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   users        User[]

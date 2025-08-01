@@ -20,8 +20,7 @@ import { useAuth } from '../../context/AuthContext';
 // import OrganizationManagement from '../../components/OrganizationManagement';
 // import SuperAdminUserManagement from '../../components/SuperAdminUserManagement';
 import { useRouter, usePathname } from 'expo-router';
-// Import org-aware API (to be implemented if not present)
-// import { fetchOrganizations, createOrganization, updateOrganization, deleteOrganization } from '../../api/superAdminApi';
+import { useSuperAdminMetrics } from '../../hooks/useSuperAdminMetrics';
 import { Ionicons } from '@expo/vector-icons';
 
 const windowWidth = Dimensions.get('window').width;
@@ -52,30 +51,12 @@ const CARD_COLORS = [
   { light: ['#cffafe', '#f1f5f9'], dark: ['#334155', '#1e293b'] }, // Search
 ];
 
-// Metrics mock data and color config
-const METRICS_DATA = [
-  {
-    icon: 'business-outline',
-    value: '12',
-    title: 'Organizations',
-    subtitle: '2 new this week',
-    color: '#3B82F6', // Blue
-  },
-  {
-    icon: 'people-outline',
-    value: '156',
-    title: 'Total Users',
-    subtitle: '8 new this week',
-    color: '#10B981', // Green
-  },
-  {
-    icon: 'alert-circle-outline',
-    value: '4',
-    title: 'Active',
-    subtitle: 'Out of 12',
-    color: '#EF4444', // Red
-  },
-];
+// Metrics color config
+const METRICS_COLORS = {
+  organizations: '#3B82F6', // Blue
+  users: '#10B981', // Green
+  active: '#EF4444', // Red
+};
 
 // Animated Metric Card Component
 const AnimatedMetricCard: React.FC<{
@@ -216,6 +197,7 @@ const SuperAdminDashboard = () => {
   const { authState } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const { metrics, isLoading: metricsLoading, error: metricsError } = useSuperAdminMetrics();
 
   // Navigation function with debugging
   const handleNavigation = (route: string, sectionTitle: string) => {
@@ -419,9 +401,58 @@ const SuperAdminDashboard = () => {
           Quick Info
         </Text>
         <View style={styles.metricsGrid}>
-          {METRICS_DATA.map((metric, idx) => (
-            <AnimatedMetricCard key={metric.title} {...metric} index={idx} />
-          ))}
+          {metricsLoading ? (
+            // Loading state
+            Array.from({ length: 3 }).map((_, idx) => (
+              <View key={`loading-${idx}`} style={[styles.metricCard, { backgroundColor: isDarkMode ? '#1e293b' : '#fff' }]}>
+                <View style={[styles.metricIconContainer, { backgroundColor: isDarkMode ? '#334155' : '#f1f5f9' }]}>
+                  <Ionicons name="ellipsis-horizontal" size={24} color={isDarkMode ? '#94a3b8' : '#64748b'} />
+                </View>
+                <Text style={[styles.metricValue, { color: isDarkMode ? '#94a3b8' : '#64748b' }]}>...</Text>
+                <Text style={[styles.metricTitle, { color: isDarkMode ? '#94a3b8' : '#64748b' }]}>Loading...</Text>
+                <Text style={[styles.metricSubtitle, { color: isDarkMode ? '#64748b' : '#94a3b8' }]}>Please wait</Text>
+              </View>
+            ))
+          ) : metricsError ? (
+            // Error state
+            Array.from({ length: 3 }).map((_, idx) => (
+              <View key={`error-${idx}`} style={[styles.metricCard, { backgroundColor: isDarkMode ? '#1e293b' : '#fff' }]}>
+                <View style={[styles.metricIconContainer, { backgroundColor: isDarkMode ? '#7f1d1d' : '#fee2e2' }]}>
+                  <Ionicons name="alert-circle" size={24} color={isDarkMode ? '#ef4444' : '#dc2626'} />
+                </View>
+                <Text style={[styles.metricValue, { color: isDarkMode ? '#ef4444' : '#dc2626' }]}>--</Text>
+                <Text style={[styles.metricTitle, { color: isDarkMode ? '#ef4444' : '#dc2626' }]}>Error</Text>
+                <Text style={[styles.metricSubtitle, { color: isDarkMode ? '#fca5a5' : '#fecaca' }]}>Failed to load</Text>
+              </View>
+            ))
+          ) : metrics ? (
+            // Live data
+            [
+              {
+                icon: 'business-outline',
+                value: metrics.totalOrganizations.toString(),
+                title: 'Organizations',
+                subtitle: `${metrics.newOrganizationsThisWeek} new this week`,
+                color: METRICS_COLORS.organizations,
+              },
+              {
+                icon: 'people-outline',
+                value: metrics.totalUsers.toString(),
+                title: 'Total Users',
+                subtitle: `${metrics.newUsersThisWeek} new this week`,
+                color: METRICS_COLORS.users,
+              },
+              {
+                icon: 'checkmark-circle-outline',
+                value: metrics.activeOrganizations.toString(),
+                title: 'Active',
+                subtitle: `Out of ${metrics.totalOrganizations}`,
+                color: METRICS_COLORS.active,
+              },
+            ].map((metric, idx) => (
+              <AnimatedMetricCard key={metric.title} {...metric} index={idx} />
+            ))
+          ) : null}
         </View>
       </View>
       {/* Body */}

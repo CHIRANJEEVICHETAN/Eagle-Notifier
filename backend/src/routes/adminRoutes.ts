@@ -448,6 +448,45 @@ router.put('/organizations/:id', async (req: Request, res: Response, next: NextF
     res.json(org);
   } catch (error) { next(error); }
 });
+
+/**
+ * @route   PATCH /api/admin/organizations/:id/toggle-status
+ * @desc    Toggle organization enabled/disabled status (superAdmin only)
+ * @access  Private (Super Admin)
+ */
+router.patch('/organizations/:id/toggle-status', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { isEnabled } = req.body;
+    
+    // Only SUPER_ADMIN can toggle organization status
+    if (req.user?.role !== 'SUPER_ADMIN') {
+      throw createError('Forbidden', 403);
+    }
+    
+    if (typeof isEnabled !== 'boolean') {
+      throw createError('isEnabled must be a boolean value', 400);
+    }
+    
+    const org = await prisma.organization.update({
+      where: { id },
+      data: { isEnabled },
+    });
+    
+    // Log the status change
+    console.log(`🔄 Organization ${org.name} (${id}) ${isEnabled ? 'ENABLED' : 'DISABLED'} by SUPER_ADMIN ${req.user.email}`);
+    
+    if (!isEnabled) {
+      console.log(`🛑 Users under ${org.name} will not be able to login`);
+      console.log(`🛑 SCADA data fetching and notifications will be stopped for ${org.name}`);
+    } else {
+      console.log(`▶️ Users under ${org.name} can now login`);
+      console.log(`▶️ SCADA data fetching and notifications will resume for ${org.name}`);
+    }
+    
+    res.json(org);
+  } catch (error) { next(error); }
+});
 router.delete('/organizations/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
@@ -500,6 +539,79 @@ const getOrganizationsHandler = async (req: any, res: any, next: any) => {
 };
 
 router.get('/organizations', getOrganizationsHandler);
+
+/**
+ * @route   GET /api/admin/metrics
+ * @desc    Get super admin metrics (superAdmin only)
+ * @access  Private (Super Admin)
+ */
+const getMetricsHandler = async (req: any, res: any, next: any) => {
+  try {
+    // Only SUPER_ADMIN can access this route
+    if (req.user?.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    // Get current date and start of week
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay()); // Start of current week (Sunday)
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    // Fetch all organizations
+    const organizations = await prisma.organization.findMany({
+      select: {
+        id: true,
+        isEnabled: true,
+        createdAt: true,
+        users: {
+          select: {
+            id: true,
+            createdAt: true,
+          }
+        }
+      }
+    });
+
+    // Calculate metrics
+    const totalOrganizations = organizations.length;
+    const activeOrganizations = organizations.filter(org => org.isEnabled).length;
+    const disabledOrganizations = organizations.filter(org => !org.isEnabled).length;
+    
+    // Count new organizations this week
+    const newOrganizationsThisWeek = organizations.filter(org => 
+      new Date(org.createdAt) >= startOfWeek
+    ).length;
+
+    // Count total users and new users this week
+    let totalUsers = 0;
+    let newUsersThisWeek = 0;
+
+    organizations.forEach(org => {
+      totalUsers += org.users.length;
+      org.users.forEach(user => {
+        if (new Date(user.createdAt) >= startOfWeek) {
+          newUsersThisWeek++;
+        }
+      });
+    });
+
+    const metrics = {
+      totalOrganizations,
+      totalUsers,
+      activeOrganizations,
+      newOrganizationsThisWeek,
+      newUsersThisWeek,
+      disabledOrganizations,
+    };
+
+    res.json(metrics);
+  } catch (error) {
+    next(error);
+  }
+};
+
+router.get('/metrics', getMetricsHandler);
 
 /**
  * @route   GET /api/admin/monitoring/status

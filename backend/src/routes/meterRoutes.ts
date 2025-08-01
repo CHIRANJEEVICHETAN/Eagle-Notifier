@@ -333,6 +333,17 @@ async function checkThresholdViolations(readings: {
       return;
     }
     
+    // Check if organization is enabled
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { isEnabled: true }
+    });
+    
+    if (!org?.isEnabled) {
+      console.log('🛑 Organization disabled - skipping threshold violation checks');
+      return;
+    }
+    
     // Get limits for the specific organization
     const limits = await prisma.meterLimit.findMany({
       where: {

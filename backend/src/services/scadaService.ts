@@ -399,6 +399,17 @@ const calculateBinarySeverity = (isFailure: boolean): 'critical' | 'warning' | '
 export const getLatestScadaData = async (orgId: string, forceRefresh = false): Promise<ScadaData | null> => {
   const now = Date.now();
   
+  // Check if organization is enabled
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { isEnabled: true }
+  });
+  
+  if (!org?.isEnabled && !forceRefresh) {
+    if (DEBUG) console.log('🛑 Organization disabled - skipping SCADA data fetch');
+    return null;
+  }
+  
   // Check if maintenance mode is active
   const isMaintenanceActive = await isMaintenanceModeActive(orgId);
   if (isMaintenanceActive && !forceRefresh) {
@@ -853,6 +864,17 @@ export const getDynamicAlarmConfigs = (scadaData: ScadaData, schemaConfig: Organ
  */
 export const processAndFormatAlarms = async (orgId: string, forceRefresh = false) => {
   try {
+      // Check if organization is enabled
+      const org = await prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { isEnabled: true }
+      });
+      
+      if (!org?.isEnabled && !forceRefresh) {
+        if (DEBUG) console.log('🛑 Organization disabled - skipping alarm processing');
+        return [];
+      }
+      
       // Check if maintenance mode is active
       const isMaintenanceActive = await isMaintenanceModeActive(orgId);
       

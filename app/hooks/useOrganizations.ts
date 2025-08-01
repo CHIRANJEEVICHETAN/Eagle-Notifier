@@ -7,6 +7,7 @@ export interface Organization {
   name: string;
   scadaDbConfig: string;
   schemaConfig: string;
+  isEnabled: boolean;
 }
 
 interface OrgForm {
@@ -63,12 +64,24 @@ export function useOrganizations() {
     }
   });
 
+  // Toggle organization status
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ id, isEnabled }: { id: string; isEnabled: boolean }) => {
+      const { data } = await axios.patch<Organization>(`${apiConfig.apiUrl}/api/admin/organizations/${id}/toggle-status`, { isEnabled });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organizations'] });
+    }
+  });
+
   return {
     organizations,
     isLoading,
     createOrganization: createMutation.mutateAsync,
     updateOrganization: (id: string, form: OrgForm) => updateMutation.mutateAsync({ id, form }),
     deleteOrganization: deleteMutation.mutateAsync,
+    toggleOrganizationStatus: (id: string, isEnabled: boolean) => toggleStatusMutation.mutateAsync({ id, isEnabled }),
     refetchOrganizations: refetch,
   };
 } 

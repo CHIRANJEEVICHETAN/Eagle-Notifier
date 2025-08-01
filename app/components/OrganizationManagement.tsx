@@ -48,6 +48,7 @@ const OrganizationManagement: React.FC = () => {
     createOrganization,
     updateOrganization,
     deleteOrganization,
+    toggleOrganizationStatus,
     refetchOrganizations
   } = useOrganizations();
   const [search, setSearch] = useState('');
@@ -554,6 +555,40 @@ const OrganizationManagement: React.FC = () => {
     setIsRefreshing(false);
   };
 
+  // State for toggle status confirmation modal
+  const [showToggleStatusModal, setShowToggleStatusModal] = useState(false);
+  const [toggleStatusOrg, setToggleStatusOrg] = useState<Organization | null>(null);
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+
+  // Handler for toggling organization status
+  const handleToggleStatus = async (org: Organization) => {
+    setToggleStatusOrg(org);
+    setShowToggleStatusModal(true);
+  };
+
+  const confirmToggleStatus = async () => {
+    if (!toggleStatusOrg) return;
+    
+    setIsTogglingStatus(true);
+    try {
+      await toggleOrganizationStatus(toggleStatusOrg.id, !toggleStatusOrg.isEnabled);
+      setSuccessMessage(`Organization ${toggleStatusOrg.isEnabled ? 'disabled' : 'enabled'} successfully!`);
+      setShowSuccessModal(true);
+      setShowToggleStatusModal(false);
+      setToggleStatusOrg(null);
+    } catch (error) {
+      console.error('Error toggling organization status:', error);
+      Alert.alert('Error', 'Failed to update organization status');
+    } finally {
+      setIsTogglingStatus(false);
+    }
+  };
+
+  const cancelToggleStatus = () => {
+    setShowToggleStatusModal(false);
+    setToggleStatusOrg(null);
+  };
+
   // Render
   return (
     <View style={{ flex: 1, padding: 16 }}>
@@ -662,15 +697,122 @@ const OrganizationManagement: React.FC = () => {
             scada = typeof org.scadaDbConfig === 'string' ? JSON.parse(org.scadaDbConfig) : org.scadaDbConfig;
           } catch {}
           return (
-            <TouchableOpacity key={org.id} onPress={() => handleSelectOrg(org)} style={{ backgroundColor: isDarkMode ? '#1e293b' : '#f3f4f6', borderRadius: 10, padding: 16, marginBottom: 12 }}>
-              <Text style={{ fontSize: 18, fontWeight: '600', color: isDarkMode ? '#F8FAFC' : '#1E293B' }}>{org.name}</Text>
-              <Text style={{ fontSize: 13, color: isDarkMode ? '#cbd5e1' : '#64748b', marginTop: 2 }}>
-                Host: {scada.host || '-'}  |  Port: {scada.port || '-'}
-              </Text>
-              <Text style={{ fontSize: 13, color: isDarkMode ? '#cbd5e1' : '#64748b', marginTop: 2 }}>
-                Database: {scada.database || '-'}  |  User: {scada.user || '-'}
-              </Text>
-            </TouchableOpacity>
+            <View key={org.id} style={{ 
+              backgroundColor: isDarkMode ? '#1e293b' : '#f3f4f6', 
+              borderRadius: 10, 
+              padding: 16, 
+              marginBottom: 12,
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              {/* Disabled Organization Overlay - Only covers the content area, not the button */}
+              {!org.isEnabled && (
+                <View style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 50, // Leave space for the toggle button
+                  backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.8)',
+                  borderTopLeftRadius: 10,
+                  borderTopRightRadius: 10,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  zIndex: 1,
+                }}>
+                  <View style={{
+                    backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.9)' : 'rgba(220, 38, 38, 0.9)',
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    borderWidth: 2,
+                    borderColor: isDarkMode ? '#ef4444' : '#dc2626',
+                  }}>
+                    <Text style={{
+                      color: '#ffffff',
+                      fontSize: 14,
+                      fontWeight: 'bold',
+                      textAlign: 'center',
+                    }}>
+                      DISABLED
+                    </Text>
+                    <Text style={{
+                      color: '#ffffff',
+                      fontSize: 11,
+                      textAlign: 'center',
+                      marginTop: 2,
+                      opacity: 0.9,
+                    }}>
+                      No access allowed
+                    </Text>
+                  </View>
+                </View>
+              )}
+              
+              <TouchableOpacity onPress={() => handleSelectOrg(org)} style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '600', color: isDarkMode ? '#F8FAFC' : '#1E293B' }}>{org.name}</Text>
+                  <View style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    backgroundColor: org.isEnabled ? (isDarkMode ? '#065f46' : '#dcfce7') : (isDarkMode ? '#7f1d1d' : '#fee2e2'),
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 12
+                  }}>
+                    <View style={{ 
+                      width: 8, 
+                      height: 8, 
+                      borderRadius: 4, 
+                      backgroundColor: org.isEnabled ? (isDarkMode ? '#22c55e' : '#16a34a') : (isDarkMode ? '#ef4444' : '#dc2626'),
+                      marginRight: 6
+                    }} />
+                    <Text style={{ 
+                      fontSize: 11, 
+                      fontWeight: '600', 
+                      color: org.isEnabled ? (isDarkMode ? '#22c55e' : '#16a34a') : (isDarkMode ? '#ef4444' : '#dc2626')
+                    }}>
+                      {org.isEnabled ? 'ENABLED' : 'DISABLED'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 13, color: isDarkMode ? '#cbd5e1' : '#64748b', marginTop: 2 }}>
+                  Host: {scada.host || '-'}  |  Port: {scada.port || '-'}
+                </Text>
+                <Text style={{ fontSize: 13, color: isDarkMode ? '#cbd5e1' : '#64748b', marginTop: 2 }}>
+                  Database: {scada.database || '-'}  |  User: {scada.user || '-'}
+                </Text>
+              </TouchableOpacity>
+              
+              {/* Toggle Status Button */}
+              <TouchableOpacity 
+                onPress={() => handleToggleStatus(org)}
+                style={{ 
+                  alignSelf: 'flex-end',
+                  marginTop: 10,
+                  backgroundColor: org.isEnabled ? (isDarkMode ? '#dc2626' : '#ef4444') : (isDarkMode ? '#16a34a' : '#22c55e'),
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 6,
+                  flexDirection: 'row',
+                  alignItems: 'center'
+                }}
+              >
+                <Ionicons 
+                  name={org.isEnabled ? "pause-circle" : "play-circle"} 
+                  size={16} 
+                  color="#fff" 
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={{ 
+                  fontSize: 12, 
+                  fontWeight: '600', 
+                  color: '#fff'
+                }}>
+                  {org.isEnabled ? 'Disable' : 'Enable'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           );
         })}
       </ScrollView>
@@ -1142,6 +1284,143 @@ const OrganizationManagement: React.FC = () => {
             >
               <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Got it!</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Toggle Status Confirmation Modal */}
+      <Modal visible={showToggleStatusModal} animationType="fade" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ 
+            backgroundColor: isDarkMode ? '#1e293b' : '#fff', 
+            borderRadius: 16, 
+            padding: 24, 
+            width: '90%', 
+            maxWidth: 400,
+            alignItems: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 8
+          }}>
+            {/* Icon */}
+            <View style={{
+              width: 60,
+              height: 60,
+              borderRadius: 30,
+              backgroundColor: toggleStatusOrg?.isEnabled ? 
+                (isDarkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.1)') : 
+                (isDarkMode ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.1)'),
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: 16
+            }}>
+              <Ionicons 
+                name={toggleStatusOrg?.isEnabled ? "pause-circle" : "play-circle"} 
+                size={32} 
+                color={toggleStatusOrg?.isEnabled ? 
+                  (isDarkMode ? '#ef4444' : '#dc2626') : 
+                  (isDarkMode ? '#22c55e' : '#16a34a')} 
+              />
+            </View>
+
+            {/* Title */}
+            <Text style={{ 
+              fontSize: 20, 
+              fontWeight: 'bold', 
+              color: isDarkMode ? '#F8FAFC' : '#1E293B', 
+              marginBottom: 8,
+              textAlign: 'center'
+            }}>
+              {toggleStatusOrg?.isEnabled ? 'Disable Organization' : 'Enable Organization'}
+            </Text>
+
+            {/* Message */}
+            <Text style={{ 
+              color: isDarkMode ? '#cbd5e1' : '#64748b', 
+              textAlign: 'center', 
+              marginBottom: 24,
+              fontSize: 16,
+              lineHeight: 22
+            }}>
+              Are you sure you want to {toggleStatusOrg?.isEnabled ? 'disable' : 'enable'} <Text style={{ fontWeight: 'bold', color: isDarkMode ? '#f87171' : '#dc2626' }}>"{toggleStatusOrg?.name}"</Text>?
+            </Text>
+
+            <Text style={{ 
+              color: isDarkMode ? '#94a3b8' : '#64748b', 
+              textAlign: 'center', 
+              marginBottom: 24,
+              fontSize: 14,
+              lineHeight: 20,
+              fontStyle: 'italic'
+            }}>
+              {toggleStatusOrg?.isEnabled ? 
+                'This will prevent all users from logging in and stop all data processing.' : 
+                'This will allow users to log in and resume data processing.'
+              }
+            </Text>
+
+            {/* Buttons */}
+            <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+              <TouchableOpacity 
+                onPress={cancelToggleStatus} 
+                style={{ 
+                  flex: 1,
+                  paddingVertical: 12, 
+                  paddingHorizontal: 16, 
+                  borderRadius: 8, 
+                  backgroundColor: isDarkMode ? '#334155' : '#f1f5f9',
+                  borderWidth: 1,
+                  borderColor: isDarkMode ? '#475569' : '#e2e8f0'
+                }}
+                disabled={isTogglingStatus}
+              >
+                <Text style={{ 
+                  color: isDarkMode ? '#cbd5e1' : '#64748b', 
+                  fontWeight: '600', 
+                  textAlign: 'center',
+                  fontSize: 16
+                }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                onPress={confirmToggleStatus} 
+                style={{ 
+                  flex: 1,
+                  paddingVertical: 12, 
+                  paddingHorizontal: 16, 
+                  borderRadius: 8, 
+                  backgroundColor: toggleStatusOrg?.isEnabled ? 
+                    (isDarkMode ? '#dc2626' : '#ef4444') : 
+                    (isDarkMode ? '#16a34a' : '#22c55e'),
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}
+                disabled={isTogglingStatus}
+              >
+                {isTogglingStatus ? (
+                  <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
+                ) : (
+                  <Ionicons 
+                    name={toggleStatusOrg?.isEnabled ? "pause-circle" : "play-circle"} 
+                    size={20} 
+                    color="#fff" 
+                    style={{ marginRight: 8 }} 
+                  />
+                )}
+                <Text style={{ 
+                  color: '#fff', 
+                  fontWeight: '600',
+                  fontSize: 16
+                }}>
+                  {toggleStatusOrg?.isEnabled ? 'Disable' : 'Enable'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
