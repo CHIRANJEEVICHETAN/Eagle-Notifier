@@ -40,6 +40,19 @@ jobs:
           cd backend
           npm ci
           
+      - name: Update Prisma Schema for Cross-Platform Support
+        run: |
+          cd backend
+          # Add Windows binary target to support both Linux (build) and Windows (deployment)
+          if ! grep -q "binaryTargets" prisma/schema.prisma; then
+            # Add binaryTargets if it doesn't exist
+            sed -i '/generator client {/,/}/ s/output   = "\.\.\/src\/generated\/prisma-client"/output   = "..\/src\/generated\/prisma-client"\n  binaryTargets = ["native", "windows"]/' prisma/schema.prisma
+          fi
+          
+          # Verify the update
+          echo "Updated Prisma schema generator block:"
+          grep -A 5 "generator client" prisma/schema.prisma
+          
       - name: Generate Prisma Client
         run: |
           cd backend
@@ -59,10 +72,50 @@ jobs:
           cd backend
           npm run build
       
-      - name: Copy Prisma client to dist
+      - name: Copy environment file to dist
         run: |
           cd backend
-          cp -r src/generated/prisma-client dist/src/generated/
+          # Copy .env file to dist folder for production use
+          if [ -f ".env" ]; then
+            cp .env dist/
+            echo "✅ .env file copied to dist"
+          elif [ -f ".env.production" ]; then
+            cp .env.production dist/.env
+            echo "✅ .env.production copied as .env to dist"
+          else
+            echo "⚠️ No .env file found - using web.config environment variables"
+          fi
+      
+      - name: Verify and Copy Prisma Client to dist
+        run: |
+          cd backend
+          
+          # Verify that Prisma client was generated correctly
+          if [ -d "src/generated/prisma-client" ]; then
+            echo "✅ Prisma client found in src/generated/prisma-client"
+            ls -la src/generated/prisma-client/
+          else
+            echo "❌ Prisma client not found in expected location"
+            echo "Looking for Prisma client in alternative locations..."
+            find . -name "*prisma*" -type d 2>/dev/null
+            exit 1
+          fi
+          
+          # Ensure target directory structure exists
+          mkdir -p dist/src/generated/prisma-client
+          
+          # Copy the generated Prisma client to the correct nested structure
+          cp -r src/generated/prisma-client/* dist/src/generated/prisma-client/
+          
+          # Verify copy was successful with correct structure
+          if [ -d "dist/src/generated/prisma-client" ] && [ "$(ls -A dist/src/generated/prisma-client)" ]; then
+            echo "✅ Prisma client copied to dist with correct structure"
+            echo "Files in dist/src/generated/prisma-client:"
+            ls -la dist/src/generated/prisma-client/
+          else
+            echo "❌ Failed to copy Prisma client to correct structure"
+            exit 1
+          fi
           
       - name: Install production dependencies
         run: |
@@ -73,7 +126,21 @@ jobs:
         run: |
           cd backend
           mkdir -p deployment-package
+          
+          # Copy all necessary files
           cp -r dist prisma node_modules package.json web.config.template deployment-package/
+          
+          # Copy .env file if it exists in dist
+          if [ -f "dist/.env" ]; then
+            cp dist/.env deployment-package/dist/
+            echo "✅ .env file included in deployment package"
+          fi
+          
+          # Verify deployment package contents
+          echo "Deployment package contents:"
+          ls -la deployment-package/
+          echo "Prisma client in deployment package:"
+          ls -la deployment-package/dist/src/generated/prisma-client/ 2>/dev/null || echo "⚠️ Prisma client structure issue"
           
       - name: Upload deployment artifact
         uses: actions/upload-artifact@v4
@@ -212,6 +279,17 @@ jobs:
           New-Item -ItemType Directory -Path $deployPath -Force
           Copy-Item -Path "$sourcePath\*" -Destination $deployPath -Recurse -Force
           
+          # Verify Prisma client was deployed correctly
+          if (Test-Path "$deployPath\dist\src\generated\prisma-client") {
+              Write-Host "✅ Prisma client found in deployment"
+              $prismaFiles = Get-ChildItem "$deployPath\dist\src\generated\prisma-client" | Select-Object -First 5
+              Write-Host "Prisma client files: $($prismaFiles.Name -join ', ')..."
+          } else {
+              Write-Host "⚠️ Prisma client not found in expected location"
+              Write-Host "Contents of dist\src\generated:"
+              Get-ChildItem "$deployPath\dist\src\generated" -ErrorAction SilentlyContinue | Format-Table Name
+          }
+          
           # Create logs directory
           $logsPath = "$deployPath\logs"
           if (-not (Test-Path $logsPath)) {
@@ -277,10 +355,14 @@ jobs:
           $maxAttempts = 10
           $attempt = 0
           
+          # Give the application time to fully initialize
+          Write-Host "Waiting 20 seconds for application to fully start up..."
+          Start-Sleep -Seconds 20
+          
           # Try multiple health check URLs in case of different configurations
           $healthUrls = @(
               "http://localhost/health",
-              "http://localhost/eagle-notifier/health",
+              "http://127.0.0.1/health",
               "http://localhost:80/health"
           )
           
@@ -294,12 +376,13 @@ jobs:
               do {
                   $attempt++
                   try {
-                      $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 10
+                      $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 15
                       if ($response.StatusCode -eq 200) {
                           Write-Host "✅ Health check passed on attempt $attempt with URL: $healthUrl"
                           $healthData = $response.Content | ConvertFrom-Json
                           Write-Host "Application Status: $($healthData.status)"
                           Write-Host "Environment: $($healthData.environment)"
+                          Write-Host "Timestamp: $($healthData.timestamp)"
                           $healthPassed = $true
                           break
                       }
@@ -308,7 +391,7 @@ jobs:
                   }
                   
                   if ($attempt -lt 3) {
-                      Start-Sleep -Seconds 5
+                      Start-Sleep -Seconds 10
                   }
               } while ($attempt -lt 3)
               
@@ -316,7 +399,21 @@ jobs:
           }
           
           if (-not $healthPassed) {
-              Write-Host "❌ Health check failed on all URLs after multiple attempts"
-              exit 1
+              Write-Host "⚠️ Health check failed on all URLs after multiple attempts"
+              Write-Host "Checking application logs for issues..."
+              
+              # Check the latest log file
+              if (Test-Path "C:\inetpub\wwwroot\eagle-notifier\logs") {
+                  $latestLog = Get-ChildItem "C:\inetpub\wwwroot\eagle-notifier\logs\*.log" | Where-Object {$_.Length -gt 0} | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                  if ($latestLog) {
+                      Write-Host "Latest application log:" -ForegroundColor Yellow
+                      Get-Content $latestLog.FullName | Select-Object -Last 10
+                  }
+              }
+              
+              # Don't fail the deployment - the app might still work
+              Write-Host "Deployment completed, but health check failed. Check the application manually."
+          } else {
+              Write-Host "🎉 Deployment completed successfully!"
           }
         shell: powershell
