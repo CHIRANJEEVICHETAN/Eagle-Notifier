@@ -959,6 +959,25 @@ export default function MeterReadingsScreen() {
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
+      ) : !latestReadingData ? (
+        <View style={styles.emptyStateContainer}>
+          <Ionicons
+            name="analytics-outline"
+            size={64}
+            color={isDarkMode ? '#6B7280' : '#9CA3AF'}
+          />
+          <Text style={[styles.emptyStateTitle, { color: isDarkMode ? '#FFFFFF' : '#1F2937' }]}>
+            No Meter Data Available
+          </Text>
+          <Text style={[styles.emptyStateMessage, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+            No meter readings have been recorded yet. Please ensure your meter device is connected and sending data.
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: isDarkMode ? '#10B981' : '#059669' }]}
+            onPress={handleRefresh}>
+            <Text style={styles.retryButtonText}>Refresh</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -1667,6 +1686,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 24,
+  },
+  emptyStateContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyStateMessage: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
   },
   retryButton: {
     paddingVertical: 12,

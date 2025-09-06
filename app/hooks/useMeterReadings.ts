@@ -28,6 +28,8 @@ export const useLatestMeterReading = () => {
     queryFn: () => fetchLatestReading(organizationId ?? undefined),
     staleTime: 1000 * 60 * 3, // 3 minutes
     enabled,
+    retry: 1, // Reduce retries to avoid spam
+    retryDelay: 1000, // 1 second delay
   });
 };
 

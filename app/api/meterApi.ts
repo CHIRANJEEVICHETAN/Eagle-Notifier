@@ -64,7 +64,7 @@ export interface MeterReport {
 /**
  * Fetch latest meter reading
  */
-export const fetchLatestReading = async (organizationId?: string): Promise<MeterReading> => {
+export const fetchLatestReading = async (organizationId?: string): Promise<MeterReading | null> => {
   try {
     if (!organizationId) {
       throw new Error('Organization ID is required for meter readings');
@@ -72,7 +72,7 @@ export const fetchLatestReading = async (organizationId?: string): Promise<Meter
     
     const headers = await getOrgHeaders(organizationId);
     const { data } = await axios.get(`${apiConfig.apiUrl}/api/meter/latest`, { headers });
-    return data.data;
+    return data.data; // This can now be null if no readings exist
   } catch (error) {
     console.error('Error fetching latest meter reading:', error);
     throw error;

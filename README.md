@@ -42,6 +42,9 @@ The system continuously monitors industrial equipment parameters (temperatures, 
 - **Mobile-first Design**: Full functionality accessible via intuitive mobile interface
 - **Role-based Permissions**: Differentiated experiences for operators vs. administrators
 - **Meter Readings Analysis**: Real-time and historical electrical parameter monitoring with report generation
+- **Multi-Organization Support**: Scalable architecture supporting multiple companies with complete isolation
+- **AI-Powered Configuration**: Gemini AI integration for automatic schema configuration and validation
+- **Advanced User Management**: Comprehensive user management across all organizations
 
 ## Business Value
 
@@ -55,6 +58,8 @@ Eagle Notifier delivers significant value to industrial operations by:
 - **Enabling Data-Driven Decisions**: Historical reporting identifies recurring issues and improvement opportunities
 - **Lowering Operational Costs**: Reduced need for continuous on-site monitoring staff
 - **Optimizing Energy Usage**: Meter readings help identify inefficiencies and optimize energy consumption
+- **Scaling Operations**: Multi-organization support enables growth without system limitations
+- **Automating Configuration**: AI-powered setup reduces implementation time and errors
 
 ## Key Features
 
@@ -72,6 +77,12 @@ Eagle Notifier delivers significant value to industrial operations by:
 - **Meter Readings**: Monitor electrical parameters with historical data and custom reports
 - **Excel Report Generation**: Create customizable reports with selected parameters and date ranges
 - **Time-based Filtering**: View historical data based on customizable time ranges
+- **Multi-Organization Management**: Centralized control of multiple companies with complete data isolation
+- **AI-Powered Configuration**: Automatic schema detection and configuration using Gemini AI
+- **Advanced User Management**: Create, edit, and manage users across all organizations
+- **SCADA Integration**: Flexible database connections for various SCADA systems
+- **Organization Status Management**: Enable/disable organizations as needed
+- **Comprehensive Schema Mapping**: Custom column configurations for different industrial systems
 
 ## System Architecture
 
@@ -103,98 +114,133 @@ flowchart TD
     subgraph "Mobile Clients"
         A[Operator App] 
         B[Admin App]
+        C[Super Admin App]
     end
 
     subgraph "Backend Services"
-        C[API Gateway]
-        D[Authentication Service]
-        E[Alarm Processing Service]
-        F[Notification Service]
-        G[Reporting Service]
-        H[User Management Service]
-        I[Meter Reading Service]
+        D[API Gateway]
+        E[Authentication Service]
+        F[Alarm Processing Service]
+        G[Notification Service]
+        H[Reporting Service]
+        I[User Management Service]
+        J[Meter Reading Service]
+        K[Organization Management Service]
+        L[SCADA Integration Service]
     end
 
     subgraph "Databases"
-        J[(Application DB)]
-        K[(SCADA DB)]
+        M[(Application DB)]
+        N[(SCADA DB)]
     end
 
     subgraph "External Services"
-        L[Push Notification Service]
-        M[Email Service]
+        O[Push Notification Service]
+        P[Email Service]
+        Q[Gemini AI Service]
     end
 
-    A <--> C
-    B <--> C
-    C --> D
-    C --> E
-    C --> F
-    C --> G
-    C --> H
-    C --> I
-    D <--> J
-    E <--> J
-    F <--> J
-    G <--> J
-    H <--> J
-    I <--> J
-    E <--> K
-    F --> L
-    F --> M
+    A <--> D
+    B <--> D
+    C <--> D
+    D --> E
+    D --> F
+    D --> G
+    D --> H
+    D --> I
+    D --> J
+    D --> K
+    D --> L
+    E <--> M
+    F <--> M
+    G <--> M
+    H <--> M
+    I <--> M
+    J <--> M
+    K <--> M
+    L <--> N
+    F <--> N
+    G --> O
+    G --> P
+    K --> Q
+    L --> Q
 ```
 
 ### Component Descriptions
 
 1. **Mobile Clients**:
-   - React Native application with different views for operators and administrators
+   - React Native application with different views for operators, administrators, and super administrators
    - Built with Expo framework for cross-platform compatibility
+   - Role-specific dashboards and interfaces
 
 2. **API Gateway**:
    - Express.js server handling all client requests
    - Routes requests to appropriate services
    - Implements request validation and rate limiting
+   - Multi-tenant support with organization isolation
 
 3. **Authentication Service**:
    - JWT-based authentication system
-   - Role-based access control
+   - Role-based access control (SUPER_ADMIN, ADMIN, OPERATOR)
    - Secure token storage and refresh mechanism
+   - Organization-based user isolation
 
 4. **Alarm Processing Service**:
    - Polls SCADA database at configurable intervals
    - Processes raw data against configurable thresholds
    - Generates appropriate alarms based on business rules
    - Updates alarm statuses in application database
+   - Multi-organization alarm processing
 
 5. **Notification Service**:
    - Sends push notifications to mobile devices
    - Manages notification preferences
    - Handles notification delivery status tracking
    - Supports priority-based alerts and muting schedules
+   - Organization-specific notification routing
 
 6. **Reporting Service**:
    - Generates historical alarm reports
    - Provides analytics on alarm frequency and resolution times
    - Exports data in various formats (PDF, Excel)
+   - Multi-organization report generation
 
 7. **User Management Service**:
    - Handles user creation, updates, and deletion
    - Manages user roles and permissions
    - Provides user profile functionality
+   - Organization-based user management
+   - Cross-organization user administration for SUPER_ADMIN
 
 8. **Meter Reading Service**:
    - Monitors electrical parameters (voltage, current, frequency, etc.)
    - Processes readings against configurable thresholds
    - Generates reports with customizable parameters
    - Provides historical data visualization and analysis
+   - Organization-specific meter monitoring
 
-9. **Databases**:
-   - Application DB: PostgreSQL database storing application data, user information, alarm history, and meter reports
-   - SCADA DB: External database containing real-time industrial equipment data and meter readings
+9. **Organization Management Service**:
+   - Creates and manages multiple organizations
+   - Configures SCADA connections per organization
+   - Manages organization status (enabled/disabled)
+   - Handles schema mapping and configuration
+   - AI-powered automatic configuration
 
-10. **External Services**:
+10. **SCADA Integration Service**:
+    - Connects to various SCADA database types
+    - Manages database connections and pooling
+    - Handles data polling and processing
+    - Supports multiple database schemas
+    - Organization-specific SCADA configurations
+
+11. **Databases**:
+    - Application DB: PostgreSQL database storing application data, user information, alarm history, meter reports, and organization data
+    - SCADA DB: External database containing real-time industrial equipment data and meter readings
+
+12. **External Services**:
     - Push Notification Service: Expo Push Notification Service
     - Email Service: For sending reports and critical notifications
+    - Gemini AI Service: AI-powered configuration and validation
 
 ## Data Flow
 
@@ -207,6 +253,7 @@ sequenceDiagram
     participant DB as Application Database
     participant Mobile as Mobile App
     participant User as User/Operator
+    participant AI as Gemini AI
 
     SCADA->>Server: Real-time equipment data (polled)
     Server->>Server: Process data against thresholds
@@ -239,6 +286,12 @@ sequenceDiagram
     Server->>Mobile: Send report metadata
     Mobile->>Server: Download report file
     Mobile->>User: Display/share report
+    User->>Mobile: Configure organization
+    Mobile->>Server: Send organization config
+    Server->>AI: Validate configuration
+    AI->>Server: Return validation result
+    Server->>DB: Store organization config
+    Server->>Mobile: Confirm configuration
 ```
 
 ### Alarm Processing Flow
@@ -286,10 +339,36 @@ flowchart TD
     M --> N[Download/Share]
 ```
 
+### Organization Management Flow
+
+```mermaid
+flowchart TD
+    A[Create Organization] --> B[Configure SCADA Connection]
+    B --> C[Set Database Parameters]
+    C --> D[Configure Schema Mapping]
+    D --> E{Use AI Auto-Config?}
+    E -->|Yes| F[Gemini AI Analysis]
+    E -->|No| G[Manual Configuration]
+    F --> H[Validate Configuration]
+    G --> H
+    H --> I{Valid?}
+    I -->|No| J[Show Errors]
+    I -->|Yes| K[Save Configuration]
+    J --> D
+    K --> L[Create Users]
+    L --> M[Set Permissions]
+    M --> N[Enable Organization]
+    N --> O[Start Monitoring]
+```
+
 ### Database Schema Overview
 
 ```mermaid
 erDiagram
+    ORGANIZATION ||--o{ USER : "contains"
+    ORGANIZATION ||--o{ ALARM : "generates"
+    ORGANIZATION ||--o{ METER_READINGS : "generates"
+    ORGANIZATION ||--o{ SCADA_CONFIG : "configures"
     USER ||--o{ NOTIFICATION : "receives"
     USER ||--o{ ALARM : "acknowledges"
     USER ||--o{ ALARM : "resolves"
@@ -301,6 +380,16 @@ erDiagram
     METER_LIMIT ||--o{ METER_READINGS : "configures"
     SETPOINT ||--o{ ALARM : "configures"
 
+    ORGANIZATION {
+        string id PK
+        string name
+        json scadaDbConfig
+        json schemaConfig
+        boolean isEnabled
+        datetime createdAt
+        datetime updatedAt
+    }
+
     USER {
         string id PK
         string email
@@ -311,6 +400,7 @@ erDiagram
         datetime createdAt
         datetime updatedAt
         string pushToken
+        string organizationId FK
     }
     
     ALARM {
@@ -332,6 +422,7 @@ erDiagram
         string resolvedById FK
         datetime resolvedAt
         string resolutionMessage
+        string organizationId FK
     }
     
     ALARM_HISTORY {
@@ -349,6 +440,7 @@ erDiagram
         string resolvedById FK
         datetime resolvedAt
         string resolutionMessage
+        string organizationId FK
     }
     
     NOTIFICATION {
@@ -362,6 +454,7 @@ erDiagram
         json metadata
         datetime createdAt
         datetime readAt
+        string organizationId FK
     }
     
     NOTIFICATION_SETTINGS {
@@ -386,6 +479,7 @@ erDiagram
         float highDeviation
         datetime createdAt
         datetime updatedAt
+        string organizationId FK
     }
     
     METER_READINGS {
@@ -397,6 +491,7 @@ erDiagram
         float energy
         float power
         datetime created_at
+        string organizationId FK
     }
     
     METER_LIMIT {
@@ -408,6 +503,7 @@ erDiagram
         float lowLimit
         datetime createdAt
         datetime updatedAt
+        string organizationId FK
     }
     
     METER_REPORT {
@@ -423,6 +519,22 @@ erDiagram
         string[] parameters
         datetime createdAt
         json metadata
+        string organizationId FK
+    }
+
+    SCADA_CONFIG {
+        string id PK
+        string organizationId FK
+        string host
+        int port
+        string user
+        string password
+        string database
+        string sslmode
+        string table
+        json schemaMapping
+        datetime createdAt
+        datetime updatedAt
     }
 ```
 
@@ -447,9 +559,10 @@ erDiagram
 - **PostgreSQL**: Reliable relational database for data persistence
 - **Docker**: Containerization for consistent deployment
 - **JWT**: JSON Web Tokens for secure authentication
-- **Winston**: Logging infrastructure for debugging and monitoring
+monitoring
 - **ExcelJS**: Server-side Excel report generation
 - **Jest**: Testing framework for unit and integration tests
+- **Gemini AI**: Google's AI service for intelligent configuration
 
 ### DevOps
 - **GitHub Actions**: CI/CD automation
@@ -460,37 +573,39 @@ erDiagram
 
 ## User Workflows
 
-### Operator Workflow
+### Super Administrator Workflow
 
 ```mermaid
 flowchart TD
-    A[Start] --> B[Login]
-    B --> C[Dashboard]
-    C --> D[View Active Alarms]
-    C --> E[View Notifications]
-    C --> F[Generate Reports]
-    C --> P[View Meter Readings]
-    D --> G[Acknowledge Alarm]
-    D --> H[View Alarm Details]
-    H --> G
-    G --> I[Resolve Alarm]
-    I --> J[Enter Resolution Details]
-    J --> K[End]
-    E --> L[Mark as Read]
-    L --> K
-    F --> M[Select Parameters]
-    M --> N[View Report]
-    N --> O[Export Report]
-    O --> K
-    P --> Q[View Live Readings]
-    P --> R[View Reading History]
-    P --> S[Generate Meter Report]
-    Q --> K
-    R --> K
-    S --> T[Select Date Range]
-    T --> U[Select Parameters]
-    U --> V[Download Report]
-    V --> K
+    A[Start] --> B[Login as Super Admin]
+    B --> C[Super Admin Dashboard]
+    C --> D[Organization Management]
+    C --> E[User Management]
+    C --> F[System Analytics]
+    
+    D --> G[Create Organization]
+    D --> H[Configure SCADA Connection]
+    D --> I[Set Schema Mapping]
+    D --> J[Enable/Disable Organization]
+    
+    G --> K[Set Organization Details]
+    K --> L[Configure Database Connection]
+    L --> M[Set Schema Configuration]
+    M --> N[Test Connection]
+    N --> O[Save Configuration]
+    
+    E --> P[View All Users]
+    E --> Q[Create New User]
+    E --> R[Edit User Details]
+    E --> S[Assign Roles & Organizations]
+    
+    F --> T[View System Metrics]
+    F --> U[Monitor Organization Status]
+    F --> V[Generate System Reports]
+    
+    O --> W[End]
+    S --> W
+    V --> W
 ```
 
 ### Administrator Workflow
@@ -534,6 +649,39 @@ flowchart TD
     Z --> K
 ```
 
+### Operator Workflow
+
+```mermaid
+flowchart TD
+    A[Start] --> B[Login]
+    B --> C[Dashboard]
+    C --> D[View Active Alarms]
+    C --> E[View Notifications]
+    C --> F[Generate Reports]
+    C --> P[View Meter Readings]
+    D --> G[Acknowledge Alarm]
+    D --> H[View Alarm Details]
+    H --> G
+    G --> I[Resolve Alarm]
+    I --> J[Enter Resolution Details]
+    J --> K[End]
+    E --> L[Mark as Read]
+    L --> K
+    F --> M[Select Parameters]
+    M --> N[View Report]
+    N --> O[Export Report]
+    O --> K
+    P --> Q[View Live Readings]
+    P --> R[View Reading History]
+    P --> S[Generate Meter Report]
+    Q --> K
+    R --> K
+    S --> T[Select Date Range]
+    T --> U[Select Parameters]
+    U --> V[Download Report]
+    V --> K
+```
+
 ### App Screens and Navigation Flow
 
 ```mermaid
@@ -575,6 +723,16 @@ flowchart TD
     Y --> AA[Setpoint Config]
     Y --> AB[Meter Limit Config]
     end
+
+    subgraph Super Admin Only
+    C --> AC[Organization Management]
+    C --> AD[Super Admin Dashboard]
+    AC --> AE[Organization Form]
+    AC --> AF[SCADA Configuration]
+    AC --> AG[Schema Mapping]
+    AD --> AH[System Analytics]
+    AD --> AI[Cross-Organization Users]
+    end
 ```
 
 ## Getting Started
@@ -587,6 +745,7 @@ flowchart TD
 - Expo CLI (`npm install -g expo-cli`)
 - Docker (optional, for containerized deployment)
 - Azure account (optional, for cloud deployment)
+- Gemini AI API key (for AI-powered configuration)
 
 ### Environment Setup
 
@@ -615,6 +774,7 @@ npm install
      - `JWT_EXPIRE`: Token expiration time (e.g., "24h")
      - `REFRESH_TOKEN_EXPIRE`: Refresh token expiration (e.g., "7d")
      - `SCADA_POLL_INTERVAL`: Interval (ms) to poll SCADA data (default: 120000)
+     - `GEMINI_API_KEY`: Google Gemini AI API key for intelligent configuration
    - Create `.env` file in the root directory for Expo configuration:
      - `EXPO_PUBLIC_API_URL`: Backend API URL
      - `EXPO_PUBLIC_PROJECT_ID`: Expo project ID for push notifications
@@ -673,14 +833,55 @@ The application expects a SCADA table called `jk2` with the following fields:
   - `hz1fanfail`, `hz2fanfail`, `tz1fanfail`, `tz2fanfail` (fan failures)
   - Various other equipment status indicators
 
+### Multi-Organization SCADA Configuration
+
+Each organization can have its own SCADA configuration:
+
+```typescript
+interface ScadaDbConfig {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+  sslmode: string;
+  table: string;
+}
+
+interface SchemaConfig {
+  columns: string[];
+  columnConfigs: {
+    [columnName: string]: {
+      name: string;
+      type: string;
+      zone?: string;
+      unit?: string;
+      isAnalog: boolean;
+      isBinary: boolean;
+      lowDeviation?: number;
+      highDeviation?: number;
+    };
+  };
+}
+```
+
+### AI-Powered Configuration
+
+The system uses Gemini AI to automatically detect and configure columns:
+
+1. **Pattern Recognition**: Automatically identifies temperature zones, equipment types, and sensor patterns
+2. **Smart Defaults**: Generates appropriate configurations based on column naming conventions
+3. **Validation**: Checks configuration syntax and provides error correction
+4. **Learning**: Improves accuracy over time with usage patterns
+
 ### Data Processing Pipeline
 
-1. **Data Polling**: The SCADA database is queried at regular intervals
+1. **Data Polling**: The SCADA database is queried at regular intervals per organization
 2. **Setpoint Configuration**: The system fetches configurable thresholds from the database
 3. **Alarm Severity Calculation**:
    - For analog values, severity is determined by comparing current values to setpoints with deviation bands
    - For binary values, severity is determined by the status (e.g., failure = critical)
-4. **Notification Generation**: Alarms trigger notifications to be sent to users
+4. **Notification Generation**: Alarms trigger notifications to be sent to users within the organization
 
 ### Setpoint Configuration
 
@@ -761,35 +962,77 @@ The meter readings feature is fully integrated into the mobile application with:
 
 ## User Roles
 
-The system implements a role-based access control system with two primary roles:
+The system implements a comprehensive role-based access control system with three primary roles:
 
-### Operator
-- View active and historical alarms
-- Acknowledge alarms to indicate they're being addressed
-- Resolve alarms with detailed resolution notes
-- Generate reports on alarm history
-- Receive and manage notifications
-- Update personal profile and notification preferences
-- View meter readings and generate meter reports
-- Access historical meter data with custom filtering
-- View and download previously generated reports
+### Super Administrator (SUPER_ADMIN)
+- **Organization Management**:
+  - Create, edit, and delete organizations
+  - Configure SCADA database connections
+  - Set up schema mappings and configurations
+  - Enable/disable organizations
+  - Monitor organization status and health
+- **User Management**:
+  - Create, edit, and delete users across all organizations
+  - Assign roles and organization memberships
+  - Reset passwords and manage user accounts
+  - View all users in the system
+- **System Administration**:
+  - Access system-wide analytics and metrics
+  - Monitor cross-organization performance
+  - Generate system-level reports
+  - Configure global system settings
+- **AI Configuration**:
+  - Use Gemini AI for automatic schema configuration
+  - Validate and correct configuration files
+  - Import/export organization configurations
 
-### Administrator
-- All operator capabilities
-- Manage users:
-  - Create new user accounts
+### Administrator (ADMIN)
+- **User Management**:
+  - Create new user accounts within their organization
   - Update existing user details
   - Delete user accounts
   - Reset user passwords
-- Configure system setpoints for each equipment type and zone
-- Configure meter reading limits and thresholds
-- Access system dashboards with performance metrics
-- View audit logs of system activities
-- Configure global system settings
+  - Assign roles and permissions
+- **System Configuration**:
+  - Configure system setpoints for each equipment type and zone
+  - Configure meter reading limits and thresholds
+  - Set up alarm thresholds and deviation limits
+  - Manage notification preferences
+- **System Monitoring**:
+  - Access organization dashboard with performance metrics
+  - View audit logs of system activities
+  - Monitor alarm trends and patterns
+  - Generate organization-specific reports
+- **Operator Functions**:
+  - All operator capabilities
+  - View active alarms and manage resolution
+  - Generate comprehensive reports
+
+### Operator (OPERATOR)
+- **Alarm Management**:
+  - View active and historical alarms
+  - Acknowledge alarms to indicate they're being addressed
+  - Resolve alarms with detailed resolution notes
+  - Track alarm resolution progress
+- **Monitoring**:
+  - Real-time equipment parameter monitoring
+  - View meter readings and electrical parameters
+  - Monitor system status and health
+  - Receive push notifications for critical events
+- **Reporting**:
+  - Generate reports on alarm history
+  - Create meter reading reports with custom parameters
+  - Export data in various formats
+  - Access historical data with filtering
+- **User Functions**:
+  - Update personal profile and preferences
+  - Configure notification settings
+  - Manage theme preferences (light/dark mode)
+  - View personal activity history
 
 ## API Endpoints
 
-The backend provides a comprehensive REST API:
+The backend provides a comprehensive REST API with multi-tenant support:
 
 ### Authentication
 - `POST /api/auth/login`: User login
@@ -798,7 +1041,7 @@ The backend provides a comprehensive REST API:
 - `GET /api/auth/profile`: Get current user profile
 
 ### Alarms
-- `GET /api/alarms`: Get active alarms
+- `GET /api/alarms`: Get active alarms for organization
 - `GET /api/alarms/:id`: Get a specific alarm details
 - `PATCH /api/alarms/:id`: Update alarm status (acknowledge/resolve)
 - `GET /api/alarms/history`: Get historical alarms
@@ -829,7 +1072,7 @@ The backend provides a comprehensive REST API:
 - `GET /api/operator/reports`: Generate operator reports
 
 ### Admin Routes
-- `GET /api/admin/users`: Get all users
+- `GET /api/admin/users`: Get all users in organization
 - `POST /api/admin/users`: Create a new user
 - `PUT /api/admin/users/:id`: Update user details
 - `DELETE /api/admin/users/:id`: Delete a user
@@ -838,9 +1081,23 @@ The backend provides a comprehensive REST API:
 - `POST /api/admin/setpoints`: Create a new setpoint
 - `PUT /api/admin/setpoints/:id`: Update a setpoint
 
+### Super Admin Routes
+- `GET /api/super-admin/organizations`: Get all organizations
+- `POST /api/super-admin/organizations`: Create a new organization
+- `PUT /api/super-admin/organizations/:id`: Update organization
+- `DELETE /api/super-admin/organizations/:id`: Delete organization
+- `GET /api/super-admin/users`: Get all users across organizations
+- `POST /api/super-admin/users`: Create user in any organization
+- `PUT /api/super-admin/users/:id`: Update user details
+- `DELETE /api/super-admin/users/:id`: Delete user
+- `GET /api/super-admin/metrics`: Get system-wide metrics
+- `POST /api/super-admin/organizations/:id/toggle-status`: Enable/disable organization
+
 ### SCADA Routes
 - `GET /api/scada/health`: Check SCADA database connection health
 - `GET /api/scada/latest`: Get latest SCADA data
+- `POST /api/scada/test-connection`: Test SCADA database connection
+- `POST /api/scada/validate-schema`: Validate schema configuration
 
 ## Deployment
 
@@ -857,6 +1114,25 @@ docker run -p 8080:8080 --env-file .env eagle-notifier-app:latest
 ### Azure Deployment
 
 The project includes a GitHub Actions workflow for continuous integration and deployment to Azure App Service.
+
+### Multi-Organization Deployment
+
+For multi-organization deployments:
+
+1. **Database Setup**:
+   - Ensure PostgreSQL supports multiple schemas or use organization-based table prefixes
+   - Configure connection pooling for multiple SCADA databases
+   - Set up proper indexing for organization-based queries
+
+2. **Network Configuration**:
+   - Configure firewall rules for multiple SCADA systems
+   - Set up VPN connections if required
+   - Ensure proper network segmentation
+
+3. **Monitoring and Scaling**:
+   - Monitor database connections per organization
+   - Scale resources based on organization count and data volume
+   - Implement proper logging and alerting
 
 ## Mobile App Build
 
@@ -889,6 +1165,14 @@ After building:
    - Complete app review information
    - Submit for review
 
+### Multi-Platform Support
+
+The mobile app supports:
+- **Android**: Native Android with Material Design components
+- **iOS**: Native iOS with Human Interface Guidelines
+- **Cross-Platform**: Consistent experience across platforms
+- **Responsive Design**: Optimized for various screen sizes and orientations
+
 ## License
 
 This project is proprietary software developed by TecoSoft Digital Solutions.
@@ -896,3 +1180,7 @@ This project is proprietary software developed by TecoSoft Digital Solutions.
 ## Support
 
 For support or questions, please contact support@tecosoft.ai
+
+---
+
+**Eagle-Notifier** transforms industrial monitoring from reactive to proactive, ensuring your operations run smoothly with real-time visibility and instant alerts. Our multi-tenant architecture scales with your business, while our AI-powered configuration system makes setup simple and intelligent.
